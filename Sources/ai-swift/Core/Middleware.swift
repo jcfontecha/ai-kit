@@ -406,3 +406,35 @@ public extension AIMiddleware {
         return error
     }
 }
+
+// MARK: - Simple Rate Limiter
+
+/// Simple rate limiter implementation
+public actor SimpleRateLimiter: RateLimiter {
+    private var requestCount = 0
+    private let maxRequests: Int
+    private let resetInterval: TimeInterval
+    private var lastReset: Date = Date()
+    
+    public init(maxRequests: Int = 100, resetInterval: TimeInterval = 60) {
+        self.maxRequests = maxRequests
+        self.resetInterval = resetInterval
+    }
+    
+    public func checkLimit() async throws {
+        let now = Date()
+        
+        // Reset counter if interval has passed
+        if now.timeIntervalSince(lastReset) >= resetInterval {
+            requestCount = 0
+            lastReset = now
+        }
+        
+        // Check if limit exceeded
+        if requestCount >= maxRequests {
+            throw RateLimitError(retryAfter: resetInterval - now.timeIntervalSince(lastReset))
+        }
+        
+        requestCount += 1
+    }
+}

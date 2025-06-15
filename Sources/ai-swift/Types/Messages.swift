@@ -1,5 +1,11 @@
 import Foundation
 
+// MARK: - Message Types
+
+/// Simplified message type for the new architecture
+public typealias Message = CoreMessage
+
+
 // MARK: - Core Message
 
 /// Core message structure for AI interactions
@@ -142,170 +148,11 @@ public struct FileContent: Codable, Sendable {
 
 // MARK: - Tool Types
 
-/// AI tool definition
-public struct AITool: Codable, Sendable {
-    public let type: ToolType
-    public let function: ToolFunction
-    
-    public init(type: ToolType, function: ToolFunction) {
-        self.type = type
-        self.function = function
-    }
-}
+/// Legacy alias for Tool
+public typealias AITool = Tool
 
-/// Tool types
-public enum ToolType: String, Codable, Sendable {
-    case function
-}
 
-/// Tool function definition
-public struct ToolFunction: Codable, Sendable {
-    public let name: String
-    public let description: String?
-    public let parameters: JSONSchema
-    public let strict: Bool?
-    
-    public init(
-        name: String,
-        description: String? = nil,
-        parameters: JSONSchema,
-        strict: Bool? = nil
-    ) {
-        self.name = name
-        self.description = description
-        self.parameters = parameters
-        self.strict = strict
-    }
-}
 
-/// Tool choice options
-public enum ToolChoice: Codable, Sendable {
-    case none
-    case auto
-    case required
-    case specific(String)
-    
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        
-        if let string = try? container.decode(String.self) {
-            switch string {
-            case "none":
-                self = .none
-            case "auto":
-                self = .auto
-            case "required":
-                self = .required
-            default:
-                self = .specific(string)
-            }
-        } else {
-            throw DecodingError.typeMismatch(
-                ToolChoice.self,
-                DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Invalid tool choice")
-            )
-        }
-    }
-    
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        
-        switch self {
-        case .none:
-            try container.encode("none")
-        case .auto:
-            try container.encode("auto")
-        case .required:
-            try container.encode("required")
-        case .specific(let name):
-            try container.encode(name)
-        }
-    }
-}
-
-/// Tool call from AI
-public struct ToolCall: Codable, Sendable {
-    public let id: String
-    public let type: ToolType
-    public let function: ToolCallFunction
-    public let timestamp: Date
-    
-    public init(
-        id: String = UUID().uuidString,
-        type: ToolType,
-        function: ToolCallFunction,
-        timestamp: Date = Date()
-    ) {
-        self.id = id
-        self.type = type
-        self.function = function
-        self.timestamp = timestamp
-    }
-}
-
-/// Tool call function details
-public struct ToolCallFunction: Codable, Sendable {
-    public let name: String
-    public let arguments: String
-    
-    public init(name: String, arguments: String) {
-        self.name = name
-        self.arguments = arguments
-    }
-}
-
-/// Tool execution result
-public struct ToolResult: Codable, Sendable {
-    public let toolCallId: String
-    public let result: ToolResultContent
-    public let timestamp: Date
-    public let executionTime: TimeInterval?
-    public let isError: Bool
-    
-    public init(
-        toolCallId: String,
-        result: ToolResultContent,
-        timestamp: Date = Date(),
-        executionTime: TimeInterval? = nil,
-        isError: Bool = false
-    ) {
-        self.toolCallId = toolCallId
-        self.result = result
-        self.timestamp = timestamp
-        self.executionTime = executionTime
-        self.isError = isError
-    }
-}
-
-/// Tool result content types
-public enum ToolResultContent: Codable, Sendable {
-    case text(String)
-    case json(Data)
-    case error(String)
-    case image(ImageContent)
-    case file(FileContent)
-    
-    public var textValue: String? {
-        if case .text(let value) = self {
-            return value
-        }
-        return nil
-    }
-    
-    public var jsonValue: Data? {
-        if case .json(let value) = self {
-            return value
-        }
-        return nil
-    }
-    
-    public var errorValue: String? {
-        if case .error(let value) = self {
-            return value
-        }
-        return nil
-    }
-}
 
 // MARK: - Message Convenience Extensions
 

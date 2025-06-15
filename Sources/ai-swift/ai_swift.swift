@@ -14,12 +14,20 @@ public typealias AI = AISwift
 /// Main namespace for the AI Swift SDK
 public enum AISwift {
     
+    // MARK: - Client Factory
+    
+    /// Create an AI client for framework operations
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    public static func client(middleware: [any AIMiddleware] = []) -> AIClient {
+        AIClient(middleware: middleware)
+    }
+    
     // MARK: - Provider Factory
     
     /// Create a mock provider for testing and development
-    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
-    public static func mockProvider(apiKey: String = "mock-key", middleware: [any AIMiddleware] = []) -> MockProvider {
-        MockProvider(apiKey: apiKey, middleware: middleware)
+    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
+    public static func mockProvider(apiKey: String = "mock-key") -> MockProvider {
+        MockProvider(apiKey: apiKey)
     }
     
     // MARK: - Middleware Factory
@@ -36,7 +44,7 @@ public enum AISwift {
     
     /// Create rate limiting middleware
     public static func rateLimitMiddleware(maxRequests: Int = 100, resetInterval: TimeInterval = 60) -> RateLimitMiddleware {
-        let rateLimiter = MockRateLimiter(maxRequests: maxRequests, resetInterval: resetInterval)
+        let rateLimiter = SimpleRateLimiter(maxRequests: maxRequests, resetInterval: resetInterval)
         return RateLimitMiddleware(rateLimiter: rateLimiter)
     }
     
@@ -60,14 +68,19 @@ public enum AISwift {
     
     /// Validate JSON schema
     public static func validateSchema(_ data: Data, against schema: JSONSchema) throws -> ValidationResult {
-        let validator = MockSchemaValidator()
-        return try validator.validate(data, against: schema)
+        // Basic validation - in a real implementation this would use a proper JSON Schema validator
+        do {
+            let _ = try JSONSerialization.jsonObject(with: data)
+            return ValidationResult(isValid: true)
+        } catch {
+            return ValidationResult(isValid: false, errors: [ValidationError(path: "", message: error.localizedDescription, code: .typeMismatch)])
+        }
     }
     
     // MARK: - Configuration
     
     /// Default model configuration
-    public static let defaultConfiguration = ModelConfiguration()
+    public static let defaultConfiguration = ModelConfiguration.default
     
     /// Creative model configuration (high temperature)
     public static let creativeConfiguration = ModelConfiguration()

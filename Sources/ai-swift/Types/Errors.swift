@@ -25,93 +25,48 @@ public protocol AIError: Error, LocalizedError, Sendable {
 
 // MARK: - Core AI Errors
 
-/// Provider-related errors
-public enum AIProviderError: AIError {
-    case invalidAPIKey(String)
-    case invalidConfiguration(String)
-    case unsupportedModel(String)
-    case rateLimitExceeded(retryAfter: TimeInterval?)
-    case quotaExceeded
-    case serviceUnavailable
-    case timeout
-    case networkError(Error)
-    case authenticationFailed
-    case authorizationFailed
+/// Configuration-related errors
+public enum AIConfigurationError: AIError {
+    case invalidParameter(String, String)
+    case missingRequiredParameter(String)
+    case conflictingParameters([String])
     
     public var code: String {
         switch self {
-        case .invalidAPIKey: return "INVALID_API_KEY"
-        case .invalidConfiguration: return "INVALID_CONFIGURATION"
-        case .unsupportedModel: return "UNSUPPORTED_MODEL"
-        case .rateLimitExceeded: return "RATE_LIMIT_EXCEEDED"
-        case .quotaExceeded: return "QUOTA_EXCEEDED"
-        case .serviceUnavailable: return "SERVICE_UNAVAILABLE"
-        case .timeout: return "TIMEOUT"
-        case .networkError: return "NETWORK_ERROR"
-        case .authenticationFailed: return "AUTHENTICATION_FAILED"
-        case .authorizationFailed: return "AUTHORIZATION_FAILED"
+        case .invalidParameter: return "INVALID_PARAMETER"
+        case .missingRequiredParameter: return "MISSING_REQUIRED_PARAMETER"
+        case .conflictingParameters: return "CONFLICTING_PARAMETERS"
         }
     }
     
     public var message: String {
         switch self {
-        case .invalidAPIKey(let provider):
-            return "Invalid API key for provider: \(provider)"
-        case .invalidConfiguration(let details):
-            return "Invalid configuration: \(details)"
-        case .unsupportedModel(let model):
-            return "Unsupported model: \(model)"
-        case .rateLimitExceeded(let retryAfter):
-            let retryMessage = retryAfter.map { " Retry after \(Int($0)) seconds." } ?? ""
-            return "Rate limit exceeded.\(retryMessage)"
-        case .quotaExceeded:
-            return "API quota exceeded"
-        case .serviceUnavailable:
-            return "AI service is currently unavailable"
-        case .timeout:
-            return "Request timed out"
-        case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
-        case .authenticationFailed:
-            return "Authentication failed"
-        case .authorizationFailed:
-            return "Authorization failed"
+        case .invalidParameter(let param, let reason):
+            return "Invalid parameter '\(param)': \(reason)"
+        case .missingRequiredParameter(let param):
+            return "Missing required parameter: \(param)"
+        case .conflictingParameters(let params):
+            return "Conflicting parameters: \(params.joined(separator: ", "))"
         }
     }
     
     public var context: [String: String] {
         switch self {
-        case .rateLimitExceeded(let retryAfter):
-            return retryAfter.map { ["retryAfter": String($0)] } ?? [:]
-        case .networkError(let error):
-            return ["underlyingError": error.localizedDescription]
-        default:
-            return [:]
+        case .invalidParameter(let param, let reason):
+            return ["parameter": param, "reason": reason]
+        case .missingRequiredParameter(let param):
+            return ["parameter": param]
+        case .conflictingParameters(let params):
+            return ["parameters": params.joined(separator: ", ")]
         }
     }
     
-    public var underlyingError: Error? {
-        switch self {
-        case .networkError(let error):
-            return error
-        default:
-            return nil
-        }
-    }
-    
-    public var isRetryable: Bool {
-        switch self {
-        case .rateLimitExceeded, .serviceUnavailable, .timeout, .networkError:
-            return true
-        default:
-            return false
-        }
-    }
-    
+    public var underlyingError: Error? { nil }
+    public var isRetryable: Bool { false }
     public var requestId: String? { nil }
-    
     public var errorDescription: String? { message }
 }
+
 
 /// Generation-related errors
 public enum AIGenerationError: AIError {
@@ -361,7 +316,13 @@ public struct ErrorHandler {
         
         // Map common Foundation errors
         if let urlError = error as? URLError {
-            return AIProviderError.networkError(urlError)
+            return GenericAIError(
+                code: "NETWORK_ERROR",
+                message: "Network error: \(urlError.localizedDescription)",
+                underlyingError: urlError,
+                isRetryable: true,
+                requestId: requestId
+            )
         }
         
         if error is DecodingError {
@@ -398,10 +359,7 @@ public struct ErrorHandler {
     
     /// Extract retry delay from error
     public static func retryDelay(from error: Error) -> TimeInterval? {
-        if case AIProviderError.rateLimitExceeded(let retryAfter) = error {
-            return retryAfter
-        }
-        
+        // Check for specific rate limit errors in middleware
         if case AIMiddlewareError.rateLimitError(let rateLimitError) = error {
             return rateLimitError.retryAfter
         }

@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - Text Generation
+// MARK: - Legacy Request/Response Types (for backwards compatibility)
 
 /// Request for text generation
 public struct TextGenerationRequest: Sendable {
@@ -222,67 +222,8 @@ public struct BatchEmbeddingResponse: Sendable {
 
 // MARK: - Supporting Types
 
-/// Possible finish reasons for generation
-public enum FinishReason: String, Codable, Sendable {
-    case stop
-    case length
-    case toolCalls = "tool-calls"
-    case contentFilter = "content-filter"
-    case cancel
-    case error
-    case other
-    case unknown
-}
 
-/// Token usage information
-public struct TokenUsage: Sendable {
-    public let promptTokens: Int
-    public let completionTokens: Int
-    public let totalTokens: Int
-    
-    public init(promptTokens: Int, completionTokens: Int, totalTokens: Int) {
-        self.promptTokens = promptTokens
-        self.completionTokens = completionTokens
-        self.totalTokens = totalTokens
-    }
-}
 
-/// Generation step information for multi-step processes
-public struct GenerationStep: Sendable {
-    public let stepType: StepType
-    public let stepId: String
-    public let timestamp: Date
-    public let usage: TokenUsage?
-    public let messages: [CoreMessage]?
-    public let toolCalls: [ToolCall]?
-    public let toolResults: [ToolResult]?
-    
-    public init(
-        stepType: StepType,
-        stepId: String,
-        timestamp: Date = Date(),
-        usage: TokenUsage? = nil,
-        messages: [CoreMessage]? = nil,
-        toolCalls: [ToolCall]? = nil,
-        toolResults: [ToolResult]? = nil
-    ) {
-        self.stepType = stepType
-        self.stepId = stepId
-        self.timestamp = timestamp
-        self.usage = usage
-        self.messages = messages
-        self.toolCalls = toolCalls
-        self.toolResults = toolResults
-    }
-}
-
-/// Types of generation steps
-public enum StepType: String, Codable, Sendable {
-    case initial
-    case `continue`
-    case toolCall = "tool-call"
-    case toolResult = "tool-result"
-}
 
 /// Object generation modes
 public enum ObjectGenerationMode: String, Codable, Sendable {

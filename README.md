@@ -1,0 +1,313 @@
+# Swift AI SDK
+
+A comprehensive Swift framework for AI model interactions, inspired by the Vercel AI SDK. Provides type-safe, protocol-oriented interfaces for text generation, object generation, embeddings, and streaming operations with built-in middleware support.
+
+[![Swift](https://img.shields.io/badge/Swift-5.9+-orange.svg)](https://swift.org)
+[![Platforms](https://img.shields.io/badge/Platforms-iOS%20|%20macOS%20|%20watchOS%20|%20tvOS-blue.svg)](https://swift.org)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+## Features
+
+- 🎯 **Type-Safe API**: Comprehensive Swift types with full Codable support
+- 🔄 **Streaming Support**: Real-time text and object generation with AsyncSequence
+- 🛠️ **Tool Integration**: Function calling with automatic execution
+- 📋 **Structured Output**: JSON schema-validated object generation  
+- 🔌 **Provider Agnostic**: Clean abstraction over multiple AI providers
+- 🧬 **Middleware System**: Extensible request/response transformation
+- 🏗️ **Vercel AI SDK Compatible**: Familiar patterns for web developers
+- ⚡ **Swift-Native**: Actor-based concurrency, builder patterns, and strong typing
+
+## Architecture
+
+The Swift AI SDK follows a clean three-layer architecture:
+
+```
+┌─────────────┐    ┌──────────────┐    ┌─────────────────┐
+│   AIClient  │───▶│ LanguageModel│───▶│   AIProvider    │
+│ (Framework) │    │ (Configuration)│    │ (Translation)   │
+└─────────────┘    └──────────────┘    └─────────────────┘
+```
+
+### Core Components
+
+- **AIClient**: Framework implementation that handles orchestration, middleware, tool execution, and streaming
+- **LanguageModel**: Configuration container with provider, model ID, and parameters  
+- **AIProvider**: Translation layer between SDK standard format and provider APIs
+
+## Quick Start
+
+### Installation
+
+Add the Swift AI SDK to your project using Swift Package Manager:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/your-org/ai-swift.git", from: "1.0.0")
+]
+```
+
+### Basic Usage
+
+```swift
+import ai_swift
+
+// Create provider and model
+let provider = MockProvider() // Use real providers like OpenAIProvider in production
+let model = provider.languageModel("gpt-4")
+    .temperature(0.8)
+    .maxTokens(150)
+
+// Create client
+let client = AISwift.client()
+
+// Generate text
+let response = try await client.generateText(model, prompt: "Write a haiku about Swift")
+print(response.text)
+```
+
+### Streaming
+
+```swift
+let stream = client.streamText(model, prompt: "Count from 1 to 10")
+
+for try await chunk in stream {
+    print(chunk.delta, terminator: "")
+}
+```
+
+### Structured Object Generation
+
+```swift
+struct Recipe: Codable {
+    let name: String
+    let ingredients: [String]
+    let instructions: [String]
+}
+
+let schema = ObjectSchema<Recipe>()
+let response = try await client.generateObject(
+    model, 
+    prompt: "Create a chocolate chip cookie recipe",
+    schema: schema
+)
+
+let recipe: Recipe = response.object
+print("Recipe: \(recipe.name)")
+```
+
+### Tool Calling
+
+```swift
+// Define a tool
+let weatherTool = Tool.function(
+    name: "get_weather",
+    description: "Get current weather for a location",
+    parameters: .object(properties: [
+        "location": .string(description: "City and state, e.g. San Francisco, CA")
+    ], required: ["location"])
+)
+
+// Use with model (future implementation)
+let modelWithTools = model.tools([weatherTool])
+let response = try await client.generateText(modelWithTools, prompt: "What's the weather in Tokyo?")
+```
+
+## File Structure
+
+The SDK is organized into focused modules:
+
+```
+Sources/ai-swift/
+├── Core/                           # Core architecture components
+│   ├── AIClient.swift             # Main framework implementation
+│   ├── AIProvider.swift           # Provider protocol and capabilities
+│   ├── LanguageModel.swift        # Model configuration container
+│   ├── ModelConfiguration.swift   # Parameter configuration
+│   └── Middleware.swift           # Middleware system
+├── Types/                          # Data types and schemas
+│   ├── Messages.swift             # Message and conversation types
+│   ├── Tools.swift                # Tool calling system
+│   ├── Usage.swift                # Token usage and billing
+│   ├── Responses.swift            # Response types (TextResponse, ObjectResponse)
+│   ├── ProviderTypes.swift        # Provider request/response types
+│   ├── ObjectSchema.swift         # Structured object schemas
+│   ├── Streaming.swift            # Streaming types and utilities
+│   ├── Errors.swift               # Error types
+│   └── JSONSchema.swift           # JSON schema definitions
+├── Extensions/
+│   └── ConvenienceExtensions.swift # Builder patterns and utilities
+├── Providers/
+│   └── MockProvider.swift         # Mock provider for testing
+└── ai_swift.swift                 # Main module interface
+```
+
+## Configuration
+
+### Model Parameters
+
+```swift
+let model = provider.languageModel("gpt-4")
+    .temperature(0.7)           // Controls randomness (0.0-1.0)
+    .maxTokens(500)            // Maximum tokens to generate
+    .topP(0.9)                 // Nucleus sampling threshold
+    .frequencyPenalty(0.3)     // Reduce repetition
+    .stopSequences(["END"])    // Stop generation sequences
+```
+
+### Predefined Configurations
+
+```swift
+// For creative writing
+let creative = AISwift.creativeConfiguration
+let model = provider.languageModel("gpt-4").configure { creative }
+
+// For precise, factual responses  
+let precise = AISwift.preciseConfiguration
+
+// Balanced general-purpose
+let balanced = AISwift.balancedConfiguration
+```
+
+### Provider-Specific Settings
+
+```swift
+let model = provider.languageModel("gpt-4")
+    .providerSpecific([
+        "logit_bias": "{\\"50256\\": -100}",
+        "custom_param": "value"
+    ])
+```
+
+## Advanced Features
+
+### Middleware
+
+```swift
+// Add logging
+let client = AISwift.client(middleware: [
+    AISwift.loggingMiddleware(),
+    AISwift.rateLimitMiddleware(maxRequests: 100),
+    AISwift.retryMiddleware(maxRetries: 3)
+])
+```
+
+### Message Building
+
+```swift
+let messages = [
+    Message.system("You are a helpful coding assistant"),
+    Message.user("Explain async/await in Swift"),
+    Message.assistant("Async/await in Swift provides..."),
+    Message.user("Can you show an example?")
+]
+
+let response = try await client.generateText(model, messages: messages)
+```
+
+### Stream Processing
+
+```swift
+// Collect full text from stream
+let fullText = try await stream.collectText()
+
+// Process only deltas
+let deltaStream = stream.deltas()
+for try await delta in deltaStream {
+    updateUI(with: delta)
+}
+```
+
+### Error Handling
+
+```swift
+do {
+    let response = try await client.generateText(model, prompt: "Hello")
+} catch AIProviderError.rateLimitExceeded(let retryAfter) {
+    print("Rate limited. Retry after \(retryAfter) seconds")
+} catch AIError.invalidResponse(let message) {
+    print("Invalid response: \(message)")
+} catch {
+    print("Unexpected error: \(error)")
+}
+```
+
+## Provider Implementation
+
+To implement a new provider, conform to the `AIProvider` protocol:
+
+```swift
+public struct OpenAIProvider: AIProvider {
+    public let name = "OpenAI"
+    private let apiKey: String
+    
+    public init(apiKey: String) {
+        self.apiKey = apiKey
+    }
+    
+    public func languageModel(_ modelId: String) -> LanguageModel {
+        return LanguageModel(provider: self, modelId: modelId)
+    }
+    
+    public func generateTextRaw(_ request: ProviderRequest) async throws -> ProviderResponse {
+        // Transform request to OpenAI format
+        // Make HTTP call
+        // Transform response to standard format
+    }
+    
+    public func streamTextRaw(_ request: ProviderRequest) -> AsyncThrowingStream<ProviderChunk, Error> {
+        // Implement streaming
+    }
+}
+```
+
+## Testing
+
+The SDK includes comprehensive testing utilities:
+
+```swift
+// Use mock provider for testing
+let mockProvider = AISwift.mockProvider()
+let testModel = mockProvider.languageModel("test-model")
+
+// Configure mock behavior
+let mockConfig = MockConfiguration(
+    responseDelay: 0.1,
+    errorRate: 0.05
+)
+let provider = MockProvider(configuration: mockConfig)
+```
+
+Run tests:
+
+```bash
+swift test
+```
+
+## Roadmap
+
+- [ ] OpenAI Provider Implementation
+- [ ] Anthropic Provider Implementation  
+- [ ] Google AI Provider Implementation
+- [ ] Embedding Support
+- [ ] Image Generation
+- [ ] Function Calling Implementation
+- [ ] Caching Middleware
+- [ ] Observability Integration
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Inspired by the [Vercel AI SDK](https://github.com/vercel/ai)
+- Built with Swift's modern concurrency features
+- Follows Swift API design guidelines
