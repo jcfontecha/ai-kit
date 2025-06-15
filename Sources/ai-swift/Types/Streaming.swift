@@ -3,7 +3,7 @@ import Foundation
 // MARK: - Text Streaming
 
 /// Chunk of streamed text
-public struct TextChunk: Sendable {
+public struct TextChunk: Sendable, StreamChunk {
     public let delta: String
     public let snapshot: String
     public let finishReason: FinishReason?

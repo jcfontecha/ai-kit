@@ -13,12 +13,15 @@ This document tracks the implementation of our comprehensive test suite using an
 - [x] Stream collection utilities
 - [ ] Performance measurement helpers (not needed yet)
 
-## Phase 2: Core Provider & Model Tests
+## Phase 2: Core Provider & Model Tests ✅
 
 ### Provider Management Tests (ProviderTests.swift)
 - [x] Basic provider creation and setup ✅
+- [x] Model creation from provider ✅ (covered in basic test)
+- [x] Model configuration chaining ✅
+- [x] Provider capabilities validation ✅
+- [x] Configuration validation with strict mode ✅
 - [ ] Provider with middleware initialization  
-- [ ] Model creation from provider ✅ (covered in basic test)
 - [ ] Model creation with custom configuration
 - [ ] Model creation failure scenarios
 - [ ] Custom error handling in provider
@@ -31,10 +34,10 @@ This document tracks the implementation of our comprehensive test suite using an
 
 ### Text Generation Tests (TextGenerationTests.swift)
 - [x] Basic text generation functionality ✅
-- [ ] Text generation with system messages
-- [ ] Conversation history handling
+- [x] Text generation with system messages ✅ (basic implementation)
+- [x] Conversation history handling ✅
+- [x] Custom parameter configuration ✅
 - [ ] Multimodal content support (images)
-- [ ] Custom parameter configuration
 - [ ] Stop sequence handling
 - [ ] Text generation error scenarios
 - [ ] Custom error handling
@@ -47,8 +50,8 @@ This document tracks the implementation of our comprehensive test suite using an
 
 ### Text Streaming Tests (TextStreamingTests.swift)
 - [x] Basic text streaming functionality ✅
-- [ ] Progressive content accumulation ✅ (covered in basic test)
-- [ ] Streaming error handling
+- [x] Progressive content accumulation ✅ (covered in basic test)
+- [x] Streaming error handling ✅
 - [ ] Custom streaming errors
 - [ ] Streaming with delays
 - [ ] Stream cancellation
@@ -61,7 +64,10 @@ This document tracks the implementation of our comprehensive test suite using an
 ## Phase 5: Structured Object Generation
 
 ### Object Generation Tests (ObjectGenerationTests.swift)
-- [ ] Basic structured object generation
+- [x] Basic object schema creation and validation ✅
+- [x] Schema builder methods and configurations ✅
+- [x] Schema examples and validation modes ✅
+- [ ] Basic structured object generation (needs AIClient implementation)
 - [ ] Multiple object types support
 - [ ] Complex nested schemas
 - [ ] Schema validation failures
@@ -240,10 +246,22 @@ This document tracks the implementation of our comprehensive test suite using an
 6. **Integration**: End-to-end testing
 
 ### Current Status:
-- **Total Test Methods**: 140+ individual test methods
-- **Completed**: Foundation structure ✅
-- **Next**: Test utilities implementation
-- **Current Phase**: Phase 1 - Foundation & Test Infrastructure
+- **Total Test Methods**: 140+ individual test methods planned
+- **Completed Tests**: 12 tests passing ✅
+  - testNewArchitecture (basic SDK structure)
+  - testMessageConvenience (message creation)
+  - testConfigurationBuilding (config builder pattern) 
+  - testObjectSchema (schema creation and validation)
+  - testProviderBasicFunctionality (provider creation, capabilities, models)
+  - testBasicTextGeneration (text generation with provider)
+  - testBasicStreaming (streaming functionality)
+  - testConfigurationValidation (strict validation)
+  - testConversationHistory (multi-turn conversations)
+  - testStreamingErrorHandling (error simulation and recovery)
+  - testBasicObjectSchema (advanced schema testing)
+  - testCustomParameterConfiguration (temperature, topP, penalties, etc.)
+- **Current Phase**: Phase 5 - Object generation foundation laid, ready for implementation phase
+- **Next**: AIClient implementation, tool calling, middleware system
 
 ## Notes:
 - Each checkbox represents a buildable, testable increment
