@@ -168,6 +168,57 @@ public struct ObjectSchema<T: Codable & Sendable>: Sendable {
     }
 }
 
+// MARK: - Generation Mode
+
+/// Controls how AI providers generate structured output.
+/// 
+/// This enum maps to the Vercel AI SDK's mode parameter and allows
+/// providers to optimize their structured output generation strategy.
+public enum GenerationMode: String, Codable, Sendable {
+    
+    /// Automatic mode selection - provider chooses the best approach.
+    /// 
+    /// The provider will automatically select the most appropriate
+    /// generation strategy based on the model's capabilities and the
+    /// complexity of the requested schema.
+    case auto = "auto"
+    
+    /// JSON mode - instruct the model to respond in JSON format.
+    /// 
+    /// Uses the provider's JSON mode if available, otherwise falls back
+    /// to prompt-based JSON generation. This mode is fast but may be
+    /// less reliable for complex schemas.
+    case json = "json"
+    
+    /// Tool mode - use function/tool calling for structured output.
+    /// 
+    /// Uses the provider's function/tool calling capability to generate
+    /// structured output. This mode is more reliable for complex schemas
+    /// but requires tool calling support.
+    case tool = "tool"
+}
+
+// MARK: - Output Strategy
+
+/// Defines the type of structured output being generated.
+/// 
+/// This enum helps providers understand what kind of output is expected
+/// and allows for optimization of the generation process.
+public enum OutputStrategy: String, Codable, Sendable {
+    
+    /// Generate a single object matching the schema.
+    case object = "object"
+    
+    /// Generate an array of objects matching the element schema.
+    case array = "array"
+    
+    /// Generate an enum value from a predefined set of options.
+    case `enum` = "enum"
+    
+    /// Generate without schema constraints (free-form text/JSON).
+    case noSchema = "no-schema"
+}
+
 // MARK: - Validation Mode
 
 /// Controls how strictly generated objects are validated.

@@ -1,6 +1,6 @@
 # Swift AI SDK - Core Architecture
 
-A clean, Swift-native implementation following Vercel AI SDK patterns with clear separation of concerns.
+A clean, Swift-native implementation following Vercel AI SDK patterns with framework-centralized structured output handling and lightweight providers.
 
 ## Architecture Overview
 
@@ -24,13 +24,25 @@ public actor AIClient {
     // Core operations that handle everything
     public func generateText(_ model: LanguageModel, messages: [Message]) async throws -> TextResponse
     public func streamText(_ model: LanguageModel, messages: [Message]) -> AsyncThrowingStream<TextChunk, Error>
-    public func generateObject<T: Codable>(_ model: LanguageModel, messages: [Message], schema: ObjectSchema<T>) async throws -> ObjectResponse<T>
-    public func streamObject<T: Codable>(_ model: LanguageModel, messages: [Message], schema: ObjectSchema<T>) -> AsyncThrowingStream<ObjectChunk<T>, Error>
+    
+    // Structured object generation - type-safe method overloads
+    public func generateObject<T: Codable>(_ model: LanguageModel, messages: [Message], schema: ObjectSchema<T>, mode: GenerationMode = .auto) async throws -> ObjectResponse<T>
+    public func streamObject<T: Codable>(_ model: LanguageModel, messages: [Message], schema: ObjectSchema<T>, mode: GenerationMode = .auto) -> AsyncThrowingStream<ObjectChunk<T>, Error>
+    
+    // Array generation - element schema with clear return type
+    public func generateArray<T: Codable>(_ model: LanguageModel, messages: [Message], elementSchema: ObjectSchema<T>, mode: GenerationMode = .auto) async throws -> ObjectResponse<[T]>
+    public func streamArray<T: Codable>(_ model: LanguageModel, messages: [Message], elementSchema: ObjectSchema<T>, mode: GenerationMode = .auto) -> AsyncThrowingStream<ObjectChunk<[T]>, Error>
+    
+    // Enum generation - predefined values
+    public func generateEnum(_ model: LanguageModel, messages: [Message], values: [String], mode: GenerationMode = .auto) async throws -> ObjectResponse<String>
+    public func streamEnum(_ model: LanguageModel, messages: [Message], values: [String], mode: GenerationMode = .auto) -> AsyncThrowingStream<ObjectChunk<String>, Error>
     
     // Convenience methods for simple prompts
     public func generateText(_ model: LanguageModel, prompt: String) async throws -> TextResponse
     public func streamText(_ model: LanguageModel, prompt: String) -> AsyncThrowingStream<TextChunk, Error>
-    public func generateObject<T: Codable>(_ model: LanguageModel, prompt: String, schema: ObjectSchema<T>) async throws -> ObjectResponse<T>
+    public func generateObject<T: Codable>(_ model: LanguageModel, prompt: String, schema: ObjectSchema<T>, mode: GenerationMode = .auto) async throws -> ObjectResponse<T>
+    public func generateArray<T: Codable>(_ model: LanguageModel, prompt: String, elementSchema: ObjectSchema<T>, mode: GenerationMode = .auto) async throws -> ObjectResponse<[T]>
+    public func generateEnum(_ model: LanguageModel, prompt: String, values: [String], mode: GenerationMode = .auto) async throws -> ObjectResponse<String>
 }
 ```
 
@@ -69,9 +81,9 @@ public struct ModelConfiguration: Sendable {
 }
 ```
 
-### 3. AIProvider (Translation Layer)
+### 3. AIProvider (Lightweight Translation Layer)
 
-Protocol that handles the translation between AI SDK standard format and provider-specific APIs, following Vercel AI SDK patterns.
+Providers handle only basic text generation and API-specific formatting. The framework manages all structured output logic centrally for consistency and simplicity.
 
 ```swift
 public protocol AIProvider: Sendable {
@@ -80,24 +92,66 @@ public protocol AIProvider: Sendable {
     // Model factory methods - providers create their own models
     func languageModel(_ modelId: String) -> LanguageModel
     
-    // Provider-specific request execution with format translation
+    // Core text generation methods
     func generateTextRaw(_ request: ProviderRequest) async throws -> ProviderResponse
     func streamTextRaw(_ request: ProviderRequest) -> AsyncThrowingStream<ProviderChunk, Error>
+    
+    // Provider capabilities for mode support
+    var supportedGenerationModes: Set<GenerationMode> { get }
+    var defaultGenerationMode: GenerationMode { get }
+    
+    // Validation (optional)
+    func validateConfiguration(_ configuration: ModelConfiguration) throws
 }
 
-// Provider-specific request/response formats
+// Generation modes for structured output
+public enum GenerationMode: String, Sendable {
+    case auto = "auto"           // Provider chooses optimal mode
+    case json = "json"           // JSON mode with schema constraints  
+    case tool = "tool"           // Function calling with schema as parameters
+}
+
+// Output strategies for framework internal use
+public enum OutputStrategy: String, Sendable {
+    case object = "object"       // Single object (default)
+    case array = "array"         // Array of objects
+    case `enum` = "enum"         // Enum values
+    case noSchema = "no-schema"  // Free-form JSON
+}
+
+// Enhanced request with mode information
 public struct ProviderRequest: Sendable {
     public let modelId: String
     public let messages: [Message]
     public let configuration: ModelConfiguration
     public let tools: [Tool]?
+    
+    // Mode parameter tells provider how to format the request
+    public let mode: ProviderMode
 }
 
+// Provider modes map to specific API formatting
+public enum ProviderMode: Sendable {
+    case regular(tools: [Tool]?, toolChoice: ToolChoice?)
+    case objectJSON(schema: JSONSchema, name: String?, description: String?)
+    case objectTool(tool: Tool) // Tool with schema as parameters
+}
+
+// Standard response (no special object types needed)
 public struct ProviderResponse: Sendable {
     public let content: String
     public let toolCalls: [ToolCall]?
-    public let usage: Usage
     public let finishReason: FinishReason
+    public let usage: Usage
+    public let providerMetadata: [String: Any]?
+}
+
+public struct ProviderChunk: Sendable {
+    public let delta: String
+    public let toolCallDeltas: [ToolCallDelta]?
+    public let finishReason: FinishReason?
+    public let usage: Usage?
+    public let chunkIndex: Int
 }
 ```
 
@@ -136,35 +190,155 @@ for try await chunk in stream {
 }
 ```
 
-### Object Generation
+### Structured Object Generation
+
+The Swift AI SDK supports multiple structured output modes that leverage provider-specific capabilities:
 
 ```swift
 struct Recipe: Codable {
     let name: String
     let ingredients: [String]
     let instructions: [String]
+    let cookingTime: Int
 }
 
-let anthropic = AnthropicProvider(apiKey: "...")
-let model = anthropic.languageModel("claude-3-sonnet")
+let openai = OpenAIProvider(apiKey: "sk-...")
+let model = openai.languageModel("gpt-4")
 let client = AIClient()
 
+// Single object generation - clean and type-safe
 let response = try await client.generateObject(
     model,
     prompt: "Create a chocolate chip cookie recipe",
     schema: ObjectSchema<Recipe>()
+        .name("Recipe")
+        .description("A detailed recipe with ingredients and instructions"),
+    mode: .auto  // Provider chooses optimal approach
+)
+
+// Explicit mode control still available
+let jsonResponse = try await client.generateObject(
+    model,
+    prompt: "Create a chocolate chip cookie recipe", 
+    schema: ObjectSchema<Recipe>()
+        .name("Recipe")
+        .description("A recipe object"),
+    mode: .json  // Forces JSON mode with schema validation
 )
 
 let recipe: Recipe = response.object
 ```
 
+#### Array Generation
+
+```swift
+struct Ingredient: Codable {
+    let name: String
+    let amount: String
+    let category: String
+}
+
+// Array generation - impossible to misuse, element schema is clear
+let ingredients = try await client.generateArray(
+    model,
+    prompt: "List 10 baking ingredients",
+    elementSchema: ObjectSchema<Ingredient>()
+        .name("Ingredient")
+        .description("A baking ingredient with details"),
+    mode: .auto
+)
+
+let ingredientList: [Ingredient] = ingredients.object
+```
+
+#### Schema-Guided Generation
+
+```swift
+// Complex nested schemas with validation
+struct DetailedRecipe: Codable {
+    let metadata: RecipeMetadata
+    let ingredients: [Ingredient]
+    let steps: [CookingStep]
+    let nutrition: NutritionFacts?
+}
+
+// Complex object generation
+let detailedResponse = try await client.generateObject(
+    model,
+    messages: conversationHistory,
+    schema: ObjectSchema<DetailedRecipe>()
+        .name("DetailedRecipe")
+        .description("A comprehensive recipe with full details"),
+    mode: .auto  // Provider optimizes based on schema complexity
+)
+
+// Enum generation for classification tasks - clean and obvious
+let genre = try await client.generateEnum(
+    model,
+    prompt: "Classify this movie: 'A group of astronauts travel through a wormhole...'",
+    values: ["action", "comedy", "drama", "horror", "sci-fi"]
+)
+```
+
+#### Implementation Notes
+
+The type-safe method overloads internally map to the unified provider interface:
+
+```swift
+// generateObject -> calls with output: .object
+// generateArray -> calls with output: .array  
+// generateEnum -> calls with output: .enum
+
+// All methods delegate to the core implementation:
+private func generateObjectInternal<T: Codable>(
+    _ model: LanguageModel,
+    messages: [Message], 
+    schema: ObjectSchema<T>,
+    output: OutputStrategy,
+    mode: GenerationMode = .auto
+) async throws -> ObjectResponse<T>
+```
+
 ## Data Flow
+
+### **Structured Output Flow**
+
+```
+📱 User API Call
+  ↓
+🏗️  AIClient (Framework) - Entry Point
+  │ ┌─ generateObject(model, messages, schema, mode)
+  │ ├─ Applies request middleware
+  │ ├─ Determines provider mode (auto→json/tool)
+  │ ├─ Creates ProviderRequest with mode info
+  │ └─ Calls provider.generateTextRaw(request)
+  ↓
+🔌 AIProvider (Translation) - Lightweight
+  │ ┌─ Receives ProviderRequest with mode
+  │ ├─ Mode: .objectJSON → formats with response_format
+  │ ├─ Mode: .objectTool → formats with function calling
+  │ ├─ Makes HTTP call to AI service
+  │ └─ Returns raw ProviderResponse (just text)
+  ↓
+🏗️  AIClient (Framework) - Processing
+  │ ┌─ Receives raw text response
+  │ ├─ Extracts JSON from response content
+  │ ├─ Parses JSON to Swift type
+  │ ├─ Validates against ObjectSchema
+  │ ├─ Handles errors (malformed JSON, schema mismatch)
+  │ ├─ Applies response middleware
+  │ └─ Returns typed ObjectResponse<T>
+  ↓
+📱 User receives strongly-typed result
+```
+
+### **Text Generation Flow**
 
 ```
 1. User calls client.generateText(model, prompt)
 2. Client converts prompt to messages array
 3. Client applies request middleware
-4. Client calls provider.generateTextRaw(request)
+4. Client calls provider.generateTextRaw(request) with mode: .regular
 5. Provider transforms request to API format
 6. Provider makes HTTP call to AI service
 7. Provider parses response to standard format
@@ -201,6 +375,10 @@ public struct OpenAIProvider: AIProvider {
     private let apiKey: String
     private let httpClient: HTTPClient
     
+    // Provider capabilities
+    public let supportedGenerationModes: Set<GenerationMode> = [.auto, .json, .tool]
+    public let defaultGenerationMode: GenerationMode = .json  // OpenAI prefers structured outputs
+    
     public init(apiKey: String) {
         self.apiKey = apiKey
         self.httpClient = HTTPClient()
@@ -211,43 +389,121 @@ public struct OpenAIProvider: AIProvider {
     }
     
     public func generateTextRaw(_ request: ProviderRequest) async throws -> ProviderResponse {
-        // Transform AI SDK request to OpenAI format
-        let openAIRequest = transformToOpenAIFormat(request)
-        
-        // Validate settings and apply OpenAI-specific mappings
-        let validatedRequest = validateAndMapSettings(openAIRequest)
-        
-        // Make HTTP call
-        let httpResponse = try await httpClient.post(
-            url: URL(string: "https://api.openai.com/v1/chat/completions")!,
-            headers: ["Authorization": "Bearer \(apiKey)"],
-            body: validatedRequest
+        let openAIRequest = OpenAIChatRequest(
+            model: request.modelId,
+            messages: transformMessages(request.messages)
         )
         
-        // Parse OpenAI response to AI SDK standard format
+        // Handle mode-specific formatting (this is where provider expertise matters)
+        switch request.mode {
+        case .regular(let tools, let toolChoice):
+            // Standard text generation
+            openAIRequest.tools = tools?.map(transformTool)
+            openAIRequest.tool_choice = transformToolChoice(toolChoice)
+            
+        case .objectJSON(let schema, let name, let description):
+            // OpenAI's native structured output
+            if supportsStructuredOutputs(modelId: request.modelId) {
+                openAIRequest.response_format = .json_schema(
+                    name: name ?? "response", 
+                    schema: schema,
+                    strict: true,
+                    description: description
+                )
+            } else {
+                // Fallback to JSON mode for older models
+                openAIRequest.response_format = .json_object
+                // Framework will inject schema instruction in prompt
+            }
+            
+        case .objectTool(let tool):
+            // Function calling with schema as parameters
+            openAIRequest.tools = [transformTool(tool)]
+            openAIRequest.tool_choice = .required(tool.function.name)
+        }
+        
+        let httpResponse = try await httpClient.post("/v1/chat/completions", body: openAIRequest)
         return parseToStandardFormat(httpResponse)
     }
     
-    // Provider handles format translation, validation, and API communication
+    // Much simpler streaming - same pattern
+    public func streamTextRaw(_ request: ProviderRequest) -> AsyncThrowingStream<ProviderChunk, Error> {
+        // Similar implementation with mode handling
+        // Provider just handles HTTP streaming, framework handles JSON parsing
+    }
+    
+    // Simple helper methods - no complex object logic
+    private func supportsStructuredOutputs(modelId: String) -> Bool {
+        return ["gpt-4o", "gpt-4o-mini"].contains(modelId)
+    }
+    
+    private func parseToStandardFormat(_ httpResponse: OpenAIResponse) -> ProviderResponse {
+        // Simple conversion - no JSON schema validation here
+        return ProviderResponse(
+            content: httpResponse.choices[0].message.content ?? "",
+            toolCalls: httpResponse.choices[0].message.tool_calls?.map(transformToolCall),
+            finishReason: transformFinishReason(httpResponse.choices[0].finish_reason),
+            usage: transformUsage(httpResponse.usage)
+        )
+    }
+}
+
+// Even simpler Anthropic provider - only supports tool mode
+public struct AnthropicProvider: AIProvider {
+    public let name = "Anthropic"
+    public let supportedGenerationModes: Set<GenerationMode> = [.tool]  // Only tool mode
+    public let defaultGenerationMode: GenerationMode = .tool
+    
+    public func generateTextRaw(_ request: ProviderRequest) async throws -> ProviderResponse {
+        switch request.mode {
+        case .objectJSON:
+            // Anthropic doesn't support JSON mode for structured output
+            throw AIProviderError.unsupportedParameter("mode", "Anthropic only supports tool mode for structured output")
+            
+        case .objectTool(let tool):
+            // Use Claude's tool calling with schema
+            let anthropicRequest = AnthropicRequest(
+                model: request.modelId,
+                messages: transformMessages(request.messages),
+                tools: [transformTool(tool)],
+                tool_choice: .specific(tool.function.name)
+            )
+            
+        case .regular(let tools, let toolChoice):
+            // Standard text generation
+            // ... similar pattern
+        }
+        
+        // Simple HTTP call and response transformation
+        let httpResponse = try await httpClient.post("/v1/messages", body: anthropicRequest)
+        return parseToStandardFormat(httpResponse)
+    }
 }
 ```
 
 ## Framework vs Provider Responsibilities
 
-| Responsibility | AIClient (Framework) | AIProvider (Translation) |
+| Responsibility | AIClient (Framework) | AIProvider (Lightweight) |
 |---|---|---|
+| **Framework Logic** | | |
 | Middleware execution | ✅ | ❌ |
-| JSON schema validation | ✅ | ❌ |
+| JSON parsing & validation | ✅ | ❌ |
+| Schema conversion & validation | ✅ | ❌ |
 | Tool orchestration | ✅ | ❌ |
-| Framework response parsing | ✅ | ❌ |
 | Error handling & retries | ✅ | ❌ |
 | Streaming management | ✅ | ❌ |
+| Object type parsing (T.self) | ✅ | ❌ |
+| Mode selection (.auto → .json/.tool) | ✅ | ❌ |
+| Provider Translation | | |
 | Model factory methods | ❌ | ✅ |
-| Message format transformation | ❌ | ✅ |
-| Settings validation & mapping | ❌ | ✅ |
-| Tool format conversion | ❌ | ✅ |
-| Provider response parsing | ❌ | ✅ |
 | HTTP communication | ❌ | ✅ |
 | Authentication | ❌ | ✅ |
+| Message format transformation | ❌ | ✅ |
+| Mode-specific API formatting | ❌ | ✅ |
+| Provider response parsing | ❌ | ✅ |
+| Capabilities | | |
+| Supported modes declaration | ❌ | ✅ |
+| Default mode selection | ❌ | ✅ |
+| Settings validation & mapping | ❌ | ✅ |
 
-This architecture provides a clean foundation that's both powerful and easy to understand, following Vercel AI SDK patterns while being thoroughly Swift-native.
+This architecture mirrors the proven Vercel AI SDK approach while providing a clean, Swift-native foundation that's both powerful and maintainable.

@@ -2,7 +2,7 @@
 
 This document tracks the implementation of our comprehensive test suite using an iterative approach. Each test will be implemented one at a time, building upon the previous ones to ensure the codebase remains stable.
 
-## Current Status: 21 tests passing ✅
+## Current Status: 23 tests passing ✅
 Latest additions:
 - ✅ Tool calling integration with AIClient.generateText
 - ✅ MockProvider tool call simulation  
@@ -17,6 +17,10 @@ Latest additions:
 - ✅ Removed hardcoded tool execution from AIClient - now uses caller-provided tool executors
 - ✅ **SCHEMA VALIDATION**: Object generation with schema validation (testObjectGenerationWithSchemaValidation)
 - ✅ Enhanced mock object creation to support UserProfile and other structured types
+- ✅ **ERROR HANDLING**: Comprehensive error handling for object generation (testObjectGenerationErrorHandling)
+- ✅ Added Vercel AI SDK-style error types: JSONParseError, SchemaValidationError, NoObjectGeneratedError
+- ✅ **COMPLEX OBJECTS**: Complex nested object generation with arrays and objects (testComplexNestedObjectGeneration)
+- ✅ Recipe-style nested objects with ingredients, steps, nutrition info, and validation
 
 ## Vercel AI SDK Alignment Analysis ✅
 
@@ -106,9 +110,9 @@ Latest additions:
 - [x] Schema builder methods and configurations ✅
 - [x] Schema examples and validation modes ✅
 - [✅] Basic structured object generation (testObjectGenerationWithSchemaValidation)
+- [✅] Schema validation failures and error handling (testObjectGenerationErrorHandling)
+- [✅] Complex nested schemas (testComplexNestedObjectGeneration)
 - [ ] Multiple object types support
-- [ ] Complex nested schemas
-- [ ] Schema validation failures
 - [ ] Custom error scenarios
 - [ ] Performance testing
 - [ ] Different generation modes

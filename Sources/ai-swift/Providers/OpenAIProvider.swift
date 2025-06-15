@@ -62,6 +62,12 @@ public struct OpenAIProvider: AIProvider {
     /// Provider name for identification and logging.
     public let name = "OpenAI"
     
+    /// Provider capabilities for mode support
+    public let supportedGenerationModes: Set<GenerationMode> = [.auto, .json, .tool]
+    
+    /// Default generation mode for this provider
+    public let defaultGenerationMode: GenerationMode = .json
+    
     /// OpenAI API key for authentication.
     private let apiKey: String
     

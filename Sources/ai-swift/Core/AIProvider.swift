@@ -137,6 +137,14 @@ public protocol AIProvider: Sendable {
     /// - Ensure proper resource cleanup on cancellation
     func streamTextRaw(_ request: ProviderRequest) -> AsyncThrowingStream<ProviderChunk, Error>
     
+    // MARK: - Provider Capabilities
+    
+    /// Provider capabilities for mode support
+    var supportedGenerationModes: Set<GenerationMode> { get }
+    
+    /// Default generation mode for this provider
+    var defaultGenerationMode: GenerationMode { get }
+    
     // MARK: - Validation
     
     /// Validate that the given configuration is supported by this provider.

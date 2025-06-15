@@ -81,6 +81,11 @@ public enum AIGenerationError: AIError {
     case schemaValidationFailed([ValidationError])
     case objectParsingFailed(String)
     
+    // Enhanced object generation errors following Vercel AI SDK patterns
+    case jsonParseError(text: String, parseError: Error?)
+    case schemaValidationError(objectData: String?, validationErrors: [String])
+    case noObjectGenerated(text: String, finishReason: FinishReason?, usage: Usage)
+    
     public var code: String {
         switch self {
         case .invalidPrompt: return "INVALID_PROMPT"
@@ -93,6 +98,9 @@ public enum AIGenerationError: AIError {
         case .toolExecutionFailed: return "TOOL_EXECUTION_FAILED"
         case .schemaValidationFailed: return "SCHEMA_VALIDATION_FAILED"
         case .objectParsingFailed: return "OBJECT_PARSING_FAILED"
+        case .jsonParseError: return "JSON_PARSE_ERROR"
+        case .schemaValidationError: return "SCHEMA_VALIDATION_ERROR"
+        case .noObjectGenerated: return "NO_OBJECT_GENERATED"
         }
     }
     
@@ -118,6 +126,12 @@ public enum AIGenerationError: AIError {
             return "Schema validation failed: \(errors.map { $0.message }.joined(separator: ", "))"
         case .objectParsingFailed(let details):
             return "Object parsing failed: \(details)"
+        case .jsonParseError(let text, let parseError):
+            return "JSON parsing failed for text: \(text.prefix(100))... Error: \(parseError?.localizedDescription ?? "Unknown parse error")"
+        case .schemaValidationError(let objectData, let validationErrors):
+            return "Schema validation failed: \(validationErrors.joined(separator: ", "))"
+        case .noObjectGenerated(let text, let finishReason, let usage):
+            return "No object could be generated. Generated text: \(text.prefix(100))... Finish reason: \(finishReason?.rawValue ?? "unknown"), Tokens used: \(usage.totalTokens)"
         }
     }
     
@@ -129,6 +143,12 @@ public enum AIGenerationError: AIError {
             return ["validationErrors": errors.map { $0.message }.joined(separator: "; ")]
         case .streamingError(let error):
             return ["underlyingError": error.localizedDescription]
+        case .jsonParseError(let text, let parseError):
+            return ["text": String(text.prefix(200)), "parseError": parseError?.localizedDescription ?? "Unknown"]
+        case .schemaValidationError(let objectData, let validationErrors):
+            return ["objectData": objectData ?? "nil", "validationErrors": validationErrors.joined(separator: "; ")]
+        case .noObjectGenerated(let text, let finishReason, let usage):
+            return ["text": String(text.prefix(200)), "finishReason": finishReason?.rawValue ?? "unknown", "totalTokens": String(usage.totalTokens)]
         default:
             return [:]
         }
@@ -138,6 +158,8 @@ public enum AIGenerationError: AIError {
         switch self {
         case .streamingError(let error), .toolExecutionFailed(_, let error):
             return error
+        case .jsonParseError(_, let parseError):
+            return parseError
         default:
             return nil
         }

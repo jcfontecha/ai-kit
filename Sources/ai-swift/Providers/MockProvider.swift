@@ -52,6 +52,12 @@ public struct MockProvider: AIProvider {
     /// Provider name for identification and logging.
     public let name = "Mock Provider"
     
+    /// Provider capabilities for mode support
+    public let supportedGenerationModes: Set<GenerationMode> = [.auto, .json, .tool]
+    
+    /// Default generation mode for this provider
+    public let defaultGenerationMode: GenerationMode = .json
+    
     /// Mock API key (not used for actual authentication).
     private let apiKey: String
     
@@ -97,6 +103,30 @@ public struct MockProvider: AIProvider {
             try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
         
+        // Check for specific error model IDs (for testing error handling)
+        if request.modelId == "malformed-json-model" {
+            throw AIGenerationError.jsonParseError(
+                text: "{\"name\": \"Test Product\", \"price\": 99.99, \"category\": \"Electronics\"",
+                parseError: NSError(domain: "JSONParseError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unexpected end of JSON input"])
+            )
+        }
+        
+        if request.modelId == "invalid-schema-model" {
+            throw AIGenerationError.schemaValidationError(
+                objectData: "{\"name\": \"Test Product\", \"price\": -5.0, \"category\": \"\"}",
+                validationErrors: ["price must be >= 0", "category cannot be empty", "missing required field: id"]
+            )
+        }
+        
+        if request.modelId == "no-object-model" {
+            let usage = generateMockUsage(prompt: "Generate a product", response: "Sorry, I cannot generate that object right now.")
+            throw AIGenerationError.noObjectGenerated(
+                text: "Sorry, I cannot generate that object right now. Please try again later.",
+                finishReason: .stop,
+                usage: usage
+            )
+        }
+        
         // Check for simulated errors
         if let errorRate = configuration.errorRate, Double.random(in: 0...1) < errorRate {
             throw AIProviderError.serviceUnavailable("Simulated error for testing")
@@ -123,9 +153,9 @@ public struct MockProvider: AIProvider {
                             } else {
                                 synthesizedResponse += "Tool executed successfully with results. "
                             }
-                        case .json(let jsonData):
+                        case .json(_):
                             synthesizedResponse += "Tool returned JSON data. "
-                        case .error(let errorText):
+                        case .error(_):
                             synthesizedResponse += "Tool execution encountered an error. "
                         case .image(_):
                             synthesizedResponse += "Tool returned image data. "
@@ -167,6 +197,17 @@ public struct MockProvider: AIProvider {
         // Generate mock response based on the last user message
         let userMessage = request.messages.last { $0.role == .user }
         let prompt = userMessage?.content.first?.textValue ?? "unknown input"
+        
+        // Handle structured output based on provider mode
+        switch request.mode {
+        case .objectJSON(let schema, let name, let description):
+            return try generateMockJSONResponse(for: request.modelId, prompt: prompt, schema: schema, name: name, description: description)
+        case .objectTool(let tool):
+            return try generateMockToolResponse(for: request.modelId, prompt: prompt, tool: tool)
+        case .regular(_, _):
+            // Continue with regular flow, handle tools if present
+            break
+        }
         
         // Check if we should simulate tool calls
         if let tools = request.tools, !tools.isEmpty, configuration.supportsTools {
@@ -396,6 +437,154 @@ extension MockProvider: ExtendedAIProvider {
     /// Check if a model is supported (all models are supported in mock).
     public func supportsModel(_ modelId: String) -> Bool {
         return true // Mock provider supports any model ID
+    }
+    
+    /// Generate mock JSON response for object generation requests
+    private func generateMockJSONResponse(for modelId: String, prompt: String, schema: JSONSchema? = nil, name: String? = nil, description: String? = nil) throws -> ProviderResponse {
+        let mockJSONOptions = [
+            // Complex Recipe object (for nested object test)
+            """
+            {
+                "name": "Vegetarian Pasta Primavera",
+                "description": "A delicious and colorful pasta dish loaded with fresh vegetables and herbs, perfect for a healthy weeknight dinner.",
+                "prepTime": 15,
+                "cookTime": 25,
+                "difficulty": "easy",
+                "ingredients": [
+                    {
+                        "name": "penne pasta",
+                        "amount": "8 oz",
+                        "optional": false
+                    },
+                    {
+                        "name": "olive oil",
+                        "amount": "2 tbsp",
+                        "optional": false
+                    },
+                    {
+                        "name": "bell peppers",
+                        "amount": "2 large",
+                        "optional": false
+                    },
+                    {
+                        "name": "zucchini",
+                        "amount": "1 medium",
+                        "optional": false
+                    },
+                    {
+                        "name": "fresh basil",
+                        "amount": "1/4 cup",
+                        "optional": true
+                    }
+                ],
+                "steps": [
+                    "Cook pasta according to package directions until al dente",
+                    "Heat olive oil in a large skillet over medium-high heat",
+                    "Add bell peppers and zucchini, cook for 5-7 minutes until tender",
+                    "Drain pasta and add to the vegetable mixture",
+                    "Toss with fresh basil and serve immediately"
+                ],
+                "nutritionInfo": {
+                    "calories": 385,
+                    "protein": 12.5,
+                    "carbs": 58.3,
+                    "fat": 14.2
+                },
+                "tags": ["vegetarian", "quick", "healthy", "pasta", "vegetables"]
+            }
+            """,
+            // UserProfile-like object (for schema validation test)
+            """
+            {
+                "name": "John Doe",
+                "age": 30,
+                "email": "john@example.com",
+                "isActive": true
+            }
+            """,
+            // Simple Recipe object (for basic tests)
+            """
+            {
+                "name": "Simple Pasta",
+                "ingredients": ["pasta", "tomato sauce", "cheese"],
+                "cookingTime": 20
+            }
+            """,
+            // Product object (for error testing)
+            """
+            {
+                "name": "Test Product",
+                "price": 99.99,
+                "category": "Electronics"
+            }
+            """
+        ]
+        
+        // Choose appropriate JSON based on prompt or model
+        let selectedJSON: String
+        if prompt.lowercased().contains("vegetarian") || prompt.lowercased().contains("primavera") {
+            selectedJSON = mockJSONOptions[0] // Complex Recipe
+        } else if prompt.lowercased().contains("user") || prompt.lowercased().contains("profile") {
+            selectedJSON = mockJSONOptions[1] // UserProfile
+        } else if prompt.lowercased().contains("recipe") || prompt.lowercased().contains("pasta") {
+            selectedJSON = mockJSONOptions[2] // Simple Recipe
+        } else {
+            selectedJSON = mockJSONOptions[3] // Product
+        }
+        
+        let usage = generateMockUsage(prompt: prompt, response: selectedJSON)
+        
+        return ProviderResponse(
+            content: selectedJSON,
+            usage: usage,
+            finishReason: .stop,
+            providerMetadata: [
+                "mock_provider": "true",
+                "model_id": modelId,
+                "json_generation": "true"
+            ]
+        )
+    }
+    
+    /// Generate mock tool response for tool-based structured output requests
+    private func generateMockToolResponse(for modelId: String, prompt: String, tool: Tool) throws -> ProviderResponse {
+        // Create a mock tool call based on the provided tool
+        let toolCall = ToolCall(
+            id: "tool_call_\(UUID().uuidString.prefix(8))",
+            function: try ToolCallFunction(
+                name: tool.function.name,
+                arguments: generateMockToolArguments(for: tool, prompt: prompt)
+            )
+        )
+        
+        let usage = generateMockUsage(prompt: prompt, response: "I'll use the \(tool.function.name) tool to help with that.")
+        
+        return ProviderResponse(
+            content: "I'll use the \(tool.function.name) tool to help with that.",
+            toolCalls: [toolCall],
+            usage: usage,
+            finishReason: .toolCalls,
+            providerMetadata: [
+                "mock_provider": "true",
+                "model_id": modelId,
+                "tool_generation": "true",
+                "tool_name": tool.function.name
+            ]
+        )
+    }
+    
+    /// Generate mock arguments for a tool call based on the tool schema
+    private func generateMockToolArguments(for tool: Tool, prompt: String) -> [String: Any] {
+        // For now, return simple mock arguments based on the tool name
+        // In a real implementation, this would analyze the JSONSchema to generate appropriate mock data
+        switch tool.function.name {
+        case "generate_object":
+            return ["object": ["name": "Mock Object", "value": "Generated from prompt: \(prompt.prefix(50))"]]
+        case "select_enum_value":
+            return ["value": "option1"] // Default to first option
+        default:
+            return ["result": "Mock result for \(tool.function.name)"]
+        }
     }
 }
 

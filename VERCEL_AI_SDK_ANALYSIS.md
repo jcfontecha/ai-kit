@@ -801,7 +801,72 @@ if (!parseResult.success) {
 
 ---
 
-## 11. Technical Implementation Notes
+## 11. Structured Output Architecture Discovery
+
+### 11.1 Framework-Centralized vs Provider Delegation
+
+**Critical Architectural Finding**: After analyzing the Vercel AI SDK source code, we discovered they use a **framework-centralized approach** for structured output rather than provider delegation.
+
+#### **Provider Interface Analysis**
+- Providers implement **ONLY** `doGenerate()` and `doStream()` methods
+- **No structured output methods** in provider protocol (`LanguageModelV1`)
+- Providers receive mode information and handle API-specific formatting
+
+#### **Framework Responsibility**
+```typescript
+// Vercel's generateObject() implementation calls:
+await model.doGenerate({
+  mode: {
+    type: 'object-json',        // or 'object-tool'
+    schema: outputStrategy.jsonSchema,
+    name: schemaName,
+    description: schemaDescription,
+  },
+  // ... other parameters
+})
+```
+
+#### **Provider-Specific Mode Handling**
+- **OpenAI Provider**: Supports both `object-json` and `object-tool`
+  - `object-json` → `{response_format: {type: 'json_schema'}}` 
+  - `object-tool` → function calling with schema as parameters
+- **Anthropic Provider**: Only supports `object-tool` 
+  - `object-json` → throws `UnsupportedFunctionalityError`
+  - `object-tool` → `{tools: [...], tool_choice: {type: 'tool'}}`
+
+#### **Centralized Framework Processing**
+- JSON parsing and validation in framework utilities (`safeParseJSON`, `safeValidateTypes`)
+- Schema conversion (Zod/TypeScript → JSON Schema 7)
+- Error handling (`JSONParseError`, `TypeValidationError`, `NoObjectGeneratedError`)
+- Response repair and recovery mechanisms
+- Output strategy determination (`getOutputStrategy`)
+
+#### **Benefits of Framework-Centralized Approach**
+1. **Simpler Providers**: Only basic text generation + mode formatting needed
+2. **Centralized Logic**: All complex structured output logic in one place
+3. **Easier Testing**: Framework logic testable independently of providers
+4. **Provider Flexibility**: Each provider optimizes API calls differently
+5. **Consistent Behavior**: Same JSON parsing/validation across all providers
+6. **Better Error Handling**: Centralized error recovery and repair strategies
+
+#### **Swift Implementation Implications**
+Based on this discovery, the Swift AI SDK should follow the same pattern:
+
+```swift
+// Framework handles structured output logic
+let response = try await provider.generateTextRaw(
+    ProviderRequest(mode: .objectJSON(schema: jsonSchema, name: "Recipe"))
+)
+// Framework parses and validates
+let recipe = try parseAndValidate(response.content, as: Recipe.self)
+
+// NOT provider delegation:
+// provider.generateStructuredOutputRaw(request, outputStrategy, mode, schema)
+```
+
+This architectural pattern should be adopted for the Swift implementation to maintain consistency with proven patterns while keeping providers lightweight and focused.
+
+## 12. Technical Implementation Notes
 
 ### 10.1 Swift Concurrency Integration
 

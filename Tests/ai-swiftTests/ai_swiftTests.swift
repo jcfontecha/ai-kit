@@ -843,3 +843,258 @@ import Foundation
         #expect(isActive is Bool, "isActive should be a boolean when present")
     }
 }
+
+@Test func testObjectGenerationErrorHandling() async throws {
+    // RED PHASE: This test should fail because we need to implement comprehensive error handling
+    
+    // Define a strict schema that will help us test validation failures
+    struct Product: Codable, Sendable {
+        let name: String
+        let price: Double
+        let category: String
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("error-test-model")
+        .temperature(0.0)
+    
+    // Create a schema with strict validation
+    let productSchema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "name": JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+            "price": JSONSchema.definition(SchemaDefinition(type: .number, minimum: 0.0)),
+            "category": JSONSchema.definition(SchemaDefinition(type: .string))
+        ],
+        required: ["name", "price", "category"],
+        additionalProperties: .boolean(false)
+    ))
+    
+    let objectSchema = ObjectSchema<Product>(
+        jsonSchema: productSchema,
+        name: "Product",
+        description: "A product with name, price, and category"
+    )
+    
+    // Test Case 1: Test with a provider that returns malformed JSON
+    do {
+        // Force the mock provider to return malformed JSON by using a special model ID
+        let malformedModel = provider.languageModel("malformed-json-model")
+        
+        let response = try await client.generateObject(
+            malformedModel,
+            messages: [Message.user("Generate a product")],
+            schema: objectSchema
+        )
+        
+        #expect(Bool(false), "Should have thrown a JSONParseError for malformed JSON")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .jsonParseError(let text, let parseError):
+            #expect(text.contains("{"), "Should contain partial JSON")
+            #expect(parseError != nil, "Should have underlying parse error")
+        case .schemaValidationError(let object, let validationErrors):
+            #expect(Bool(false), "Should be JSON parse error, not validation error")
+        default:
+            #expect(Bool(false), "Should be a specific JSON parse error")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError.jsonParseError")
+    }
+    
+    // Test Case 2: Test with a provider that returns valid JSON but schema validation failure
+    do {
+        // Force the mock provider to return invalid object structure
+        let invalidSchemaModel = provider.languageModel("invalid-schema-model")
+        
+        let response = try await client.generateObject(
+            invalidSchemaModel,
+            messages: [Message.user("Generate a product")],
+            schema: objectSchema
+        )
+        
+        #expect(Bool(false), "Should have thrown a SchemaValidationError for invalid object")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .schemaValidationError(let objectData, let validationErrors):
+            #expect(!validationErrors.isEmpty, "Should have validation errors")
+            #expect(objectData != nil, "Should have the invalid object data for debugging")
+        case .jsonParseError:
+            #expect(Bool(false), "Should be validation error, not JSON parse error")
+        default:
+            #expect(Bool(false), "Should be a specific schema validation error")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError.schemaValidationError")
+    }
+    
+    // Test Case 3: Test no object generated scenario
+    do {
+        let noObjectModel = provider.languageModel("no-object-model")
+        
+        let response = try await client.generateObject(
+            noObjectModel,
+            messages: [Message.user("Generate a product")],
+            schema: objectSchema
+        )
+        
+        #expect(Bool(false), "Should have thrown a NoObjectGeneratedError")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .noObjectGenerated(let text, let finishReason, let usage):
+            #expect(!text.isEmpty, "Should have the raw text that failed to generate object")
+            #expect(finishReason != nil, "Should have finish reason")
+            #expect(usage.totalTokens >= 0, "Should have usage information")
+        default:
+            #expect(Bool(false), "Should be a NoObjectGeneratedError")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError.noObjectGenerated")
+    }
+}
+
+@Test func testComplexNestedObjectGeneration() async throws {
+    // RED PHASE: This test should fail because we need to implement complex nested object support
+    
+    // Define complex nested structures similar to Vercel AI SDK examples
+    struct Ingredient: Codable, Sendable {
+        let name: String
+        let amount: String
+        let optional: Bool?
+    }
+    
+    struct Recipe: Codable, Sendable {
+        let name: String
+        let description: String
+        let prepTime: Int
+        let cookTime: Int
+        let difficulty: String
+        let ingredients: [Ingredient]
+        let steps: [String]
+        let nutritionInfo: NutritionInfo?
+        let tags: [String]
+    }
+    
+    struct NutritionInfo: Codable, Sendable {
+        let calories: Int
+        let protein: Double
+        let carbs: Double
+        let fat: Double
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("complex-recipe-model")
+        .temperature(0.2)
+    
+    // Create a complex nested schema
+    let nutritionSchema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "calories": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 0)),
+            "protein": JSONSchema.definition(SchemaDefinition(type: .number, minimum: 0.0)),
+            "carbs": JSONSchema.definition(SchemaDefinition(type: .number, minimum: 0.0)),
+            "fat": JSONSchema.definition(SchemaDefinition(type: .number, minimum: 0.0))
+        ],
+        required: ["calories", "protein", "carbs", "fat"]
+    ))
+    
+    let ingredientSchema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "name": JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+            "amount": JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+            "optional": JSONSchema.definition(SchemaDefinition(type: .boolean))
+        ],
+        required: ["name", "amount"]
+    ))
+    
+    let recipeSchema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "name": JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+            "description": JSONSchema.definition(SchemaDefinition(type: .string)),
+            "prepTime": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 0)),
+            "cookTime": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 0)),
+            "difficulty": JSONSchema.definition(SchemaDefinition(
+                type: .string,
+                enum: [.string("easy"), .string("medium"), .string("hard")]
+            )),
+            "ingredients": JSONSchema.definition(SchemaDefinition(
+                type: .array,
+                items: ingredientSchema,
+                minItems: 1
+            )),
+            "steps": JSONSchema.definition(SchemaDefinition(
+                type: .array,
+                items: JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+                minItems: 1
+            )),
+            "nutritionInfo": nutritionSchema,
+            "tags": JSONSchema.definition(SchemaDefinition(
+                type: .array,
+                items: JSONSchema.definition(SchemaDefinition(type: .string))
+            ))
+        ],
+        required: ["name", "description", "prepTime", "cookTime", "difficulty", "ingredients", "steps", "tags"]
+    ))
+    
+    let objectSchema = ObjectSchema<Recipe>(
+        jsonSchema: recipeSchema,
+        name: "Recipe",
+        description: "A detailed recipe with ingredients, steps, and nutritional information"
+    )
+    
+    let messages = [
+        Message.user("Generate a detailed recipe for vegetarian pasta with nutritional information")
+    ]
+    
+    // This should generate a complex nested object
+    let response = try await client.generateObject(
+        model,
+        messages: messages,
+        schema: objectSchema
+    )
+    
+    // Verify the complex structure
+    let recipe = response.object
+    
+    // Basic properties
+    #expect(!recipe.name.isEmpty, "Recipe should have a name")
+    #expect(!recipe.description.isEmpty, "Recipe should have a description")
+    #expect(recipe.prepTime >= 0, "Prep time should be non-negative")
+    #expect(recipe.cookTime >= 0, "Cook time should be non-negative")
+    #expect(["easy", "medium", "hard"].contains(recipe.difficulty), "Difficulty should be valid")
+    
+    // Array properties
+    #expect(!recipe.ingredients.isEmpty, "Recipe should have ingredients")
+    #expect(!recipe.steps.isEmpty, "Recipe should have steps")
+    #expect(!recipe.tags.isEmpty, "Recipe should have tags")
+    
+    // Nested object validation (ingredients)
+    for ingredient in recipe.ingredients {
+        #expect(!ingredient.name.isEmpty, "Ingredient name should not be empty")
+        #expect(!ingredient.amount.isEmpty, "Ingredient amount should not be empty")
+    }
+    
+    // Steps validation
+    for step in recipe.steps {
+        #expect(!step.isEmpty, "Recipe step should not be empty")
+    }
+    
+    // Optional nested object (nutrition info)
+    if let nutrition = recipe.nutritionInfo {
+        #expect(nutrition.calories >= 0, "Calories should be non-negative")
+        #expect(nutrition.protein >= 0, "Protein should be non-negative")
+        #expect(nutrition.carbs >= 0, "Carbs should be non-negative")
+        #expect(nutrition.fat >= 0, "Fat should be non-negative")
+    }
+    
+    // Response metadata
+    #expect(response.usage.totalTokens > 0, "Should track token usage")
+    
+    // Verify complex object was properly generated and validated
+    #expect(recipe.ingredients.count >= 3, "Should have multiple ingredients")
+    #expect(recipe.steps.count >= 3, "Should have multiple steps")
+}

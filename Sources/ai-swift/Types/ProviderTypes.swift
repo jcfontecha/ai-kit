@@ -9,6 +9,15 @@ import Foundation
 /// intermediate representation that providers can easily transform to their
 /// specific API formats.
 
+// MARK: - Provider Mode
+
+/// Provider modes map to specific API formatting
+public enum ProviderMode: Sendable {
+    case regular(tools: [Tool]?, toolChoice: ToolChoice?)
+    case objectJSON(schema: JSONSchema, name: String?, description: String?)
+    case objectTool(tool: Tool) // Tool with schema as parameters
+}
+
 // MARK: - ProviderRequest
 
 /// Standardized request format for provider translation layer.
@@ -74,6 +83,9 @@ public struct ProviderRequest: Sendable {
     /// Providers that support tool calling should respect this limit.
     public let maxSteps: Int?
     
+    /// Mode parameter tells provider how to format the request
+    public let mode: ProviderMode
+    
     /// Unique identifier for this request.
     ///
     /// Can be used for logging, debugging, and correlation across middleware
@@ -94,6 +106,7 @@ public struct ProviderRequest: Sendable {
     ///   - tools: Optional tools for function calling
     ///   - system: Optional system message
     ///   - maxSteps: Maximum steps for tool execution
+    ///   - mode: How the provider should format the request
     ///   - requestId: Unique request identifier (auto-generated if not provided)
     ///   - timestamp: Request timestamp (current time if not provided)
     public init(
@@ -103,6 +116,7 @@ public struct ProviderRequest: Sendable {
         tools: [Tool]? = nil,
         system: String? = nil,
         maxSteps: Int? = nil,
+        mode: ProviderMode = .regular(tools: nil, toolChoice: nil),
         requestId: String = UUID().uuidString,
         timestamp: Date = Date()
     ) {
@@ -112,6 +126,7 @@ public struct ProviderRequest: Sendable {
         self.tools = tools
         self.system = system
         self.maxSteps = maxSteps
+        self.mode = mode
         self.requestId = requestId
         self.timestamp = timestamp
     }
@@ -396,7 +411,7 @@ public extension ProviderResponse {
     /// Convert to a dictionary for logging or debugging.
     var debugDescription: [String: Any] {
         return [
-            "responseId": responseId,
+            "responseId": responseId as Any,
             "contentLength": content.count,
             "hasToolCalls": hasToolCalls,
             "finishReason": finishReason.rawValue,
