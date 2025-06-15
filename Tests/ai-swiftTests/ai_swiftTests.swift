@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import ai_swift
 
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
@@ -580,6 +581,63 @@ import Testing
     #expect(response.usage.totalTokens > 0)
 }
 
+@Test func testTextGenerationWithCustomToolExecution() async throws {
+    // Test that text generation uses caller-provided tool execution
+    let provider = MockProvider()
+    let model = LanguageModel(provider: provider, modelId: "test-model")
+    
+    // Create a custom tool executor that the caller provides
+    func customWeatherTool(location: String, unit: String) -> String {
+        return """
+        {
+            "location": "\(location)",
+            "temperature": "\(unit == "celsius" ? "25°C" : "77°F")",
+            "condition": "Sunny and clear",
+            "custom": "This is from caller-provided tool execution"
+        }
+        """
+    }
+    
+    // Define tools with custom execution
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get current weather for a location", 
+            parameters: JSONSchema.object(properties: [
+                "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
+                "unit": .string(enum: ["celsius", "fahrenheit"])
+            ], required: ["location"])
+        )
+    )
+    
+    // Create client with custom tool execution
+    let client = AIClient(toolExecutor: { toolCall in
+        switch toolCall.function.name {
+        case "get_weather":
+            // Parse arguments
+            let arguments = try JSONSerialization.jsonObject(with: toolCall.function.arguments.data(using: String.Encoding.utf8)!) as! [String: Any]
+            let location = arguments["location"] as! String
+            let unit = arguments["unit"] as? String ?? "celsius"
+            
+            return ToolResult(
+                toolCallId: toolCall.id,
+                result: .text(customWeatherTool(location: location, unit: unit)),
+                executionTime: 0.1
+            )
+        default:
+            throw AIGenerationError.toolExecutionFailed(toolName: toolCall.function.name, error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"]))
+        }
+    })
+    
+    let messages = [Message.user("What's the weather like in San Francisco?")]
+    
+    // This should use the custom tool executor
+    let response = try await client.generateText(model, messages: messages, tools: [weatherTool])
+    
+    #expect(response.text.contains("weather") || response.text.contains("tool"))
+    #expect(response.usage.totalTokens > 0)
+}
+
 @Test func testToolExecutionWithResults() async throws {
     // Test that tools are not only called but also executed and their results incorporated
     let provider = MockProvider()
@@ -633,7 +691,42 @@ import Testing
     // Test the full Vercel AI SDK pattern: tool calls -> execution -> continuation -> final result
     let provider = MockProvider()
     let model = LanguageModel(provider: provider, modelId: "test-model")
-    let client = AIClient()
+    
+    // Create client with weather tool executor
+    let client = AIClient(toolExecutor: { toolCall in
+        switch toolCall.function.name {
+        case "get_weather":
+            // Parse arguments from JSON string
+            var location = "Unknown"
+            var unit = "celsius"
+            
+            if let argumentsData = toolCall.function.arguments.data(using: String.Encoding.utf8),
+               let argumentsDict = try? JSONSerialization.jsonObject(with: argumentsData) as? [String: Any] {
+                location = argumentsDict["location"] as? String ?? "Unknown"
+                unit = argumentsDict["unit"] as? String ?? "celsius"
+            }
+            
+            let temperature = unit == "celsius" ? "22°C" : "72°F"
+            
+            let weatherData = """
+            {
+                "location": "\(location)",
+                "temperature": "\(temperature)",
+                "condition": "Partly cloudy",
+                "humidity": "65%",
+                "wind": "10 km/h NW"
+            }
+            """
+            
+            return ToolResult(
+                toolCallId: toolCall.id,
+                result: .text(weatherData),
+                executionTime: 0.1
+            )
+        default:
+            throw AIGenerationError.toolExecutionFailed(toolName: toolCall.function.name, error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"]))
+        }
+    })
     
     // Define a weather tool that should be executed automatically
     let weatherTool = Tool(
@@ -686,4 +779,67 @@ import Testing
     // Final message should be from assistant with synthesized response
     #expect(response.messages.last?.role == .assistant, "Final message should be assistant response")
     #expect(response.usage.totalTokens > 0)
+}
+
+@Test func testObjectGenerationWithSchemaValidation() async throws {
+    // RED PHASE: This test should fail because we need to implement schema validation in generateObject
+    
+    // Define a user profile struct for type-safe generation
+    struct UserProfile: Codable, Sendable {
+        let name: String
+        let age: Int
+        let email: String
+        let isActive: Bool?
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("test-model")
+        .temperature(0.1)
+    
+    // Define a strict schema for a user profile with proper validation
+    let userSchema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "name": JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+            "age": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 0)),
+            "email": JSONSchema.definition(SchemaDefinition(type: .string, format: "email")),
+            "isActive": JSONSchema.definition(SchemaDefinition(type: .boolean))
+        ],
+        required: ["name", "age", "email"],
+        additionalProperties: .boolean(false)
+    ))
+    
+    let objectSchema = ObjectSchema<UserProfile>(
+        jsonSchema: userSchema,
+        name: "UserProfile",
+        description: "A user profile with name, age, email, and optional active status"
+    )
+    
+    let messages = [
+        Message.user("Generate a user profile for John Doe, age 30, email john@example.com, active status true")
+    ]
+    
+    // This should validate the generated object against the schema
+    let response = try await client.generateObject(
+        model,
+        messages: messages,
+        schema: objectSchema
+    )
+    
+    // Verify the response structure
+    #expect(response.usage.totalTokens > 0, "Should track token usage")
+    
+    // Verify the generated object conforms to schema
+    let generatedObject = response.object
+    
+    // Should have required fields with proper types
+    #expect(!generatedObject.name.isEmpty, "Name should not be empty")
+    #expect(generatedObject.age > 0, "Age should be positive")
+    #expect(generatedObject.email.contains("@"), "Email should contain @ symbol")
+    
+    // Should handle optional fields properly
+    if let isActive = generatedObject.isActive {
+        #expect(isActive is Bool, "isActive should be a boolean when present")
+    }
 }

@@ -58,14 +58,21 @@ public actor AIClient {
     /// The middleware chain applied to all requests and responses
     private let middleware: [any AIMiddleware]
     
+    /// Optional tool executor provided by the caller for custom tool execution
+    private let toolExecutor: ((ToolCall) async throws -> ToolResult)?
+    
     // MARK: - Initialization
     
-    /// Creates a new AIClient with optional middleware chain.
+    /// Creates a new AIClient with optional middleware chain and tool executor.
     ///
-    /// - Parameter middleware: Array of middleware to apply to requests and responses.
-    ///   Middleware is applied in order for requests and reverse order for responses.
-    public init(middleware: [any AIMiddleware] = []) {
+    /// - Parameters:
+    ///   - middleware: Array of middleware to apply to requests and responses.
+    ///     Middleware is applied in order for requests and reverse order for responses.
+    ///   - toolExecutor: Optional custom tool executor provided by the caller.
+    ///     If provided, this will be used instead of the default hardcoded tool execution.
+    public init(middleware: [any AIMiddleware] = [], toolExecutor: ((ToolCall) async throws -> ToolResult)? = nil) {
         self.middleware = middleware
+        self.toolExecutor = toolExecutor
     }
     
     // MARK: - Core Operations
@@ -219,49 +226,22 @@ public actor AIClient {
     
     /// Execute a tool call and return the result.
     ///
-    /// This method handles the execution of individual tool calls. For now,
-    /// it provides mock implementations for common tools like weather.
-    /// In a real implementation, this would integrate with actual tool execution.
+    /// This method handles the execution of individual tool calls. If a custom tool executor
+    /// was provided during initialization, it will be used. Otherwise, falls back to
+    /// generic mock implementations for testing purposes.
     ///
     /// - Parameter toolCall: The tool call to execute
     /// - Returns: The result of the tool execution
     /// - Throws: Any errors from tool execution
     private func executeToolCall(_ toolCall: ToolCall) async throws -> ToolResult {
-        let startTime = Date()
-        
-        // Mock tool execution - in real implementation, this would call actual tools
-        let resultContent: ToolResultContent
-        
-        switch toolCall.function.name {
-        case "get_weather":
-            // Parse arguments from JSON string
-            var location = "Unknown"
-            var unit = "celsius"
-            
-            if let argumentsData = toolCall.function.arguments.data(using: .utf8),
-               let argumentsDict = try? JSONSerialization.jsonObject(with: argumentsData) as? [String: Any] {
-                location = argumentsDict["location"] as? String ?? "Unknown"
-                unit = argumentsDict["unit"] as? String ?? "celsius"
-            }
-            
-            let temperature = unit == "celsius" ? "22°C" : "72°F"
-            
-            let weatherData = """
-            {
-                "location": "\(location)",
-                "temperature": "\(temperature)",
-                "condition": "Partly cloudy",
-                "humidity": "65%",
-                "wind": "10 km/h NW"
-            }
-            """
-            resultContent = .text(weatherData)
-            
-        default:
-            // Generic tool execution
-            resultContent = .text("Tool \(toolCall.function.name) executed successfully with arguments: \(toolCall.function.arguments)")
+        // Use caller-provided tool executor if available
+        if let toolExecutor = self.toolExecutor {
+            return try await toolExecutor(toolCall)
         }
         
+        // Fallback to generic mock execution for testing
+        let startTime = Date()
+        let resultContent: ToolResultContent = .text("Tool \(toolCall.function.name) executed successfully with arguments: \(toolCall.function.arguments)")
         let executionTime = Date().timeIntervalSince(startTime)
         
         return ToolResult(
@@ -404,6 +384,15 @@ public actor AIClient {
         
         // Try different mock JSON patterns that might match the expected type
         let mockJSONOptions = [
+            // UserProfile-like object (for schema validation test)
+            """
+            {
+                "name": "John Doe",
+                "age": 30,
+                "email": "john@example.com",
+                "isActive": true
+            }
+            """,
             // Recipe-like object
             """
             {

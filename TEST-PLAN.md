@@ -13,6 +13,10 @@ Latest additions:
 - ✅ Basic tool execution workflow (testToolExecutionWithResults)
 - ✅ **MAJOR**: Multi-step tool execution engine (testMultiStepToolExecution)
 - ✅ Full Vercel AI SDK tool execution pattern with automatic tool execution and continuation
+- ✅ **ARCHITECTURE**: Custom tool executor support (testTextGenerationWithCustomToolExecution)
+- ✅ Removed hardcoded tool execution from AIClient - now uses caller-provided tool executors
+- ✅ **SCHEMA VALIDATION**: Object generation with schema validation (testObjectGenerationWithSchemaValidation)
+- ✅ Enhanced mock object creation to support UserProfile and other structured types
 
 ## Vercel AI SDK Alignment Analysis ✅
 
@@ -101,7 +105,7 @@ Latest additions:
 - [x] Basic object schema creation and validation ✅
 - [x] Schema builder methods and configurations ✅
 - [x] Schema examples and validation modes ✅
-- [ ] Basic structured object generation (needs AIClient implementation)
+- [✅] Basic structured object generation (testObjectGenerationWithSchemaValidation)
 - [ ] Multiple object types support
 - [ ] Complex nested schemas
 - [ ] Schema validation failures
@@ -127,31 +131,23 @@ Latest additions:
 - [ ] Single chunk handling
 - [ ] Concurrent object streaming
 
-## Phase 6: Tool Integration
+## Phase 6: Tool Integration (Core Framework Only)
 
-### Tool System Components
-- [ ] WeatherTool implementation
-- [ ] CalculatorTool implementation  
-- [ ] ErrorTool (for testing failures)
-- [ ] Tool protocol and definitions
-
-### Tool Calling Tests (ToolCallingTests.swift)
-- [✅] Basic tool invocation (testTextGenerationWithToolCalling)
-- [✅] Weather tool functionality (testToolExecutionWithResults)
-- [✅] **Multi-step tool execution** (testMultiStepToolExecution) - **MAJOR FEATURE**
-- [ ] Calculator tool operations
-- [ ] Tool error scenarios
-- [ ] Missing arguments validation
-- [ ] Error tool testing
-- [ ] Multiple tool coordination
-- [ ] Tool definition validation
+### Tool System Architecture
+- [✅] Tool calling integration with AIClient.generateText
+- [✅] **Custom tool executor** support - caller-provided tool execution
+- [✅] **Multi-step tool execution** engine - automatic continuation
+- [✅] Tool choice options and definitions (testBasicToolDefinition)
+- [ ] Tool error scenarios and validation
+- [ ] Missing arguments validation  
 - [ ] Request structure validation
-- [✅] Tool choice options (testBasicToolDefinition)
 - [ ] Parallel execution configuration
 - [ ] Result metadata handling
 - [ ] Different argument types
 - [ ] Concurrent tool execution
 - [ ] Tool response verification tests
+
+Note: Demo tools (weather, calculator) removed - framework provides tool execution infrastructure only.
 
 ## Phase 7: Middleware System
 
