@@ -102,10 +102,104 @@ public struct MockProvider: AIProvider {
             throw AIProviderError.serviceUnavailable("Simulated error for testing")
         }
         
+        // Check if conversation has tool results (indicates this is a follow-up call)
+        let hasToolResults = request.messages.contains { $0.role == .tool }
+        
+        if hasToolResults {
+            // Generate synthesized response based on tool results
+            let toolResults = request.messages.filter { $0.role == .tool }
+            var synthesizedResponse = "Based on the tool results, here's what I found:\n\n"
+            
+            for toolMessage in toolResults {
+                if let firstContent = toolMessage.content.first {
+                    switch firstContent {
+                    case .toolResult(let toolResult):
+                        // Extract text from tool result
+                        switch toolResult.result {
+                        case .text(let textContent):
+                            // Try to parse weather data if it looks like JSON
+                            if textContent.contains("temperature") && textContent.contains("location") {
+                                synthesizedResponse += "The weather information shows current conditions with temperature and humidity data. "
+                            } else {
+                                synthesizedResponse += "Tool executed successfully with results. "
+                            }
+                        case .json(let jsonData):
+                            synthesizedResponse += "Tool returned JSON data. "
+                        case .error(let errorText):
+                            synthesizedResponse += "Tool execution encountered an error. "
+                        case .image(_):
+                            synthesizedResponse += "Tool returned image data. "
+                        case .file(_):
+                            synthesizedResponse += "Tool returned file data. "
+                        case .data(_, mimeType: let mimeType):
+                            synthesizedResponse += "Tool returned binary data (\(mimeType)). "
+                        }
+                        
+                    case .text(let textContent):
+                        if textContent.contains("temperature") && textContent.contains("location") {
+                            synthesizedResponse += "The weather information shows current conditions with temperature and humidity data. "
+                        } else {
+                            synthesizedResponse += "Tool executed successfully with results. "
+                        }
+                        
+                    default:
+                        synthesizedResponse += "Tool executed with unknown content type. "
+                    }
+                }
+            }
+            
+            synthesizedResponse += "This information should help answer your question."
+            
+            let usage = generateMockUsage(prompt: "tool synthesis", response: synthesizedResponse)
+            
+            return ProviderResponse(
+                content: synthesizedResponse,
+                usage: usage,
+                finishReason: .stop,
+                providerMetadata: [
+                    "mock_provider": "true",
+                    "model_id": request.modelId,
+                    "synthesized_from_tools": "true"
+                ]
+            )
+        }
+        
         // Generate mock response based on the last user message
         let userMessage = request.messages.last { $0.role == .user }
         let prompt = userMessage?.content.first?.textValue ?? "unknown input"
         
+        // Check if we should simulate tool calls
+        if let tools = request.tools, !tools.isEmpty, configuration.supportsTools {
+            // Simulate tool calling for weather queries
+            if prompt.lowercased().contains("weather") {
+                if tools.contains(where: { $0.function.name == "get_weather" }) {
+                    let toolCall = ToolCall(
+                        id: "tool_call_\(UUID().uuidString.prefix(8))",
+                        function: try ToolCallFunction(
+                            name: "get_weather",
+                            arguments: ["location": "San Francisco, CA", "unit": "celsius"]
+                        )
+                    )
+                    
+                    let usage = generateMockUsage(prompt: prompt, response: "I'll get the weather for you.")
+                    
+                    return ProviderResponse(
+                        content: "I'll check the weather for you.",
+                        toolCalls: [toolCall],
+                        usage: usage,
+                        finishReason: .toolCalls,
+                        providerMetadata: [
+                            "mock_provider": "true",
+                            "model_id": request.modelId,
+                            "prompt_length": "\(prompt.count)",
+                            "tool_calls_simulated": "true"
+                        ]
+                    )
+                }
+            }
+        }
+        
+        // Regular text response
         let responseText = generateMockResponse(for: prompt, configuration: request.configuration)
         let usage = generateMockUsage(prompt: prompt, response: responseText)
         

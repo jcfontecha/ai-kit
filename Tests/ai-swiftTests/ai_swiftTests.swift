@@ -489,3 +489,201 @@ import Testing
     #expect(response.messages.last?.role == .assistant)
     #expect(response.validationResult?.isValid == true)
 }
+
+@Test func testTextGenerationWithToolCalling() async throws {
+    // Test text generation with tool calling integration
+    let provider = MockProvider()
+    let model = LanguageModel(provider: provider, modelId: "test-model")
+    let client = AIClient()
+    
+    // Define a simple weather tool
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get current weather for a location",
+            parameters: JSONSchema.object(properties: [
+                "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
+                "unit": .string(enum: ["celsius", "fahrenheit"])
+            ], required: ["location"])
+        )
+    )
+    
+    let messages = [
+        Message.user("What's the weather like in San Francisco?")
+    ]
+    
+    // This should fail initially since tool calling isn't implemented
+    let response = try await client.generateText(model, messages: messages, tools: [weatherTool])
+    
+    #expect(!response.text.isEmpty)
+    #expect(response.finishReason == .toolCalls)
+    #expect(!response.toolCalls.isEmpty)
+    #expect(response.toolCalls.first?.function.name == "get_weather")
+    #expect(response.usage.totalTokens > 0)
+    #expect(!response.messages.isEmpty)
+}
+
+@Test func testMiddlewareChain() async throws {
+    // Test that middleware chain is properly executed during text generation
+    let provider = MockProvider()
+    let model = LanguageModel(provider: provider, modelId: "test-model")
+    
+    // Create a middleware that modifies response text to verify it's being executed
+    struct TextModifyingMiddleware: AIMiddleware {
+        let id = "text-modifier"
+        let name = "Text Modifying Middleware"
+        let priority = 100
+        
+        func transformRequest<T: AIRequest>(_ request: T) async throws -> T {
+            return request
+        }
+        
+        func transformResponse<T: AIResponse>(_ response: T) async throws -> T {
+            // Modify TextResponse by appending a marker
+            if var textResponse = response as? TextResponse {
+                let modifiedResponse = TextResponse(
+                    text: textResponse.text + " [MIDDLEWARE_PROCESSED]",
+                    finishReason: textResponse.finishReason,
+                    usage: textResponse.usage,
+                    messages: textResponse.messages,
+                    steps: textResponse.steps,
+                    responseId: textResponse.responseId,
+                    modelId: textResponse.modelId,
+                    timestamp: textResponse.timestamp,
+                    warnings: textResponse.warnings,
+                    responseHeaders: textResponse.responseHeaders
+                )
+                return modifiedResponse as! T
+            }
+            return response
+        }
+        
+        func transformChunk<T: StreamChunk>(_ chunk: T) async throws -> T {
+            return chunk
+        }
+        
+        func handleError(_ error: Error, context: MiddlewareContext) async throws -> Error {
+            return error
+        }
+    }
+    
+    let middleware = TextModifyingMiddleware()
+    let client = AIClient(middleware: [middleware])
+    
+    let messages = [Message.user("Hello, world!")]
+    
+    // This should execute the middleware chain and modify the response text
+    let response = try await client.generateText(model, messages: messages)
+    
+    // Verify middleware was executed by checking for the marker
+    #expect(response.text.contains("[MIDDLEWARE_PROCESSED]"), "Middleware should add marker to response text")
+    #expect(response.usage.totalTokens > 0)
+}
+
+@Test func testToolExecutionWithResults() async throws {
+    // Test that tools are not only called but also executed and their results incorporated
+    let provider = MockProvider()
+    let model = LanguageModel(provider: provider, modelId: "test-model")
+    let client = AIClient()
+    
+    // Define a weather tool
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get current weather for a location",
+            parameters: JSONSchema.object(properties: [
+                "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
+                "unit": .string(enum: ["celsius", "fahrenheit"])
+            ], required: ["location"])
+        )
+    )
+    
+    let messages = [
+        Message.user("What's the weather like in San Francisco? I need a complete answer with the actual weather data.")
+    ]
+    
+    // This should call the tool AND execute it, returning final text with weather results
+    let response = try await client.generateText(model, messages: messages, tools: [weatherTool])
+    
+    // For now, this test expects tool calling behavior but won't get full execution
+    // This will initially fail because we need to implement multi-step tool execution
+    
+    // Current implementation should show tool calls but not execute them
+    #expect(response.finishReason == FinishReason.toolCalls) // Should finish at tool call step for now
+    #expect(!response.toolCalls.isEmpty)
+    #expect(response.toolCalls.first?.function.name == "get_weather")
+    
+    // Initially, we won't have actual weather results, just the intent to call
+    #expect(response.text.contains("weather"), "Response should mention weather")
+    
+    // We should have at least one step with tool calls
+    if let steps = response.steps {
+        #expect(steps.count >= 1, "Should have at least one step with tool calls")
+        #expect(steps.first?.stepType == .toolCall, "First step should be tool call")
+    }
+    
+    // TODO: Later we'll implement actual tool execution and update this test
+    // to verify: multi-step execution, tool results, final synthesized response
+    
+    #expect(response.usage.totalTokens > 0)
+    #expect(!response.messages.isEmpty)
+}
+
+@Test func testMultiStepToolExecution() async throws {
+    // Test the full Vercel AI SDK pattern: tool calls -> execution -> continuation -> final result
+    let provider = MockProvider()
+    let model = LanguageModel(provider: provider, modelId: "test-model")
+    let client = AIClient()
+    
+    // Define a weather tool that should be executed automatically
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get current weather for a location",
+            parameters: JSONSchema.object(properties: [
+                "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
+                "unit": .string(enum: ["celsius", "fahrenheit"])
+            ], required: ["location"])
+        )
+    )
+    
+    let messages = [
+        Message.user("What's the weather like in San Francisco? Please provide the actual temperature and conditions.")
+    ]
+    
+    // This should: 1) Call tool, 2) Execute tool, 3) Continue generation with results, 4) Return final answer
+    let response = try await client.generateText(model, messages: messages, tools: [weatherTool], maxSteps: 3)
+    
+    // Should complete with a final answer, not stop at tool calls
+    #expect(response.finishReason == FinishReason.stop, "Should complete with final answer after tool execution")
+    
+    // Should have multiple steps showing the full execution flow
+    #expect(response.stepCount >= 2, "Should have multiple steps: tool call + result processing")
+    
+    // Final text should contain actual weather information, not just intent
+    #expect(response.text.contains("temperature") || response.text.contains("weather") || response.text.contains("°"), 
+           "Final response should contain actual weather data from tool execution")
+    
+    // Should have tool calls in the steps but final response should be synthesized text
+    #expect(!response.toolCalls.isEmpty, "Should have made tool calls during execution")
+    
+    // Verify the execution flow in steps
+    if let steps = response.steps {
+        #expect(steps.count >= 2, "Should have at least tool call and result steps")
+        
+        // First step should be tool call
+        let firstStep = steps[0]
+        #expect(firstStep.stepType == .toolCall, "First step should be tool call")
+        #expect(firstStep.toolCalls?.first?.function.name == "get_weather", "Should call weather tool")
+        
+        // Should have a result processing step
+        let hasResultStep = steps.contains { step in
+            step.stepType == .toolResult || step.toolResults != nil
+        }
+        #expect(hasResultStep, "Should have a step that processes tool results")
+    }
+    
+    // Final message should be from assistant with synthesized response
+    #expect(response.messages.last?.role == .assistant, "Final message should be assistant response")
+    #expect(response.usage.totalTokens > 0)
+}

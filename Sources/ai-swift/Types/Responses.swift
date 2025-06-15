@@ -367,6 +367,11 @@ public extension TextResponse {
         return steps?.contains { !($0.toolCalls?.isEmpty ?? true) } ?? false
     }
     
+    /// Get all tool calls made during text generation.
+    var toolCalls: [ToolCall] {
+        return steps?.flatMap { $0.toolCalls ?? [] } ?? []
+    }
+    
     /// Get the total number of steps in the generation process.
     var stepCount: Int {
         return steps?.count ?? 1
