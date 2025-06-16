@@ -65,8 +65,17 @@ public struct OpenAIProvider: AIProvider {
     /// Provider capabilities for mode support
     public let supportedGenerationModes: Set<GenerationMode> = [.auto, .json, .tool]
     
-    /// Default generation mode for this provider
+    /// Default generation mode for this provider - follows Vercel AI SDK pattern
     public let defaultGenerationMode: GenerationMode = .json
+    
+    /// Whether this provider instance supports OpenAI's structured outputs for a given model
+    public func supportsStructuredOutputs(for modelId: String) -> Bool {
+        // Reasoning models (o1, o3, o4) and gpt-4.1 series support structured outputs
+        return structuredOutputs ?? (isReasoningModel(modelId: modelId) || supportsStructuredOutputsByDefault(modelId: modelId))
+    }
+    
+    /// Whether structured outputs are explicitly enabled
+    private let structuredOutputs: Bool?
     
     /// OpenAI API key for authentication.
     private let apiKey: String
@@ -95,6 +104,7 @@ public struct OpenAIProvider: AIProvider {
     ///   - baseURL: Base URL for the API (defaults to OpenAI's endpoint)
     ///   - organization: Optional organization ID
     ///   - project: Optional project ID
+    ///   - structuredOutputs: Whether to enable structured outputs (auto-detect if nil)
     ///   - customHeaders: Additional headers to include in requests
     ///   - urlSession: Custom URLSession (defaults to shared)
     public init(
@@ -102,6 +112,7 @@ public struct OpenAIProvider: AIProvider {
         baseURL: String = "https://api.openai.com/v1",
         organization: String? = nil,
         project: String? = nil,
+        structuredOutputs: Bool? = nil,
         customHeaders: [String: String] = [:],
         urlSession: URLSession = .shared
     ) {
@@ -109,6 +120,7 @@ public struct OpenAIProvider: AIProvider {
         self.baseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         self.organization = organization
         self.project = project
+        self.structuredOutputs = structuredOutputs
         self.customHeaders = customHeaders
         self.urlSession = urlSession
     }
@@ -158,6 +170,7 @@ public struct OpenAIProvider: AIProvider {
         // Encode request body
         let requestData = try JSONEncoder().encode(openAIRequest)
         httpRequest.httpBody = requestData
+        
         
         // Make HTTP request
         let (data, response) = try await urlSession.data(for: httpRequest)
@@ -332,6 +345,35 @@ public struct OpenAIProvider: AIProvider {
             }
         }
     }
+    
+    // MARK: - Model Capability Detection
+    
+    /// Check if a model is a reasoning model (supports structured outputs by default)
+    private func isReasoningModel(modelId: String) -> Bool {
+        return modelId.hasPrefix("o")  // o1, o3, o4 series
+    }
+    
+    /// Check if a model is an audio model (doesn't support structured outputs)
+    private func isAudioModel(modelId: String) -> Bool {
+        return modelId.contains("audio-preview")
+    }
+    
+    /// Check if a model supports structured outputs by default (following Vercel AI SDK patterns)
+    private func supportsStructuredOutputsByDefault(modelId: String) -> Bool {
+        // Audio models don't support structured outputs
+        if isAudioModel(modelId: modelId) {
+            return false
+        }
+        
+        // Models that support structured outputs according to OpenAI docs
+        return modelId.hasPrefix("gpt-4o") ||
+               modelId.hasPrefix("gpt-4.1") ||
+               modelId.hasPrefix("gpt-4-turbo") ||
+               modelId.hasPrefix("gpt-4-0125-preview") ||
+               modelId.hasPrefix("gpt-4-1106-preview") ||
+               modelId.hasPrefix("gpt-3.5-turbo-0125") ||
+               modelId.hasPrefix("gpt-3.5-turbo-1106")
+    }
 }
 
 // MARK: - Private Helper Methods
@@ -339,7 +381,7 @@ public struct OpenAIProvider: AIProvider {
 @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
 private extension OpenAIProvider {
     
-    /// Convert ProviderRequest to OpenAI API format.
+    /// Convert ProviderRequest to OpenAI API format following Vercel AI SDK patterns.
     func convertToOpenAIRequest(_ request: ProviderRequest) throws -> OpenAIChatRequest {
         // Convert messages
         let messages = convertMessages(request.messages)
@@ -350,16 +392,79 @@ private extension OpenAIProvider {
             allMessages.insert(OpenAIMessage(role: "system", content: .text(systemMessage)), at: 0)
         }
         
-        // Convert tools if present
-        let tools = try request.tools?.map { tool in
-            OpenAITool(
+        
+        // Handle different provider modes following Vercel AI SDK approach
+        var tools: [OpenAITool]? = nil
+        var toolChoice: String? = nil
+        var responseFormat: OpenAIResponseFormat? = nil
+        
+        // Determine if we should use structured outputs for this model
+        let supportsStructuredOutputs = self.supportsStructuredOutputs(for: request.modelId)
+        
+        switch request.mode {
+        case .regular(let requestTools, let requestToolChoice):
+            // Regular tool calling - follow Vercel AI SDK pattern for tool_choice
+            tools = try requestTools?.map { tool in
+                OpenAITool(
+                    type: "function",
+                    function: OpenAIFunction(
+                        name: tool.function.name,
+                        description: tool.function.description,
+                        parameters: try convertJSONSchemaToDict(tool.function.parameters),
+                        strict: supportsStructuredOutputs ? true : nil
+                    )
+                )
+            }
+            
+            // Convert ToolChoice to OpenAI format
+            if let tools = tools, !tools.isEmpty {
+                if let requestToolChoice = requestToolChoice {
+                    switch requestToolChoice {
+                    case .auto:
+                        toolChoice = "auto"
+                    case .none:
+                        toolChoice = "none"
+                    case .required:
+                        toolChoice = "required"
+                    case .specific(let toolName):
+                        toolChoice = "{\"type\": \"function\", \"function\": {\"name\": \"\(toolName)\"}}"
+                    }
+                } else {
+                    toolChoice = nil
+                }
+            } else {
+                toolChoice = nil
+            }
+            
+        case .objectJSON(let schema, let name, let description):
+            // Structured output using response_format - follows Vercel AI SDK pattern
+            if supportsStructuredOutputs {
+                responseFormat = OpenAIResponseFormat(
+                    type: "json_schema",
+                    jsonSchema: OpenAIJSONSchema(
+                        name: name ?? "response",
+                        schema: try convertJSONSchemaToDict(schema),
+                        description: description,
+                        strict: true
+                    )
+                )
+            } else {
+                // Fallback to json_object mode for models without structured outputs
+                responseFormat = OpenAIResponseFormat(type: "json_object", jsonSchema: nil)
+            }
+            
+        case .objectTool(let tool):
+            // Structured output using function calling
+            tools = [OpenAITool(
                 type: "function",
                 function: OpenAIFunction(
                     name: tool.function.name,
                     description: tool.function.description,
-                    parameters: try convertJSONSchemaToDict(tool.function.parameters)
+                    parameters: try convertJSONSchemaToDict(tool.function.parameters),
+                    strict: supportsStructuredOutputs ? true : nil
                 )
-            )
+            )]
+            toolChoice = "required"
         }
         
         return OpenAIChatRequest(
@@ -372,7 +477,8 @@ private extension OpenAIProvider {
             presencePenalty: request.configuration.presencePenalty,
             stop: request.configuration.stopSequences,
             tools: tools,
-            toolChoice: tools?.isEmpty == false ? "auto" : nil,
+            toolChoice: toolChoice,
+            responseFormat: responseFormat,
             seed: request.configuration.seed,
             stream: false,
             streamOptions: nil
@@ -393,7 +499,30 @@ private extension OpenAIProvider {
                 return OpenAIMessage(role: "user", content: .text(textContent))
             case .assistant:
                 let textContent = message.content.compactMap { $0.textValue }.joined(separator: "\n")
-                return OpenAIMessage(role: "assistant", content: .text(textContent))
+                
+                // Convert tool calls if present
+                let openAIToolCalls = message.toolCalls?.map { toolCall in
+                    // Arguments are already a JSON string in our ToolCallFunction
+                    let argumentsString = toolCall.function.arguments.isEmpty ? "{}" : toolCall.function.arguments
+                    
+                    return OpenAIToolCall(
+                        id: toolCall.id,
+                        type: "function",
+                        function: OpenAIFunctionCall(
+                            name: toolCall.function.name,
+                            arguments: argumentsString
+                        )
+                    )
+                }
+                
+                // Create assistant message with tool calls
+                // OpenAI accepts empty content with tool calls
+                return OpenAIMessage(
+                    role: "assistant",
+                    content: textContent.isEmpty ? .text("") : .text(textContent),
+                    toolCallId: nil,
+                    toolCalls: openAIToolCalls
+                )
             case .tool:
                 // Handle tool results
                 if let toolResult = message.content.first {
@@ -545,15 +674,117 @@ private extension OpenAIProvider {
     }
     
     /// Convert JSONSchema to dictionary format for OpenAI API.
+    /// Following Vercel AI SDK approach: recursively unwrap schema enums to plain dictionaries.
     func convertJSONSchemaToDict(_ schema: JSONSchema) throws -> [String: Any] {
-        let encoder = JSONEncoder()
-        let data = try encoder.encode(schema)
+        let dict = try convertSchemaDefinitionToDict(schema.definition)
         
-        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw OpenAIError.invalidRequest("Failed to convert JSONSchema to dictionary")
+        
+        return dict
+    }
+    
+    /// Recursively convert SchemaDefinition to dictionary, unwrapping nested schemas
+    private func convertSchemaDefinitionToDict(_ definition: SchemaDefinition) throws -> [String: Any] {
+        var dict: [String: Any] = [:]
+        
+        // Basic properties
+        dict["type"] = definition.type.rawValue
+        
+        if let properties = definition.properties {
+            var propertiesDict: [String: Any] = [:]
+            for (key, schema) in properties {
+                propertiesDict[key] = try convertJSONSchemaToDict(schema)
+            }
+            dict["properties"] = propertiesDict
+        }
+        
+        if let items = definition.items {
+            dict["items"] = try convertJSONSchemaToDict(items)
+        }
+        
+        if let required = definition.required {
+            dict["required"] = required
+        }
+        
+        if let enumValues = definition.enum {
+            dict["enum"] = try enumValues.map { try convertJSONSchemaValueToAny($0) }
+        }
+        
+        if let const = definition.const {
+            dict["const"] = try convertJSONSchemaValueToAny(const)
+        }
+        
+        // Optional string properties
+        if let title = definition.title { dict["title"] = title }
+        if let description = definition.description { dict["description"] = description }
+        if let format = definition.format { dict["format"] = format }
+        if let pattern = definition.pattern { dict["pattern"] = pattern }
+        
+        // Optional numeric properties
+        if let minimum = definition.minimum { dict["minimum"] = minimum }
+        if let maximum = definition.maximum { dict["maximum"] = maximum }
+        if let exclusiveMinimum = definition.exclusiveMinimum { dict["exclusiveMinimum"] = exclusiveMinimum }
+        if let exclusiveMaximum = definition.exclusiveMaximum { dict["exclusiveMaximum"] = exclusiveMaximum }
+        
+        // Optional integer properties
+        if let minLength = definition.minLength { dict["minLength"] = minLength }
+        if let maxLength = definition.maxLength { dict["maxLength"] = maxLength }
+        if let minItems = definition.minItems { dict["minItems"] = minItems }
+        if let maxItems = definition.maxItems { dict["maxItems"] = maxItems }
+        if let minProperties = definition.minProperties { dict["minProperties"] = minProperties }
+        if let maxProperties = definition.maxProperties { dict["maxProperties"] = maxProperties }
+        
+        // Optional boolean properties
+        if let uniqueItems = definition.uniqueItems { dict["uniqueItems"] = uniqueItems }
+        
+        // Additional properties - ensure proper boolean encoding
+        if let additionalProperties = definition.additionalProperties {
+            switch additionalProperties {
+            case .boolean(let value):
+                // Explicitly ensure boolean is not encoded as integer
+                dict["additionalProperties"] = value ? true : false
+            case .schema(let schema):
+                dict["additionalProperties"] = try convertJSONSchemaToDict(schema)
+            }
+        } else if definition.type == .object {
+            // For structured outputs, OpenAI requires additionalProperties to be explicitly false
+            dict["additionalProperties"] = false
+        }
+        
+        // Schema composition
+        if let oneOf = definition.oneOf {
+            dict["oneOf"] = try oneOf.map { try convertJSONSchemaToDict($0) }
+        }
+        if let anyOf = definition.anyOf {
+            dict["anyOf"] = try anyOf.map { try convertJSONSchemaToDict($0) }
+        }
+        if let allOf = definition.allOf {
+            dict["allOf"] = try allOf.map { try convertJSONSchemaToDict($0) }
+        }
+        if let not = definition.not {
+            dict["not"] = try convertJSONSchemaToDict(not)
+        }
+        
+        if let examples = definition.examples {
+            dict["examples"] = try examples.map { try convertJSONSchemaValueToAny($0) }
         }
         
         return dict
+    }
+    
+    /// Convert JSONSchemaValue to Swift Any for dictionary
+    private func convertJSONSchemaValueToAny(_ value: JSONSchemaValue) throws -> Any {
+        switch value {
+        case .string(let str):
+            return str
+        case .integer(let int):
+            return int
+        case .number(let double):
+            return double
+        case .boolean(let bool):
+            return bool
+        case .null:
+            return NSNull()
+        }
     }
 }
 
@@ -571,6 +802,7 @@ private struct OpenAIChatRequest: Codable {
     let stop: [String]?
     let tools: [OpenAITool]?
     let toolChoice: String?
+    let responseFormat: OpenAIResponseFormat?
     let seed: Int?
     var stream: Bool
     var streamOptions: OpenAIStreamOptions?
@@ -583,6 +815,7 @@ private struct OpenAIChatRequest: Codable {
         case presencePenalty = "presence_penalty"
         case stop, tools
         case toolChoice = "tool_choice"
+        case responseFormat = "response_format"
         case seed, stream
         case streamOptions = "stream_options"
     }
@@ -644,34 +877,36 @@ private struct OpenAIFunction: Codable {
     let name: String
     let description: String?
     let parameters: [String: Any]
+    let strict: Bool?
     
     enum CodingKeys: String, CodingKey {
-        case name, description, parameters
+        case name, description, parameters, strict
     }
     
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
         try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(strict, forKey: .strict)
         
-        let parametersData = try JSONSerialization.data(withJSONObject: parameters)
-        let parametersJSON = try JSONSerialization.jsonObject(with: parametersData)
-        try container.encode(AnyCodable(parametersJSON), forKey: .parameters)
+        try container.encode(AnyCodable(parameters), forKey: .parameters)
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
         description = try container.decodeIfPresent(String.self, forKey: .description)
+        strict = try container.decodeIfPresent(Bool.self, forKey: .strict)
         
         let parametersValue = try container.decode(AnyCodable.self, forKey: .parameters)
         parameters = parametersValue.value as? [String: Any] ?? [:]
     }
     
-    init(name: String, description: String?, parameters: [String: Any]) {
+    init(name: String, description: String?, parameters: [String: Any], strict: Bool? = nil) {
         self.name = name
         self.description = description
         self.parameters = parameters
+        self.strict = strict
     }
 }
 
@@ -694,6 +929,55 @@ private struct OpenAIStreamOptions: Codable {
     
     enum CodingKeys: String, CodingKey {
         case includeUsage = "include_usage"
+    }
+}
+
+/// OpenAI response format for structured output.
+private struct OpenAIResponseFormat: Codable {
+    let type: String
+    let jsonSchema: OpenAIJSONSchema?
+    
+    enum CodingKeys: String, CodingKey {
+        case type
+        case jsonSchema = "json_schema"
+    }
+}
+
+/// OpenAI JSON schema structure for structured output.
+private struct OpenAIJSONSchema: Codable {
+    let name: String
+    let schema: [String: Any]
+    let description: String?
+    let strict: Bool?
+    
+    enum CodingKeys: String, CodingKey {
+        case name, schema, description, strict
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(strict, forKey: .strict)
+        
+        try container.encode(AnyCodable(schema), forKey: .schema)
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        strict = try container.decodeIfPresent(Bool.self, forKey: .strict)
+        
+        let schemaValue = try container.decode(AnyCodable.self, forKey: .schema)
+        schema = schemaValue.value as? [String: Any] ?? [:]
+    }
+    
+    init(name: String, schema: [String: Any], description: String? = nil, strict: Bool? = nil) {
+        self.name = name
+        self.schema = schema
+        self.description = description
+        self.strict = strict
     }
 }
 

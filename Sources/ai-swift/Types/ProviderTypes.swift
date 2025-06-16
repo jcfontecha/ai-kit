@@ -314,6 +314,79 @@ public struct ProviderChunk: Sendable {
     /// Can be useful for ordering and debugging streaming issues.
     public let chunkIndex: Int?
     
+    /// Step identifier for multi-step tool execution.
+    ///
+    /// Links this chunk to a specific step in multi-step generation.
+    public let stepId: String?
+    
+    /// Tool call streaming start event.
+    ///
+    /// Indicates the beginning of a streaming tool call with toolCallId and toolName.
+    public let toolCallStreamingStart: ToolCallStreamingStart?
+    
+    /// Tool call argument delta during streaming.
+    ///
+    /// Contains incremental argument text for streaming tool calls.
+    public let toolCallDelta: ToolCallDelta?
+    
+    /// Step start marker for multi-step execution.
+    ///
+    /// Marks the beginning of a new generation step.
+    public let stepStart: StepStart?
+    
+    /// Step finish marker for multi-step execution.
+    ///
+    /// Marks the completion of a generation step with metadata.
+    public let stepFinish: StepFinish?
+    
+    // MARK: - Nested Types for Tool Call Streaming
+    
+    /// Tool call streaming start information
+    public struct ToolCallStreamingStart: Sendable {
+        public let toolCallId: String
+        public let toolName: String
+        
+        public init(toolCallId: String, toolName: String) {
+            self.toolCallId = toolCallId
+            self.toolName = toolName
+        }
+    }
+    
+    /// Tool call argument delta information  
+    public struct ToolCallDelta: Sendable {
+        public let toolCallId: String
+        public let toolName: String
+        public let argsTextDelta: String
+        
+        public init(toolCallId: String, toolName: String, argsTextDelta: String) {
+            self.toolCallId = toolCallId
+            self.toolName = toolName
+            self.argsTextDelta = argsTextDelta
+        }
+    }
+    
+    /// Step start marker
+    public struct StepStart: Sendable {
+        public let stepId: String
+        
+        public init(stepId: String) {
+            self.stepId = stepId
+        }
+    }
+    
+    /// Step finish marker with metadata
+    public struct StepFinish: Sendable {
+        public let stepId: String
+        public let finishReason: FinishReason?
+        public let usage: Usage?
+        
+        public init(stepId: String, finishReason: FinishReason? = nil, usage: Usage? = nil) {
+            self.stepId = stepId
+            self.finishReason = finishReason
+            self.usage = usage
+        }
+    }
+    
     // MARK: - Initialization
     
     /// Creates a new provider chunk with the specified data.
@@ -327,6 +400,11 @@ public struct ProviderChunk: Sendable {
     ///   - chunkId: Unique chunk identifier (auto-generated if not provided)
     ///   - timestamp: Chunk timestamp (current time if not provided)
     ///   - chunkIndex: Optional index of this chunk in the stream
+    ///   - stepId: Optional step identifier for multi-step execution
+    ///   - toolCallStreamingStart: Optional tool call streaming start event
+    ///   - toolCallDelta: Optional tool call argument delta
+    ///   - stepStart: Optional step start marker
+    ///   - stepFinish: Optional step finish marker
     public init(
         delta: String,
         toolCall: ToolCall? = nil,
@@ -335,7 +413,12 @@ public struct ProviderChunk: Sendable {
         additionalOutputs: [String: String]? = nil,
         chunkId: String = UUID().uuidString,
         timestamp: Date = Date(),
-        chunkIndex: Int? = nil
+        chunkIndex: Int? = nil,
+        stepId: String? = nil,
+        toolCallStreamingStart: ToolCallStreamingStart? = nil,
+        toolCallDelta: ToolCallDelta? = nil,
+        stepStart: StepStart? = nil,
+        stepFinish: StepFinish? = nil
     ) {
         self.delta = delta
         self.toolCall = toolCall
@@ -345,6 +428,11 @@ public struct ProviderChunk: Sendable {
         self.chunkId = chunkId
         self.timestamp = timestamp
         self.chunkIndex = chunkIndex
+        self.stepId = stepId
+        self.toolCallStreamingStart = toolCallStreamingStart
+        self.toolCallDelta = toolCallDelta
+        self.stepStart = stepStart
+        self.stepFinish = stepFinish
     }
 }
 

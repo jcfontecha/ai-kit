@@ -211,6 +211,31 @@ public struct MockProvider: AIProvider {
         
         // Check if we should simulate tool calls
         if let tools = request.tools, !tools.isEmpty, configuration.supportsTools {
+            // Simulate tool error scenarios for testing
+            if prompt.lowercased().contains("no such tool") {
+                throw AIGenerationError.noSuchTool(
+                    toolName: "non_existent_tool",
+                    availableTools: tools.map { $0.function.name }
+                )
+            }
+            
+            if prompt.lowercased().contains("invalid arguments") {
+                throw AIGenerationError.invalidToolArguments(
+                    toolName: "get_weather",
+                    toolArgs: "{\"invalid\": \"json\", \"missing_required_field",
+                    cause: NSError(domain: "JSONError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Malformed JSON"])
+                )
+            }
+            
+            if prompt.lowercased().contains("tool execution error") {
+                throw AIGenerationError.toolExecutionError(
+                    toolName: "get_weather",
+                    toolArgs: "{\"location\": \"San Francisco, CA\"}",
+                    toolCallId: "tool_call_12345",
+                    cause: NSError(domain: "WeatherAPI", code: 500, userInfo: [NSLocalizedDescriptionKey: "Weather service unavailable"])
+                )
+            }
+            
             // Simulate tool calling for weather queries
             if prompt.lowercased().contains("weather") {
                 if tools.contains(where: { $0.function.name == "get_weather" }) {
@@ -280,19 +305,48 @@ public struct MockProvider: AIProvider {
                     // Generate mock response
                     let userMessage = request.messages.last { $0.role == .user }
                     let prompt = userMessage?.content.first?.textValue ?? "unknown input"
-                    let responseText = generateMockResponse(for: prompt, configuration: request.configuration)
                     
-                    // Split response into words for streaming
-                    let words = responseText.split(separator: " ")
+                    // Check if we should simulate streaming tool calls first
+                    if let tools = request.tools, !tools.isEmpty, configuration.supportsTools {
+                        if prompt.lowercased().contains("weather") || prompt.lowercased().contains("tool streaming") {
+                            try await streamToolCallsAndText(
+                                continuation: continuation,
+                                prompt: prompt,
+                                tools: tools,
+                                modelId: request.modelId
+                            )
+                            return
+                        }
+                    }
                     
-                    for (index, word) in words.enumerated() {
-                        // Add space before word (except first)
-                        let delta = (index == 0 ? "" : " ") + String(word)
-                        
+                    // Handle object JSON streaming differently
+                    let responseText: String
+                    if case .objectJSON(let schema, let name, let description) = request.mode {
+                        // Get JSON response for object streaming
+                        let jsonResponse = try generateMockJSONResponse(for: request.modelId, prompt: prompt, schema: schema, name: name, description: description)
+                        responseText = jsonResponse.content
+                    } else {
+                        responseText = generateMockResponse(for: prompt, configuration: request.configuration)
+                    }
+                    
+                    // Split response for streaming
+                    let streamChunks: [String]
+                    if case .objectJSON = request.mode {
+                        // For JSON, stream character by character to simulate gradual JSON completion
+                        streamChunks = responseText.map { String($0) }
+                    } else {
+                        // For regular text, stream word by word
+                        let words = responseText.split(separator: " ")
+                        streamChunks = words.enumerated().map { (index, word) in
+                            return (index == 0 ? "" : " ") + String(word)
+                        }
+                    }
+                    
+                    for (index, chunkText) in streamChunks.enumerated() {
                         let chunk = ProviderChunk(
-                            delta: delta,
-                            usage: index == words.count - 1 ? generateMockUsage(prompt: prompt, response: responseText) : nil,
-                            finishReason: index == words.count - 1 ? .stop : nil,
+                            delta: chunkText,
+                            usage: index == streamChunks.count - 1 ? generateMockUsage(prompt: prompt, response: responseText) : nil,
+                            finishReason: index == streamChunks.count - 1 ? .stop : nil,
                             chunkIndex: index
                         )
                         
@@ -352,6 +406,157 @@ public struct MockProvider: AIProvider {
             // Default response with prompt echo
             return "Mock response to: \(prompt)"
         }
+    }
+    
+    /// Simulate streaming tool calls and text response for testing purposes.
+    ///
+    /// This method demonstrates the Vercel AI SDK pattern for streaming tool calls,
+    /// including tool call start, argument streaming, and final response text.
+    private func streamToolCallsAndText(
+        continuation: AsyncThrowingStream<ProviderChunk, Error>.Continuation,
+        prompt: String,
+        tools: [Tool],
+        modelId: String
+    ) async throws {
+        let toolCallId = "tool_call_\(UUID().uuidString.prefix(8))"
+        let stepId = "step_\(UUID().uuidString.prefix(8))"
+        
+        // Simulate step start
+        let stepStartChunk = ProviderChunk(
+            delta: "",
+            chunkIndex: 0,
+            stepStart: ProviderChunk.StepStart(stepId: stepId)
+        )
+        continuation.yield(stepStartChunk)
+        
+        // Small delay for step start
+        if let delay = configuration.chunkDelay {
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        }
+        
+        // Find weather tool or use first available tool
+        let weatherTool = tools.first { $0.function.name == "get_weather" } ?? tools.first!
+        
+        // Tool call streaming start
+        let toolStartChunk = ProviderChunk(
+            delta: "",
+            chunkIndex: 1,
+            stepId: stepId,
+            toolCallStreamingStart: ProviderChunk.ToolCallStreamingStart(
+                toolCallId: toolCallId,
+                toolName: weatherTool.function.name
+            )
+        )
+        continuation.yield(toolStartChunk)
+        
+        if let delay = configuration.chunkDelay {
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        }
+        
+        // Stream tool call arguments gradually
+        let argumentsJSON = "{\"location\": \"San Francisco, CA\", \"unit\": \"celsius\"}"
+        let argumentChunks = argumentsJSON.map { String($0) }
+        
+        for (index, argChunk) in argumentChunks.enumerated() {
+            let toolDeltaChunk = ProviderChunk(
+                delta: "",
+                chunkIndex: index + 2,
+                stepId: stepId,
+                toolCallDelta: ProviderChunk.ToolCallDelta(
+                    toolCallId: toolCallId,
+                    toolName: weatherTool.function.name,
+                    argsTextDelta: argChunk
+                )
+            )
+            continuation.yield(toolDeltaChunk)
+            
+            if let delay = configuration.chunkDelay {
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000 / 2)) // Faster for args
+            }
+        }
+        
+        // Complete tool call (atomic)
+        let completeToolCall = ToolCall(
+            id: toolCallId,
+            function: try ToolCallFunction(
+                name: weatherTool.function.name,
+                arguments: ["location": "San Francisco, CA", "unit": "celsius"]
+            )
+        )
+        
+        let toolCallChunk = ProviderChunk(
+            delta: "",
+            toolCall: completeToolCall,
+            finishReason: .toolCalls,
+            chunkIndex: argumentChunks.count + 2,
+            stepId: stepId
+        )
+        continuation.yield(toolCallChunk)
+        
+        if let delay = configuration.chunkDelay {
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        }
+        
+        // Simulate step finish for tool calls
+        let stepFinishChunk = ProviderChunk(
+            delta: "",
+            chunkIndex: argumentChunks.count + 3,
+            stepFinish: ProviderChunk.StepFinish(
+                stepId: stepId,
+                finishReason: .toolCalls,
+                usage: generateMockUsage(prompt: prompt, response: "Tool call execution")
+            )
+        )
+        continuation.yield(stepFinishChunk)
+        
+        if let delay = configuration.chunkDelay {
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        }
+        
+        // Final text response explaining what would happen
+        let responseText = "I've initiated a weather check for San Francisco, CA. In a real implementation, this would return the current weather conditions."
+        let words = responseText.split(separator: " ")
+        let finalStepId = "step_\(UUID().uuidString.prefix(8))"
+        
+        // Step start for final response
+        let finalStepStartChunk = ProviderChunk(
+            delta: "",
+            chunkIndex: argumentChunks.count + 4,
+            stepStart: ProviderChunk.StepStart(stepId: finalStepId)
+        )
+        continuation.yield(finalStepStartChunk)
+        
+        // Stream final text response
+        for (index, word) in words.enumerated() {
+            let wordText = (index == 0 ? "" : " ") + String(word)
+            let textChunk = ProviderChunk(
+                delta: wordText,
+                chunkIndex: argumentChunks.count + 5 + index,
+                stepId: finalStepId
+            )
+            continuation.yield(textChunk)
+            
+            if let delay = configuration.chunkDelay {
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+        }
+        
+        // Final step finish with complete usage
+        let finalStepFinishChunk = ProviderChunk(
+            delta: "",
+            usage: generateMockUsage(prompt: prompt, response: responseText),
+            finishReason: .stop,
+            chunkIndex: argumentChunks.count + 5 + words.count,
+            stepFinish: ProviderChunk.StepFinish(
+                stepId: finalStepId,
+                finishReason: .stop,
+                usage: generateMockUsage(prompt: prompt, response: responseText)
+            )
+        )
+        continuation.yield(finalStepFinishChunk)
+        
+        // IMPORTANT: Finish the stream to prevent hanging
+        continuation.finish()
     }
     
     /// Generate realistic mock usage information.
@@ -441,6 +646,28 @@ extension MockProvider: ExtendedAIProvider {
     
     /// Generate mock JSON response for object generation requests
     private func generateMockJSONResponse(for modelId: String, prompt: String, schema: JSONSchema? = nil, name: String? = nil, description: String? = nil) throws -> ProviderResponse {
+        
+        // Handle enum generation case - return simple string value, not JSON
+        if let name = name, name == "enum_value" {
+            // For enum generation, return just the enum value based on prompt sentiment
+            let enumValue: String
+            if prompt.lowercased().contains("love") || prompt.lowercased().contains("great") || prompt.lowercased().contains("awesome") {
+                enumValue = "positive"
+            } else if prompt.lowercased().contains("hate") || prompt.lowercased().contains("terrible") || prompt.lowercased().contains("awful") {
+                enumValue = "negative"
+            } else {
+                enumValue = "neutral"
+            }
+            
+            let usage = generateMockUsage(prompt: prompt, response: enumValue)
+            
+            return ProviderResponse(
+                content: enumValue,
+                usage: usage,
+                finishReason: .stop,
+                providerMetadata: ["model_id": modelId]
+            )
+        }
         let mockJSONOptions = [
             // Complex Recipe object (for nested object test)
             """
@@ -507,6 +734,7 @@ extension MockProvider: ExtendedAIProvider {
             {
                 "name": "Simple Pasta",
                 "ingredients": ["pasta", "tomato sauce", "cheese"],
+                "instructions": ["Boil water", "Cook pasta", "Add sauce", "Serve hot"],
                 "cookingTime": 20
             }
             """,
@@ -517,17 +745,116 @@ extension MockProvider: ExtendedAIProvider {
                 "price": 99.99,
                 "category": "Electronics"
             }
+            """,
+            // TestData object (for JSON completion testing)
+            """
+            {
+                "name": "JSON Completion Test",
+                "value": 42,
+                "active": true
+            }
+            """,
+            // StreamData object (for streaming error recovery)
+            """
+            {
+                "id": "stream-data-123",
+                "content": "This is streaming data content for recovery testing"
+            }
             """
         ]
         
-        // Choose appropriate JSON based on prompt or model
+        // Person object (for basic object generation tests)
+        let personJSON = """
+        {
+            "name": "John Smith",
+            "age": 30,
+            "occupation": "Software Engineer"
+        }
+        """
+        
+        // Employee object (for complex schema tests)
+        let employeeJSON = """
+        {
+            "id": "EMP-12345",
+            "name": "Jane Doe",
+            "department": "Engineering",
+            "salary": 95000.0,
+            "address": {
+                "street": "123 Market Street",
+                "city": "San Francisco",
+                "zipCode": "94105"
+            },
+            "contact": {
+                "email": "jane.doe@company.com",
+                "phone": "+1-555-0123"
+            },
+            "skills": ["Swift", "iOS Development", "Software Architecture", "Team Leadership"],
+            "isActive": true
+        }
+        """
+        
+        // Products array (for array generation tests)
+        let productsArrayJSON = """
+        [
+            {
+                "name": "Wireless Headphones",
+                "price": 99.99,
+                "category": "Electronics",
+                "inStock": true
+            },
+            {
+                "name": "Bluetooth Speaker",
+                "price": 49.99,
+                "category": "Electronics", 
+                "inStock": true
+            },
+            {
+                "name": "USB-C Cable",
+                "price": 19.99,
+                "category": "Electronics",
+                "inStock": false
+            }
+        ]
+        """
+        
+        // SimpleData object (for generation modes tests)
+        let simpleDataJSON = """
+        {
+            "value": "Test Data String",
+            "number": 42
+        }
+        """
+        
+        // Choose appropriate JSON based on prompt or model and generation mode
         let selectedJSON: String
         if prompt.lowercased().contains("vegetarian") || prompt.lowercased().contains("primavera") {
             selectedJSON = mockJSONOptions[0] // Complex Recipe
-        } else if prompt.lowercased().contains("user") || prompt.lowercased().contains("profile") {
+        } else if (prompt.lowercased().contains("user") || prompt.lowercased().contains("profile")) && !prompt.lowercased().contains("person") && !prompt.lowercased().contains("employee") {
             selectedJSON = mockJSONOptions[1] // UserProfile
-        } else if prompt.lowercased().contains("recipe") || prompt.lowercased().contains("pasta") {
-            selectedJSON = mockJSONOptions[2] // Simple Recipe
+        } else if prompt.lowercased().contains("employee") || prompt.lowercased().contains("software engineer in san francisco") {
+            selectedJSON = employeeJSON // Employee object
+        } else if prompt.lowercased().contains("person") || prompt.lowercased().contains("john smith") {
+            selectedJSON = personJSON // Person object
+        } else if prompt.lowercased().contains("electronic products") || prompt.lowercased().contains("online store") {
+            selectedJSON = productsArrayJSON // Products array for generateArray tests
+        } else if prompt.lowercased().contains("simple test data") {
+            selectedJSON = simpleDataJSON // SimpleData for generation modes tests
+        } else if prompt.lowercased().contains("streaming data") || name == "StreamData" {
+            selectedJSON = mockJSONOptions[5] // StreamData for streaming error recovery tests
+        } else if prompt.lowercased().contains("create a simple pasta recipe") && !prompt.lowercased().contains("streaming") && name != "Recipe" {
+            // For the basic testAIClientGenerateObject test that expects only 3 fields
+            // But exclude when name is "Recipe" which indicates streaming object mode
+            selectedJSON = """
+            {
+                "name": "Simple Pasta",
+                "ingredients": ["pasta", "tomato sauce", "cheese"],
+                "cookingTime": 20
+            }
+            """
+        } else if prompt.lowercased().contains("recipe") || prompt.lowercased().contains("pasta") || prompt.lowercased().contains("streaming") {
+            selectedJSON = mockJSONOptions[2] // Full Recipe with instructions for streaming tests
+        } else if prompt.lowercased().contains("json completion") || prompt.lowercased().contains("test data") {
+            selectedJSON = mockJSONOptions[4] // TestData for JSON completion
         } else {
             selectedJSON = mockJSONOptions[3] // Product
         }
@@ -548,7 +875,20 @@ extension MockProvider: ExtendedAIProvider {
     
     /// Generate mock tool response for tool-based structured output requests
     private func generateMockToolResponse(for modelId: String, prompt: String, tool: Tool) throws -> ProviderResponse {
-        // Create a mock tool call based on the provided tool
+        // For object generation tools, return the JSON directly instead of tool calls
+        // This simulates the tool being executed and returning structured data
+        
+        // Check if this is an object generation tool (based on function name patterns)
+        // For object generation, we want to return JSON content directly
+        if tool.function.name.contains("generate_object") || 
+           tool.function.name.contains("select_enum") ||
+           prompt.lowercased().contains("simple test data") ||
+           tool.function.description?.lowercased().contains("data structure") == true {
+            // Return JSON content directly for object generation tools
+            return try generateMockJSONResponse(for: modelId, prompt: prompt, schema: nil, name: tool.function.name, description: tool.function.description)
+        }
+        
+        // For regular tools, create a mock tool call
         let toolCall = ToolCall(
             id: "tool_call_\(UUID().uuidString.prefix(8))",
             function: try ToolCallFunction(

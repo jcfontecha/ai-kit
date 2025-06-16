@@ -78,13 +78,19 @@ public enum AIGenerationError: AIError {
     case unexpectedResponse(String)
     case streamingError(Error)
     case toolExecutionFailed(toolName: String, error: Error)
-    case schemaValidationFailed([ValidationError])
+    case schemaValidationFailed([ai_swift.ValidationError])
     case objectParsingFailed(String)
     
     // Enhanced object generation errors following Vercel AI SDK patterns
     case jsonParseError(text: String, parseError: Error?)
     case schemaValidationError(objectData: String?, validationErrors: [String])
     case noObjectGenerated(text: String, finishReason: FinishReason?, usage: Usage)
+    
+    // Tool calling errors following Vercel AI SDK patterns
+    case noSuchTool(toolName: String, availableTools: [String])
+    case invalidToolArguments(toolName: String, toolArgs: String, cause: Error?)
+    case toolExecutionError(toolName: String, toolArgs: String, toolCallId: String, cause: Error)
+    case toolCallRepairError(originalError: Error, cause: Error?)
     
     public var code: String {
         switch self {
@@ -101,6 +107,10 @@ public enum AIGenerationError: AIError {
         case .jsonParseError: return "JSON_PARSE_ERROR"
         case .schemaValidationError: return "SCHEMA_VALIDATION_ERROR"
         case .noObjectGenerated: return "NO_OBJECT_GENERATED"
+        case .noSuchTool: return "NO_SUCH_TOOL"
+        case .invalidToolArguments: return "INVALID_TOOL_ARGUMENTS"
+        case .toolExecutionError: return "TOOL_EXECUTION_ERROR"
+        case .toolCallRepairError: return "TOOL_CALL_REPAIR_ERROR"
         }
     }
     
@@ -132,6 +142,14 @@ public enum AIGenerationError: AIError {
             return "Schema validation failed: \(validationErrors.joined(separator: ", "))"
         case .noObjectGenerated(let text, let finishReason, let usage):
             return "No object could be generated. Generated text: \(text.prefix(100))... Finish reason: \(finishReason?.rawValue ?? "unknown"), Tokens used: \(usage.totalTokens)"
+        case .noSuchTool(let toolName, let availableTools):
+            return "Model tried to call unavailable tool '\(toolName)'. Available tools: \(availableTools.joined(separator: ", "))"
+        case .invalidToolArguments(let toolName, let toolArgs, let cause):
+            return "Invalid arguments for tool \(toolName): \(cause?.localizedDescription ?? "Unknown validation error")"
+        case .toolExecutionError(let toolName, let toolArgs, let toolCallId, let cause):
+            return "Error executing tool \(toolName) (call ID: \(toolCallId)): \(cause.localizedDescription)"
+        case .toolCallRepairError(let originalError, let cause):
+            return "Tool call repair failed. Original error: \(originalError.localizedDescription). Repair error: \(cause?.localizedDescription ?? "Unknown")"
         }
     }
     
@@ -149,6 +167,14 @@ public enum AIGenerationError: AIError {
             return ["objectData": objectData ?? "nil", "validationErrors": validationErrors.joined(separator: "; ")]
         case .noObjectGenerated(let text, let finishReason, let usage):
             return ["text": String(text.prefix(200)), "finishReason": finishReason?.rawValue ?? "unknown", "totalTokens": String(usage.totalTokens)]
+        case .noSuchTool(let toolName, let availableTools):
+            return ["toolName": toolName, "availableTools": availableTools.joined(separator: ", ")]
+        case .invalidToolArguments(let toolName, let toolArgs, let cause):
+            return ["toolName": toolName, "toolArgs": toolArgs, "cause": cause?.localizedDescription ?? "Unknown"]
+        case .toolExecutionError(let toolName, let toolArgs, let toolCallId, let cause):
+            return ["toolName": toolName, "toolArgs": toolArgs, "toolCallId": toolCallId, "cause": cause.localizedDescription]
+        case .toolCallRepairError(let originalError, let cause):
+            return ["originalError": originalError.localizedDescription, "repairCause": cause?.localizedDescription ?? "Unknown"]
         default:
             return [:]
         }
@@ -160,6 +186,12 @@ public enum AIGenerationError: AIError {
             return error
         case .jsonParseError(_, let parseError):
             return parseError
+        case .invalidToolArguments(_, _, let cause):
+            return cause
+        case .toolExecutionError(_, _, _, let cause):
+            return cause
+        case .toolCallRepairError(let originalError, _):
+            return originalError
         default:
             return nil
         }

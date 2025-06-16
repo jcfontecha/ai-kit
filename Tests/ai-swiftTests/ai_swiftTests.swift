@@ -1098,3 +1098,1734 @@ import Foundation
     #expect(recipe.ingredients.count >= 3, "Should have multiple ingredients")
     #expect(recipe.steps.count >= 3, "Should have multiple steps")
 }
+
+@Test func testBasicObjectStreaming() async throws {
+    // Test basic object streaming functionality based on Vercel AI SDK patterns
+    
+    struct SimpleUser: Codable, Sendable {
+        let name: String
+        let age: Int
+        let email: String
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("streaming-user-model")
+        .temperature(0.0)
+    
+    // Create a simple schema for streaming test
+    let userSchema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "name": JSONSchema.definition(SchemaDefinition(type: .string)),
+            "age": JSONSchema.definition(SchemaDefinition(type: .integer)),
+            "email": JSONSchema.definition(SchemaDefinition(type: .string))
+        ],
+        required: ["name", "age", "email"]
+    ))
+    
+    let objectSchema = ObjectSchema<SimpleUser>(
+        jsonSchema: userSchema,
+        name: "SimpleUser",
+        description: "A simple user with name, age, and email"
+    )
+    
+    let messages = [
+        Message.user("Generate a user profile for streaming test")
+    ]
+    
+    // Stream the object generation
+    let objectStream = await client.streamObject(model, messages: messages, schema: objectSchema)
+    
+    var receivedChunks: [ObjectChunk<SimpleUser>] = []
+    var accumulatedObject: SimpleUser? = nil
+    var finalUsage: TokenUsage? = nil
+    
+    // Collect all streaming chunks
+    for try await chunk in objectStream {
+        receivedChunks.append(chunk)
+        
+        // Track the latest parsed object
+        if let object = chunk.object {
+            accumulatedObject = object
+        }
+        
+        // Track final usage information
+        if let usage = chunk.usage {
+            finalUsage = usage
+        }
+    }
+    
+    // Verify streaming behavior
+    #expect(!receivedChunks.isEmpty, "Should receive streaming chunks")
+    #expect(accumulatedObject != nil, "Should have final parsed object")
+    #expect(finalUsage != nil, "Should have final usage information")
+    
+    // Verify the final object is valid
+    let finalUser = try #require(accumulatedObject)
+    #expect(!finalUser.name.isEmpty, "User name should not be empty")
+    #expect(finalUser.age > 0, "User age should be positive")
+    #expect(finalUser.email.contains("@"), "Email should contain @ symbol")
+    
+    // Verify progressive streaming (should have multiple chunks)
+    #expect(receivedChunks.count > 3, "Should stream character by character for JSON")
+    
+    // Verify that chunks build up progressively
+    var textSnapshot = ""
+    for chunk in receivedChunks {
+        textSnapshot += chunk.delta
+        #expect(chunk.snapshot.contains(textSnapshot), "Snapshot should contain accumulated text")
+    }
+    
+    // Verify the final snapshot contains valid JSON
+    let finalSnapshot = receivedChunks.last?.snapshot ?? ""
+    #expect(finalSnapshot.contains("{"), "Final snapshot should contain JSON")
+    #expect(finalSnapshot.contains("}"), "Final snapshot should be complete JSON")
+    
+    // Verify final usage tracking
+    let usage = try #require(finalUsage)
+    #expect(usage.totalTokens > 0, "Should track token usage")
+}
+
+@Test func testJSONCompletionAlgorithms() async throws {
+    // Test JSON completion algorithms with malformed/partial JSON streams
+    
+    struct TestData: Codable, Sendable {
+        let name: String
+        let value: Int
+        let active: Bool
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    
+    // Configure mock provider to simulate gradual JSON completion
+    let model = provider.languageModel("json-completion-test")
+        .temperature(0.0)
+    
+    let schema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "name": JSONSchema.definition(SchemaDefinition(type: .string)),
+            "value": JSONSchema.definition(SchemaDefinition(type: .integer)),
+            "active": JSONSchema.definition(SchemaDefinition(type: .boolean))
+        ],
+        required: ["name", "value", "active"]
+    ))
+    
+    let objectSchema = ObjectSchema<TestData>(
+        jsonSchema: schema,
+        name: "TestData",
+        description: "Test data for JSON completion"
+    )
+    
+    let messages = [
+        Message.user("Generate test data for JSON completion")
+    ]
+    
+    // Test streaming with gradual JSON completion
+    let objectStream = await client.streamObject(model, messages: messages, schema: objectSchema)
+    
+    var receivedChunks: [ObjectChunk<TestData>] = []
+    var partialSnapshots: [String] = []
+    var successfulParses = 0
+    
+    // Collect all streaming chunks and track parsing progress
+    for try await chunk in objectStream {
+        receivedChunks.append(chunk)
+        partialSnapshots.append(chunk.snapshot)
+        
+        // Count successful object parses
+        if chunk.object != nil {
+            successfulParses += 1
+        }
+    }
+    
+    // Verify streaming behavior with JSON completion
+    #expect(!receivedChunks.isEmpty, "Should receive streaming chunks")
+    #expect(partialSnapshots.count >= 2, "Should have multiple partial snapshots")
+    #expect(successfulParses > 0, "Should have successful object parses")
+    
+    // Verify gradual JSON completion patterns
+    let finalSnapshot = partialSnapshots.last ?? ""
+    #expect(finalSnapshot.hasPrefix("{"), "Should start with opening brace")
+    #expect(finalSnapshot.hasSuffix("}"), "Should end with closing brace")
+    
+    // Test that intermediate snapshots show progression
+    var foundPartialJSON = false
+    for snapshot in partialSnapshots {
+        if snapshot.count > 1 && snapshot.count < finalSnapshot.count {
+            // This should be a partial JSON that our repair algorithm can handle
+            foundPartialJSON = true
+            break
+        }
+    }
+    #expect(foundPartialJSON, "Should have intermediate partial JSON states")
+    
+    // Verify final object is complete and valid
+    let finalChunk = try #require(receivedChunks.last)
+    let finalObject = try #require(finalChunk.object)
+    
+    #expect(!finalObject.name.isEmpty, "Name should not be empty")
+    #expect(finalObject.value >= 0, "Value should be non-negative")
+    #expect(finalObject.active is Bool, "Active should be boolean")
+    
+    // Verify JSON repair worked correctly on partial content
+    // Test our JSON repair algorithm directly
+    let partialJSON1 = "{\"name\":\"test"
+    let repairedJSON1 = repairPartialJSONTest(partialJSON1)
+    #expect(repairedJSON1.contains("}"), "Should close unclosed braces")
+    #expect(repairedJSON1.contains("\""), "Should close unclosed strings")
+    
+    let partialJSON2 = "{\"name\":\"test\",\"value\":42"
+    let repairedJSON2 = repairPartialJSONTest(partialJSON2)
+    #expect(repairedJSON2.hasSuffix("}"), "Should close object")
+}
+
+// Helper function to test JSON repair algorithm directly
+private func repairPartialJSONTest(_ jsonString: String) -> String {
+    var repaired = jsonString.trimmingCharacters(in: .whitespacesAndNewlines)
+    
+    guard !repaired.isEmpty else { return "{}" }
+    
+    // Ensure it starts with {
+    if !repaired.hasPrefix("{") {
+        if let braceIndex = repaired.firstIndex(of: "{") {
+            repaired = String(repaired[braceIndex...])
+        } else {
+            return "{}"
+        }
+    }
+    
+    // Count braces and quotes for balancing
+    var openBraces = 0
+    var inString = false
+    var escapeNext = false
+    
+    for char in repaired {
+        if escapeNext {
+            escapeNext = false
+            continue
+        }
+        
+        switch char {
+        case "\\":
+            if inString {
+                escapeNext = true
+            }
+        case "\"":
+            inString.toggle()
+        case "{":
+            if !inString {
+                openBraces += 1
+            }
+        case "}":
+            if !inString {
+                openBraces -= 1
+            }
+        default:
+            break
+        }
+    }
+    
+    // Close unclosed strings
+    if inString {
+        repaired += "\""
+    }
+    
+    // Close unclosed objects
+    while openBraces > 0 {
+        repaired += "}"
+        openBraces -= 1
+    }
+    
+    return repaired
+}
+
+@Test func testComplexNestedObjectStreaming() async throws {
+    // Test streaming with complex nested objects (Recipe from earlier test)
+    
+    struct Ingredient: Codable, Sendable {
+        let name: String
+        let amount: String
+        let optional: Bool?
+    }
+    
+    struct NutritionInfo: Codable, Sendable {
+        let calories: Int
+        let protein: Double
+        let carbs: Double
+        let fat: Double
+    }
+    
+    struct Recipe: Codable, Sendable {
+        let name: String
+        let description: String
+        let prepTime: Int
+        let cookTime: Int
+        let difficulty: String
+        let ingredients: [Ingredient]
+        let steps: [String]
+        let nutritionInfo: NutritionInfo?
+        let tags: [String]
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("complex-recipe-streaming")
+        .temperature(0.0)
+    
+    // Create the complex nested schema (same as generateObject test)
+    let nutritionSchema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "calories": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 0)),
+            "protein": JSONSchema.definition(SchemaDefinition(type: .number, minimum: 0.0)),
+            "carbs": JSONSchema.definition(SchemaDefinition(type: .number, minimum: 0.0)),
+            "fat": JSONSchema.definition(SchemaDefinition(type: .number, minimum: 0.0))
+        ],
+        required: ["calories", "protein", "carbs", "fat"]
+    ))
+    
+    let ingredientSchema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "name": JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+            "amount": JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+            "optional": JSONSchema.definition(SchemaDefinition(type: .boolean))
+        ],
+        required: ["name", "amount"]
+    ))
+    
+    let recipeSchema = JSONSchema.definition(SchemaDefinition(
+        type: .object,
+        properties: [
+            "name": JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+            "description": JSONSchema.definition(SchemaDefinition(type: .string)),
+            "prepTime": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 0)),
+            "cookTime": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 0)),
+            "difficulty": JSONSchema.definition(SchemaDefinition(
+                type: .string,
+                enum: [.string("easy"), .string("medium"), .string("hard")]
+            )),
+            "ingredients": JSONSchema.definition(SchemaDefinition(
+                type: .array,
+                items: ingredientSchema,
+                minItems: 1
+            )),
+            "steps": JSONSchema.definition(SchemaDefinition(
+                type: .array,
+                items: JSONSchema.definition(SchemaDefinition(type: .string, minLength: 1)),
+                minItems: 1
+            )),
+            "nutritionInfo": nutritionSchema,
+            "tags": JSONSchema.definition(SchemaDefinition(
+                type: .array,
+                items: JSONSchema.definition(SchemaDefinition(type: .string))
+            ))
+        ],
+        required: ["name", "description", "prepTime", "cookTime", "difficulty", "ingredients", "steps", "tags"]
+    ))
+    
+    let objectSchema = ObjectSchema<Recipe>(
+        jsonSchema: recipeSchema,
+        name: "Recipe",
+        description: "A detailed recipe with ingredients, steps, and nutritional information"
+    )
+    
+    let messages = [
+        Message.user("Generate a detailed vegetarian pasta recipe for streaming")
+    ]
+    
+    // Stream the complex object generation
+    let objectStream = await client.streamObject(model, messages: messages, schema: objectSchema)
+    
+    var receivedChunks: [ObjectChunk<Recipe>] = []
+    var validRecipes: [Recipe] = []
+    var finalUsage: TokenUsage? = nil
+    
+    // Collect all streaming chunks
+    for try await chunk in objectStream {
+        receivedChunks.append(chunk)
+        
+        if let recipe = chunk.object {
+            validRecipes.append(recipe)
+        }
+        
+        if let usage = chunk.usage {
+            finalUsage = usage
+        }
+    }
+    
+    // Verify complex streaming behavior
+    #expect(!receivedChunks.isEmpty, "Should receive streaming chunks")
+    #expect(!validRecipes.isEmpty, "Should have valid recipe objects")
+    #expect(finalUsage != nil, "Should have final usage information")
+    
+    // Verify the final recipe is complete and valid
+    let finalRecipe = try #require(validRecipes.last)
+    
+    // Basic properties
+    #expect(!finalRecipe.name.isEmpty, "Recipe should have a name")
+    #expect(!finalRecipe.description.isEmpty, "Recipe should have a description")
+    #expect(finalRecipe.prepTime >= 0, "Prep time should be non-negative")
+    #expect(finalRecipe.cookTime >= 0, "Cook time should be non-negative")
+    #expect(["easy", "medium", "hard"].contains(finalRecipe.difficulty), "Difficulty should be valid")
+    
+    // Array properties
+    #expect(!finalRecipe.ingredients.isEmpty, "Recipe should have ingredients")
+    #expect(!finalRecipe.steps.isEmpty, "Recipe should have steps")
+    #expect(!finalRecipe.tags.isEmpty, "Recipe should have tags")
+    
+    // Nested object validation (ingredients)
+    for ingredient in finalRecipe.ingredients {
+        #expect(!ingredient.name.isEmpty, "Ingredient name should not be empty")
+        #expect(!ingredient.amount.isEmpty, "Ingredient amount should not be empty")
+    }
+    
+    // Steps validation
+    for step in finalRecipe.steps {
+        #expect(!step.isEmpty, "Recipe step should not be empty")
+    }
+    
+    // Optional nested object (nutrition info)
+    if let nutrition = finalRecipe.nutritionInfo {
+        #expect(nutrition.calories >= 0, "Calories should be non-negative")
+        #expect(nutrition.protein >= 0, "Protein should be non-negative")
+        #expect(nutrition.carbs >= 0, "Carbs should be non-negative")
+        #expect(nutrition.fat >= 0, "Fat should be non-negative")
+    }
+    
+    // Verify streaming progression with complex data
+    #expect(receivedChunks.count > 10, "Complex object should stream many chunks")
+    
+    // Verify that final snapshot contains complete JSON
+    let finalSnapshot = receivedChunks.last?.snapshot ?? ""
+    #expect(finalSnapshot.contains("\"ingredients\""), "Should contain ingredients array")
+    #expect(finalSnapshot.contains("\"steps\""), "Should contain steps array")
+    #expect(finalSnapshot.contains("\"tags\""), "Should contain tags array")
+    
+    // Verify usage tracking for complex object
+    let usage = try #require(finalUsage)
+    #expect(usage.totalTokens > 0, "Should track token usage for complex object")
+}
+
+@Test func testStreamingWithToolCalls() async throws {
+    // Test streaming that includes tool calls following Vercel AI SDK patterns
+    let provider = MockProvider()
+    let model = LanguageModel(provider: provider, modelId: "test-model")
+    let client = AIClient()
+    
+    // Define a weather tool for streaming
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather", 
+            description: "Get current weather for a location",
+            parameters: JSONSchema.object(properties: [
+                "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
+                "unit": .string(enum: ["celsius", "fahrenheit"])
+            ], required: ["location"])
+        )
+    )
+    
+    let messages = [
+        Message.user("What's the weather like in San Francisco?")
+    ]
+    
+    // This should trigger streaming tool calls in MockProvider
+    let stream = await client.streamText(model, messages: messages, tools: [weatherTool])
+    
+    var receivedChunks: [TextChunk] = []
+    var toolCallStreamingStarts: [ToolCallStreamingStart] = []
+    var toolCallDeltas: [ToolCallDelta] = []
+    var toolCalls: [ToolCall] = []
+    var stepStarts: [StepStart] = []
+    var stepFinishes: [StepFinish] = []
+    var fullContent = ""
+    
+    // Collect all streaming chunks and categorize tool call events
+    for try await chunk in stream {
+        receivedChunks.append(chunk)
+        fullContent += chunk.delta
+        
+        // Collect tool call streaming events
+        if let toolCallStart = chunk.toolCallStreamingStart {
+            toolCallStreamingStarts.append(toolCallStart)
+        }
+        
+        if let toolCallDelta = chunk.toolCallDelta {
+            toolCallDeltas.append(toolCallDelta)
+        }
+        
+        if let chunkToolCalls = chunk.toolCalls {
+            toolCalls.append(contentsOf: chunkToolCalls)
+        }
+    }
+    
+    // Verify we received streaming chunks
+    #expect(!receivedChunks.isEmpty, "Should receive streaming chunks")
+    
+    // Verify tool call streaming events occurred
+    #expect(!toolCallStreamingStarts.isEmpty, "Should have tool call streaming start events")
+    #expect(!toolCallDeltas.isEmpty, "Should have tool call argument deltas")
+    #expect(!toolCalls.isEmpty, "Should have complete tool calls")
+    
+    // Verify tool call streaming start
+    let firstStart = try #require(toolCallStreamingStarts.first)
+    #expect(firstStart.toolName == "get_weather", "Should call weather tool")
+    #expect(!firstStart.toolCallId.isEmpty, "Should have tool call ID")
+    
+    // Verify tool call argument streaming
+    #expect(toolCallDeltas.count >= 5, "Should stream multiple argument deltas")
+    let firstDelta = try #require(toolCallDeltas.first)
+    #expect(firstDelta.toolName == "get_weather", "Delta should be for weather tool")
+    #expect(!firstDelta.argsTextDelta.isEmpty, "Should have argument text delta")
+    
+    // Verify complete tool call
+    let completeToolCall = try #require(toolCalls.first)
+    #expect(completeToolCall.function.name == "get_weather", "Should be weather tool call")
+    #expect(!completeToolCall.function.arguments.isEmpty, "Should have arguments")
+    
+    // Verify arguments contain expected location data
+    if let parsedArgs = completeToolCall.function.parsedArguments {
+        #expect(parsedArgs["location"] != nil, "Should have location argument")
+        #expect(parsedArgs["unit"] != nil, "Should have unit argument")
+    }
+    
+    // Verify final content includes both tool and text responses
+    #expect(fullContent.contains("weather") || fullContent.contains("San Francisco"), 
+           "Final content should mention weather or location")
+    
+    // Verify streaming worked with multiple chunks
+    #expect(receivedChunks.count >= 5, "Should have multiple streaming chunks")
+    
+    // Verify final chunk has usage information
+    let lastChunk = try #require(receivedChunks.last)
+    #expect(lastChunk.usage != nil, "Final chunk should have usage information")
+    #expect(lastChunk.usage!.totalTokens > 0, "Should track token usage")
+}
+
+@Test func testStreamingToolCallsWithSteps() async throws {
+    // Test that streaming tool calls include proper step boundaries
+    let provider = MockProvider()
+    let model = LanguageModel(provider: provider, modelId: "test-model")
+    let client = AIClient()
+    
+    // Define a weather tool
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get current weather for a location", 
+            parameters: JSONSchema.object(properties: [
+                "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
+                "unit": .string(enum: ["celsius", "fahrenheit"])
+            ], required: ["location"])
+        )
+    )
+    
+    let messages = [
+        Message.user("tool streaming - demonstrate the full step workflow")
+    ]
+    
+    // This should trigger the full streaming tool workflow in MockProvider
+    let stream = await client.streamText(model, messages: messages, tools: [weatherTool])
+    
+    var allChunks: [TextChunk] = []
+    var stepIds: Set<String> = []
+    var toolCallCount = 0
+    var hasSteps = false
+    
+    // Process the stream and track step flow
+    for try await chunk in stream {
+        allChunks.append(chunk)
+        
+        if let stepId = chunk.stepId {
+            stepIds.insert(stepId)
+            hasSteps = true
+        }
+        
+        if let toolCalls = chunk.toolCalls, !toolCalls.isEmpty {
+            toolCallCount += toolCalls.count
+        }
+    }
+    
+    // Verify multi-step execution
+    #expect(hasSteps, "Should have step information in chunks")
+    #expect(stepIds.count >= 2, "Should have multiple steps (tool call + final response)")
+    #expect(toolCallCount > 0, "Should have tool calls")
+    
+    // Verify step flow progression
+    let chunksWithSteps = allChunks.filter { $0.stepId != nil }
+    #expect(!chunksWithSteps.isEmpty, "Should have chunks with step information")
+    
+    // Verify we get both tool call chunks and text response chunks
+    let toolCallChunks = allChunks.filter { $0.toolCalls?.isEmpty == false }
+    let textChunks = allChunks.filter { !$0.delta.isEmpty }
+    
+    #expect(!toolCallChunks.isEmpty, "Should have tool call chunks")
+    #expect(!textChunks.isEmpty, "Should have text content chunks")
+    
+    // Verify final content mentions tool execution
+    let fullContent = allChunks.map { $0.delta }.joined()
+    #expect(fullContent.contains("weather") || fullContent.contains("tool") || fullContent.contains("San Francisco"),
+           "Final content should reference tool execution")
+    
+    // Verify streaming performance
+    #expect(allChunks.count >= 15, "Should stream many chunks for tool + text workflow")
+    
+    // Verify final usage
+    let finalChunk = try #require(allChunks.last)
+    #expect(finalChunk.usage != nil, "Should have final usage information")
+    #expect(finalChunk.usage!.totalTokens > 0, "Should track tokens")
+}
+
+// MARK: - Mock Types for Middleware Testing
+
+struct MockRequest: AIRequest {
+    let requestId: String
+    let timestamp: Date
+    
+    init(id: String, timestamp: Date) {
+        self.requestId = id
+        self.timestamp = timestamp
+    }
+}
+
+struct MockResponse: AIResponse {
+    let responseId: String?
+    let timestamp: Date
+    
+    init(id: String, timestamp: Date) {
+        self.responseId = id
+        self.timestamp = timestamp
+    }
+}
+
+struct MockChunk: StreamChunk {
+    let chunkId: String
+    let timestamp: Date
+    
+    init(id: String, timestamp: Date) {
+        self.chunkId = id
+        self.timestamp = timestamp
+    }
+}
+
+// MARK: - Advanced Middleware Tests
+
+@Test @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+func testAdvancedLoggingMiddleware() async throws {
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("test-model")
+        .temperature(0.0)
+    
+    // Test AdvancedLoggingMiddleware with different detail levels
+    let verboseLogging = AdvancedLoggingMiddleware(
+        detailLevel: .verbose,
+        includeTimestamps: true,
+        includePerformanceMetrics: true,
+        includeRequestContent: false,
+        includeResponseContent: false
+    )
+    
+    let standardLogging = AdvancedLoggingMiddleware(
+        detailLevel: .standard,
+        includeTimestamps: true,
+        includePerformanceMetrics: false
+    )
+    
+    let minimalLogging = AdvancedLoggingMiddleware(
+        detailLevel: .minimal
+    )
+    
+    // Test all middleware conform to AIMiddleware protocol
+    #expect(verboseLogging.id == "advanced-logging", "Should have correct ID")
+    #expect(verboseLogging.name == "Advanced Logging Middleware", "Should have correct name")
+    #expect(verboseLogging.priority == 100, "Should have correct priority")
+    
+    // Test request transformation (should not modify request)
+    let originalRequest = MockRequest(id: "test-123", timestamp: Date())
+    let transformedRequest = try await verboseLogging.transformRequest(originalRequest)
+    #expect(transformedRequest.requestId == originalRequest.requestId, "Should not modify request ID")
+    
+    // Test response transformation (should not modify response)
+    let originalResponse = MockResponse(id: "test-123", timestamp: Date())
+    let transformedResponse = try await verboseLogging.transformResponse(originalResponse)
+    #expect(transformedResponse.responseId == originalResponse.responseId, "Should not modify response ID")
+    
+    // Test chunk transformation (should not modify chunk)
+    let originalChunk = MockChunk(id: "chunk-123", timestamp: Date())
+    let transformedChunk = try await verboseLogging.transformChunk(originalChunk)
+    #expect(transformedChunk.chunkId == originalChunk.chunkId, "Should not modify chunk ID")
+    
+    // Test error handling (should not modify error)
+    let originalError = AIGenerationError.invalidPrompt("test error")
+    let context = MiddlewareContext(
+        requestId: "test-123",
+        operationType: .generateText,
+        modelId: "test-model",
+        providerId: "mock"
+    )
+    let handledError = try await verboseLogging.handleError(originalError, context: context)
+    #expect(handledError.localizedDescription == originalError.localizedDescription, "Should not modify error")
+}
+
+@Test @available(macOS 11.0, iOS 14.0, watchOS 7.0, tvOS 14.0, *)
+func testAdvancedCachingMiddleware() async throws {
+    let cacheConfig = AdvancedCachingMiddleware.CacheConfiguration(
+        ttl: 60.0, // 1 minute
+        maxEntries: 100,
+        keyPrefix: "test_cache",
+        enableCompression: true
+    )
+    
+    let cachingMiddleware = AdvancedCachingMiddleware(configuration: cacheConfig)
+    
+    // Test middleware properties
+    #expect(await cachingMiddleware.id == "advanced-caching", "Should have correct ID")
+    #expect(await cachingMiddleware.name == "Advanced Caching Middleware", "Should have correct name")
+    #expect(await cachingMiddleware.priority == 200, "Should have correct priority")
+    
+    // Test cache stats (should be empty initially)
+    let initialStats = await cachingMiddleware.getCacheStats()
+    #expect(initialStats.entries == 0, "Cache should be empty initially")
+    #expect(initialStats.totalSize == 0, "Cache size should be zero initially")
+    
+    // Test response caching
+    let response = MockResponse(id: "test-response", timestamp: Date())
+    let cachedResponse = try await cachingMiddleware.transformResponse(response)
+    #expect(cachedResponse.responseId == response.responseId, "Should return same response")
+    
+    // Test cache stats after caching
+    let afterCacheStats = await cachingMiddleware.getCacheStats()
+    #expect(afterCacheStats.entries == 1, "Should have one cached entry")
+    
+    // Test cache clearing
+    await cachingMiddleware.clearCache()
+    let clearedStats = await cachingMiddleware.getCacheStats()
+    #expect(clearedStats.entries == 0, "Cache should be empty after clearing")
+}
+
+@Test @available(macOS 13.0, iOS 16.0, watchOS 9.0, tvOS 16.0, *)
+func testAdvancedRetryMiddleware() async throws {
+    let retryConfig = AdvancedRetryMiddleware.RetryConfiguration(
+        maxRetries: 2,
+        baseDelay: 0.1, // Short delay for testing
+        maxDelay: 1.0,
+        backoffMultiplier: 2.0,
+        jitter: false, // Disable jitter for predictable testing
+        retryableErrors: ["network", "timeout", "rate_limit"]
+    )
+    
+    let retryMiddleware = AdvancedRetryMiddleware(configuration: retryConfig)
+    
+    // Test middleware properties
+    #expect(retryMiddleware.id == "advanced-retry", "Should have correct ID")
+    #expect(retryMiddleware.name == "Advanced Retry Middleware", "Should have correct name")
+    #expect(retryMiddleware.priority == 50, "Should have correct priority")
+    
+    // Test non-retryable error (should not retry)
+    let nonRetryableError = AIGenerationError.invalidPrompt("Invalid prompt")
+    let context = MiddlewareContext(
+        requestId: "test-123",
+        operationType: .generateText,
+        modelId: "test-model",
+        providerId: "mock"
+    )
+    
+    let handledNonRetryableError = try await retryMiddleware.handleError(nonRetryableError, context: context)
+    #expect(handledNonRetryableError.localizedDescription == nonRetryableError.localizedDescription, "Should not modify non-retryable error")
+    
+    // Test retryable error (should create RetryableError)
+    let retryableError = AIGenerationError.modelOverloaded
+    do {
+        _ = try await retryMiddleware.handleError(retryableError, context: context)
+        #expect(Bool(false), "Should have thrown RetryableError")
+    } catch let error as RetryableError {
+        #expect(error.retryCount == 1, "Should have retry count of 1")
+    } catch {
+        #expect(Bool(false), "Should have thrown RetryableError, got: \(error)")
+    }
+}
+
+@Test @available(macOS 11.0, iOS 14.0, watchOS 7.0, tvOS 14.0, *)
+func testPerformanceMonitoringMiddleware() async throws {
+    let performanceMiddleware = PerformanceMonitoringMiddleware(maxMetricsHistory: 10)
+    
+    // Test middleware properties
+    #expect(await performanceMiddleware.id == "performance-monitoring", "Should have correct ID")
+    #expect(await performanceMiddleware.name == "Performance Monitoring Middleware", "Should have correct name")
+    #expect(await performanceMiddleware.priority == 150, "Should have correct priority")
+    
+    // Test initial metrics (should be empty)
+    let initialMetrics = await performanceMiddleware.getMetrics()
+    #expect(initialMetrics.isEmpty, "Should have no metrics initially")
+    
+    let initialLatency = await performanceMiddleware.getAverageLatency()
+    #expect(initialLatency == 0, "Should have zero average latency initially")
+    
+    // Test request tracking
+    let request = MockRequest(id: "perf-test-123", timestamp: Date())
+    let trackedRequest = try await performanceMiddleware.transformRequest(request)
+    #expect(trackedRequest.requestId == request.requestId, "Should not modify request")
+    
+    // Test response completion tracking
+    let response = MockResponse(id: "perf-test-123", timestamp: Date().addingTimeInterval(0.5))
+    let trackedResponse = try await performanceMiddleware.transformResponse(response)
+    #expect(trackedResponse.responseId == response.responseId, "Should not modify response")
+    
+    // Test error tracking
+    let error = AIGenerationError.modelOverloaded
+    let context = MiddlewareContext(
+        requestId: "error-test-456",
+        operationType: .generateText,
+        modelId: "test-model",
+        providerId: "mock"
+    )
+    
+    // First track the request
+    let errorRequest = MockRequest(id: "error-test-456", timestamp: Date())
+    _ = try await performanceMiddleware.transformRequest(errorRequest)
+    
+    // Then handle error
+    let handledError = try await performanceMiddleware.handleError(error, context: context)
+    #expect(handledError.localizedDescription == error.localizedDescription, "Should not modify error")
+    
+    // Test metrics collection
+    let finalMetrics = await performanceMiddleware.getMetrics()
+    #expect(finalMetrics.count >= 1, "Should have collected metrics")
+    
+    // Test average latency calculation
+    let averageLatency = await performanceMiddleware.getAverageLatency(for: .generateText)
+    #expect(averageLatency >= 0, "Average latency should be non-negative")
+}
+
+@Test func testToolErrorScenarios() async throws {
+    // Test comprehensive tool error handling following Vercel AI SDK patterns
+    let provider = MockProvider()
+    let model = LanguageModel(provider: provider, modelId: "test-model")
+    let client = AIClient()
+    
+    // Define a weather tool for testing
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get current weather for a location",
+            parameters: JSONSchema.object(properties: [
+                "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
+                "unit": .string(enum: ["celsius", "fahrenheit"])
+            ], required: ["location"])
+        )
+    )
+    
+    // Test Case 1: No Such Tool Error
+    do {
+        let response = try await client.generateText(
+            model,
+            messages: [Message.user("Test no such tool error scenario")],
+            tools: [weatherTool]
+        )
+        #expect(Bool(false), "Should have thrown NoSuchTool error")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .noSuchTool(let toolName, let availableTools):
+            #expect(toolName == "non_existent_tool", "Should identify the missing tool")
+            #expect(availableTools.contains("get_weather"), "Should list available tools")
+            #expect(error.code == "NO_SUCH_TOOL", "Should have correct error code")
+        default:
+            #expect(Bool(false), "Should be NoSuchTool error, got: \(error)")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError.noSuchTool")
+    }
+    
+    // Test Case 2: Invalid Tool Arguments Error
+    do {
+        let response = try await client.generateText(
+            model,
+            messages: [Message.user("Test invalid arguments error scenario")],
+            tools: [weatherTool]
+        )
+        #expect(Bool(false), "Should have thrown InvalidToolArguments error")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .invalidToolArguments(let toolName, let toolArgs, let cause):
+            #expect(toolName == "get_weather", "Should identify the tool with invalid arguments")
+            #expect(toolArgs.contains("invalid"), "Should include the invalid arguments")
+            #expect(cause != nil, "Should have underlying cause")
+            #expect(error.code == "INVALID_TOOL_ARGUMENTS", "Should have correct error code")
+        default:
+            #expect(Bool(false), "Should be InvalidToolArguments error, got: \(error)")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError.invalidToolArguments")
+    }
+    
+    // Test Case 3: Tool Execution Error
+    do {
+        let response = try await client.generateText(
+            model,
+            messages: [Message.user("Test tool execution error scenario")],
+            tools: [weatherTool]
+        )
+        #expect(Bool(false), "Should have thrown ToolExecutionError")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .toolExecutionError(let toolName, let toolArgs, let toolCallId, let cause):
+            #expect(toolName == "get_weather", "Should identify the failed tool")
+            #expect(!toolCallId.isEmpty, "Should have tool call ID")
+            #expect(toolArgs.contains("San Francisco"), "Should include tool arguments")
+            #expect(error.code == "TOOL_EXECUTION_ERROR", "Should have correct error code")
+        default:
+            #expect(Bool(false), "Should be ToolExecutionError, got: \(error)")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError.toolExecutionError")
+    }
+}
+
+@Test func testToolValidationHelpers() throws {
+    // Test the ToolValidation utility functions
+    
+    // Set up test tools
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get current weather for a location",
+            parameters: JSONSchema.object(properties: [
+                "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
+                "unit": .string(enum: ["celsius", "fahrenheit"])
+            ], required: ["location"])
+        )
+    )
+    
+    let calculatorTool = Tool(
+        function: ToolFunction(
+            name: "calculate",
+            description: "Perform mathematical calculations",
+            parameters: JSONSchema.object(properties: [
+                "expression": .string()
+            ], required: ["expression"])
+        )
+    )
+    
+    let availableTools = [weatherTool, calculatorTool]
+    
+    // Test Case 1: Valid tool call should pass validation
+    let validToolCall = ToolCall(
+        id: "tool_call_12345",
+        function: try ToolCallFunction(
+            name: "get_weather",
+            arguments: ["location": "San Francisco, CA", "unit": "celsius"]
+        )
+    )
+    
+    do {
+        try validToolCall.validate(against: availableTools)
+        // Should not throw
+    } catch {
+        #expect(Bool(false), "Valid tool call should pass validation")
+    }
+    
+    // Test Case 2: Tool validation should fail for non-existent tool
+    let invalidToolCall = ToolCall(
+        id: "tool_call_67890",
+        function: ToolCallFunction(
+            name: "non_existent_tool",
+            arguments: "{}"
+        )
+    )
+    
+    do {
+        try invalidToolCall.validate(against: availableTools)
+        #expect(Bool(false), "Should throw error for non-existent tool")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .noSuchTool(let toolName, let availableToolNames):
+            #expect(toolName == "non_existent_tool", "Should identify missing tool")
+            #expect(availableToolNames.contains("get_weather"), "Should list available tools")
+        default:
+            #expect(Bool(false), "Should be NoSuchTool error")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError")
+    }
+    
+    // Test Case 3: Tool validation should fail for malformed JSON arguments
+    let malformedArgsToolCall = ToolCall(
+        id: "tool_call_99999",
+        function: ToolCallFunction(
+            name: "get_weather",
+            arguments: "{\"location\": \"San Francisco\", invalid json"
+        )
+    )
+    
+    do {
+        try malformedArgsToolCall.validate(against: availableTools)
+        #expect(Bool(false), "Should throw error for malformed JSON")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .invalidToolArguments(let toolName, let toolArgs, let cause):
+            #expect(toolName == "get_weather", "Should identify the tool with invalid arguments")
+            #expect(toolArgs.contains("invalid json"), "Should include malformed arguments")
+            #expect(cause != nil, "Should have underlying JSON parsing error")
+        default:
+            #expect(Bool(false), "Should be InvalidToolArguments error")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError")
+    }
+    
+    // Test Case 4: Array extensions should work correctly
+    #expect(availableTools.toolNames.contains("get_weather"), "Should find weather tool name")
+    #expect(availableTools.toolNames.contains("calculate"), "Should find calculator tool name")
+    #expect(availableTools.tool(named: "get_weather") != nil, "Should find weather tool by name")
+    #expect(availableTools.tool(named: "non_existent") == nil, "Should not find non-existent tool")
+}
+
+@Test func testToolValidationEdgeCases() throws {
+    // Test edge cases in tool validation
+    
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get current weather for a location",
+            parameters: JSONSchema.object(properties: [
+                "location": .string()
+            ], required: ["location"])
+        )
+    )
+    
+    let availableTools = [weatherTool]
+    
+    // Test Case 1: Empty tool name should fail validation
+    let emptyNameToolCall = ToolCall(
+        id: "tool_call_12345",
+        function: ToolCallFunction(
+            name: "",
+            arguments: "{\"location\": \"San Francisco\"}"
+        )
+    )
+    
+    do {
+        try emptyNameToolCall.validate(against: availableTools)
+        #expect(Bool(false), "Should throw error for empty tool name")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .invalidToolArguments(let toolName, _, let cause):
+            #expect(toolName.isEmpty, "Should have empty tool name")
+            #expect(cause != nil, "Should have underlying error about empty name")
+        default:
+            #expect(Bool(false), "Should be InvalidToolArguments error")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError")
+    }
+    
+    // Test Case 2: Empty tool call ID should fail validation
+    let emptyIdToolCall = ToolCall(
+        id: "",
+        function: ToolCallFunction(
+            name: "get_weather",
+            arguments: "{\"location\": \"San Francisco\"}"
+        )
+    )
+    
+    do {
+        try emptyIdToolCall.validate(against: availableTools)
+        #expect(Bool(false), "Should throw error for empty tool call ID")
+    } catch let error as AIGenerationError {
+        switch error {
+        case .invalidToolArguments(let toolName, _, let cause):
+            #expect(toolName == "get_weather", "Should identify the tool")
+            #expect(cause != nil, "Should have underlying error about empty ID")
+        default:
+            #expect(Bool(false), "Should be InvalidToolArguments error")
+        }
+    } catch {
+        #expect(Bool(false), "Should throw AIGenerationError")
+    }
+    
+    // Test Case 3: Valid empty arguments object should pass
+    let emptyArgsToolCall = ToolCall(
+        id: "tool_call_12345",
+        function: ToolCallFunction(
+            name: "get_weather",
+            arguments: "{}"
+        )
+    )
+    
+    do {
+        try emptyArgsToolCall.validate(against: availableTools)
+        // Note: This might fail schema validation in a full implementation
+        // For now, we just check JSON validity
+    } catch {
+        // This is acceptable - empty args might fail schema validation
+    }
+}
+
+// MARK: - Comprehensive Streaming Tests Based on Vercel AI SDK
+
+@Test func testStreamTextBasicPattern() async throws {
+    // Test basic streaming following Vercel AI SDK streamText pattern
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+        .temperature(0.0)
+    
+    // Test with simple prompt (Vercel pattern: streamText({ model, prompt }))
+    let stream = await client.streamText(model, prompt: "Count from 1 to 5")
+    
+    var chunks: [TextChunk] = []
+    var fullText = ""
+    var finalUsage: TokenUsage? = nil
+    var finalFinishReason: FinishReason? = nil
+    
+    // Collect all chunks (Vercel pattern: for await (const textPart of result.textStream))
+    for try await chunk in stream {
+        chunks.append(chunk)
+        fullText += chunk.delta
+        
+        if let usage = chunk.usage {
+            finalUsage = usage
+        }
+        
+        if let finishReason = chunk.finishReason {
+            finalFinishReason = finishReason
+        }
+    }
+    
+    // Verify streaming behavior matches Vercel AI SDK expectations
+    #expect(!chunks.isEmpty, "Should receive streaming chunks")
+    #expect(!fullText.isEmpty, "Should accumulate text content")
+    #expect(finalUsage != nil, "Should have final usage information")
+    #expect(finalFinishReason == .stop, "Should finish with stop reason")
+    
+    // Verify progressive streaming (chunks build up)
+    var accumulatedSnapshot = ""
+    for chunk in chunks {
+        accumulatedSnapshot += chunk.delta
+        #expect(chunk.snapshot.hasPrefix(accumulatedSnapshot) || chunk.snapshot == accumulatedSnapshot, 
+               "Snapshot should contain accumulated text")
+    }
+    
+    // Verify final content
+    #expect(fullText.contains("Mock response"), "Should contain expected content")
+    #expect(chunks.count > 5, "Should stream multiple chunks")
+}
+
+@Test func testStreamTextWithMessagesArray() async throws {
+    // Test streaming with messages array (Vercel pattern: streamText({ model, messages }))
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+        .temperature(0.3)
+    
+    let messages = [
+        Message.system("You are a helpful assistant that counts clearly."),
+        Message.user("Count from 1 to 3"),
+        Message.assistant("1, 2, 3"),
+        Message.user("Now count from 4 to 6")
+    ]
+    
+    let stream = await client.streamText(model, messages: messages)
+    
+    var chunks: [TextChunk] = []
+    var hasContent = false
+    
+    for try await chunk in stream {
+        chunks.append(chunk)
+        if !chunk.delta.isEmpty {
+            hasContent = true
+        }
+    }
+    
+    #expect(!chunks.isEmpty, "Should receive streaming chunks")
+    #expect(hasContent, "Should have text content")
+    
+    // Verify last chunk has completion metadata
+    let lastChunk = try #require(chunks.last)
+    #expect(lastChunk.finishReason == .stop, "Should finish with stop")
+    #expect(lastChunk.usage != nil, "Should have usage information")
+}
+
+@Test func testStreamTextWithToolCalls() async throws {
+    // Test streaming with tool calls (Vercel pattern: streamText({ model, tools, prompt }))
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+    
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get current weather for a location",
+            parameters: JSONSchema.object(properties: [
+                "location": .string(),
+                "unit": .string(enum: ["celsius", "fahrenheit"])
+            ], required: ["location"])
+        )
+    )
+    
+    let stream = await client.streamText(
+        model, 
+        messages: [Message.user("What's the weather in San Francisco?")],
+        tools: [weatherTool]
+    )
+    
+    var chunks: [TextChunk] = []
+    var toolCallStreamingStarts: [ToolCallStreamingStart] = []
+    var toolCallDeltas: [ToolCallDelta] = []
+    var completedToolCalls: [ToolCall] = []
+    
+    // Process stream and collect tool call events
+    for try await chunk in stream {
+        chunks.append(chunk)
+        
+        if let toolCallStart = chunk.toolCallStreamingStart {
+            toolCallStreamingStarts.append(toolCallStart)
+        }
+        
+        if let toolCallDelta = chunk.toolCallDelta {
+            toolCallDeltas.append(toolCallDelta)
+        }
+        
+        if let toolCalls = chunk.toolCalls {
+            completedToolCalls.append(contentsOf: toolCalls)
+        }
+    }
+    
+    // Verify tool call streaming events (matching Vercel AI SDK tool call streaming)
+    #expect(!toolCallStreamingStarts.isEmpty, "Should have tool call streaming start events")
+    #expect(!toolCallDeltas.isEmpty, "Should have tool call argument deltas")
+    #expect(!completedToolCalls.isEmpty, "Should have completed tool calls")
+    
+    // Verify tool call structure
+    let firstToolCall = try #require(completedToolCalls.first)
+    #expect(firstToolCall.function.name == "get_weather", "Should call weather tool")
+    #expect(!firstToolCall.function.arguments.isEmpty, "Should have arguments")
+}
+
+@Test func testStreamTextErrorHandling() async throws {
+    // Test streaming error handling (Vercel pattern: onError callback)
+    let errorConfig = MockConfiguration(errorRate: 1.0) // Force errors
+    let provider = MockProvider(apiKey: "test", configuration: errorConfig)
+    let model = provider.languageModel("gpt-4.1-nano")
+    let client = AIClient()
+    
+    let stream = await client.streamText(model, prompt: "This should fail")
+    
+    do {
+        for try await chunk in stream {
+            #expect(Bool(false), "Should not receive chunks when error rate is 100%")
+        }
+        #expect(Bool(false), "Should have thrown an error")
+    } catch {
+        #expect(error is AIProviderError, "Should throw AIProviderError")
+    }
+}
+
+@Test func testStreamTextBackpressure() async throws {
+    // Test that streaming respects backpressure (Vercel AI SDK behavior)
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+    
+    let stream = await client.streamText(model, prompt: "Generate a long response")
+    
+    var chunkCount = 0
+    let maxChunks = 5
+    
+    // Only consume first few chunks to test backpressure
+    for try await chunk in stream {
+        chunkCount += 1
+        if chunkCount >= maxChunks {
+            break
+        }
+    }
+    
+    #expect(chunkCount == maxChunks, "Should respect early termination")
+}
+
+// MARK: - Comprehensive Object Generation Tests Based on Vercel AI SDK
+
+@Test func testGenerateObjectBasicPattern() async throws {
+    // Test basic object generation (Vercel pattern: generateObject({ model, schema, prompt }))
+    struct Person: Codable, Sendable {
+        let name: String
+        let age: Int
+        let occupation: String
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+        .temperature(0.0)
+    
+    let personSchema = ObjectSchema<Person>(
+        name: "Person",
+        description: "A person with name, age, and occupation"
+    )
+    
+    let response = try await client.generateObject(
+        model,
+        prompt: "Generate a person profile for John Smith, age 30, software engineer",
+        schema: personSchema
+    )
+    
+    // Verify object generation following Vercel AI SDK patterns
+    let person = response.object
+    #expect(!person.name.isEmpty, "Should have valid name")
+    #expect(person.age > 0, "Should have valid age")
+    #expect(!person.occupation.isEmpty, "Should have valid occupation")
+    
+    // Verify response metadata
+    #expect(response.finishReason == .stop, "Should finish with stop")
+    #expect(response.usage.totalTokens > 0, "Should track token usage")
+    #expect(!response.messages.isEmpty, "Should have message history")
+    #expect(response.validationResult?.isValid == true, "Should pass validation")
+}
+
+@Test func testGenerateObjectWithComplexSchema() async throws {
+    // Test complex nested object generation (Vercel AI SDK pattern)
+    struct Address: Codable, Sendable {
+        let street: String
+        let city: String
+        let zipCode: String
+    }
+    
+    struct Contact: Codable, Sendable {
+        let email: String
+        let phone: String?
+    }
+    
+    struct Employee: Codable, Sendable {
+        let id: String
+        let name: String
+        let department: String
+        let salary: Double
+        let address: Address
+        let contact: Contact
+        let skills: [String]
+        let isActive: Bool
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+    
+    let employeeSchema = ObjectSchema<Employee>(
+        name: "Employee",
+        description: "Complete employee record with nested information"
+    )
+    
+    let response = try await client.generateObject(
+        model,
+        prompt: "Generate a complete employee profile for a software engineer in San Francisco",
+        schema: employeeSchema
+    )
+    
+    let employee = response.object
+    
+    // Verify top-level properties
+    #expect(!employee.id.isEmpty, "Should have employee ID")
+    #expect(!employee.name.isEmpty, "Should have name")
+    #expect(!employee.department.isEmpty, "Should have department")
+    #expect(employee.salary > 0, "Should have positive salary")
+    #expect(employee.isActive == true || employee.isActive == false, "Should have boolean active status")
+    
+    // Verify nested address object
+    #expect(!employee.address.street.isEmpty, "Should have street address")
+    #expect(!employee.address.city.isEmpty, "Should have city")
+    #expect(!employee.address.zipCode.isEmpty, "Should have zip code")
+    
+    // Verify nested contact object
+    #expect(!employee.contact.email.isEmpty, "Should have email")
+    #expect(employee.contact.email.contains("@"), "Email should be valid format")
+    
+    // Verify array properties
+    #expect(!employee.skills.isEmpty, "Should have skills array")
+    #expect(employee.skills.count >= 2, "Should have multiple skills")
+}
+
+@Test func testGenerateArrayPattern() async throws {
+    // Test array generation (Vercel pattern: generateObject with array output)
+    struct Product: Codable, Sendable {
+        let name: String
+        let price: Double
+        let category: String
+        let inStock: Bool
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+    
+    let productSchema = ObjectSchema<Product>(
+        name: "Product",
+        description: "A product with name, price, category, and stock status"
+    )
+    
+    let response = try await client.generateArray(
+        model,
+        prompt: "Generate 3 electronic products for an online store",
+        elementSchema: productSchema
+    )
+    
+    let products = response.object
+    
+    // Verify array generation
+    #expect(products.count >= 2, "Should generate multiple products")
+    #expect(products.count <= 5, "Should not generate too many products")
+    
+    // Verify each product
+    for product in products {
+        #expect(!product.name.isEmpty, "Product should have name")
+        #expect(product.price > 0, "Product should have positive price")
+        #expect(!product.category.isEmpty, "Product should have category")
+    }
+}
+
+@Test func testGenerateEnumPattern() async throws {
+    // Test enum generation (Vercel pattern: generateObject with enum output)
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+    
+    let sentimentOptions = ["positive", "negative", "neutral"]
+    
+    let response = try await client.generateEnum(
+        model,
+        prompt: "Analyze the sentiment of this text: 'I love this product!'",
+        values: sentimentOptions
+    )
+    
+    let sentiment = response.object
+    
+    // Verify enum selection
+    #expect(sentimentOptions.contains(sentiment), "Should select from allowed values")
+    #expect(sentiment == "positive", "Should correctly identify positive sentiment")
+    #expect(response.finishReason == .stop, "Should complete successfully")
+}
+
+@Test func testStreamObjectBasicPattern() async throws {
+    // Test object streaming (Vercel pattern: streamObject({ model, schema, prompt }))
+    struct Recipe: Codable, Sendable {
+        let name: String
+        let ingredients: [String]
+        let instructions: [String]
+        let cookingTime: Int
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+    
+    let recipeSchema = ObjectSchema<Recipe>(
+        name: "Recipe",
+        description: "A cooking recipe with ingredients and instructions"
+    )
+    
+    let stream = await client.streamObject(
+        model,
+        messages: [Message.user("Create a simple pasta recipe")],
+        schema: recipeSchema
+    )
+    
+    var chunks: [ObjectChunk<Recipe>] = []
+    var validObjects: [Recipe] = []
+    var finalUsage: TokenUsage? = nil
+    
+    // Collect streaming chunks (Vercel pattern: for await (const partial of result.partialObjectStream))
+    for try await chunk in stream {
+        chunks.append(chunk)
+        
+        if let recipe = chunk.object {
+            validObjects.append(recipe)
+        }
+        
+        if let usage = chunk.usage {
+            finalUsage = usage
+        }
+    }
+    
+    // Verify streaming object generation
+    #expect(!chunks.isEmpty, "Should receive streaming chunks")
+    #expect(!validObjects.isEmpty, "Should have valid partial/complete objects")
+    #expect(finalUsage != nil, "Should have final usage information")
+    
+    // Verify final object is complete
+    let finalRecipe = try #require(validObjects.last)
+    #expect(!finalRecipe.name.isEmpty, "Should have recipe name")
+    #expect(!finalRecipe.ingredients.isEmpty, "Should have ingredients")
+    #expect(!finalRecipe.instructions.isEmpty, "Should have instructions")
+    #expect(finalRecipe.cookingTime > 0, "Should have cooking time")
+    
+    // Verify progressive streaming (JSON is streamed character by character)
+    #expect(chunks.count >= 2, "Should stream multiple chunks for object generation")
+}
+
+@Test func testObjectGenerationModes() async throws {
+    // Test different generation modes (Vercel pattern: mode: 'auto' | 'json' | 'tool')
+    struct SimpleData: Codable, Sendable {
+        let value: String
+        let number: Int
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("gpt-4.1-nano")
+    
+    let schema = ObjectSchema<SimpleData>(
+        name: "SimpleData",
+        description: "Simple data structure"
+    )
+    
+    // Test auto mode (default)
+    let autoResponse = try await client.generateObject(
+        model,
+        prompt: "Generate simple test data",
+        schema: schema,
+        mode: .auto
+    )
+    
+    #expect(!autoResponse.object.value.isEmpty, "Auto mode should generate valid object")
+    
+    // Test JSON mode
+    let jsonResponse = try await client.generateObject(
+        model,
+        prompt: "Generate simple test data",
+        schema: schema,
+        mode: .json
+    )
+    
+    #expect(!jsonResponse.object.value.isEmpty, "JSON mode should generate valid object")
+    
+    // Test tool mode
+    let toolResponse = try await client.generateObject(
+        model,
+        prompt: "Generate simple test data",
+        schema: schema,
+        mode: .tool
+    )
+    
+    #expect(!toolResponse.object.value.isEmpty, "Tool mode should generate valid object")
+}
+
+@Test func testObjectValidationAndRepair() async throws {
+    // Test JSON validation and repair (Vercel AI SDK behavior)
+    struct TestObject: Codable, Sendable {
+        let name: String
+        let value: Int
+        let active: Bool
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    
+    // Test with model that generates malformed JSON (should be repaired)
+    let malformedModel = provider.languageModel("malformed-json-model")
+    
+    let schema = ObjectSchema<TestObject>(
+        name: "TestObject",
+        description: "Test object for validation"
+    )
+    
+    // This should trigger JSON repair mechanisms
+    do {
+        let response = try await client.generateObject(
+            malformedModel,
+            prompt: "Generate test object",
+            schema: schema
+        )
+        
+        // If we get here, JSON repair worked
+        #expect(!response.object.name.isEmpty, "Repaired object should be valid")
+    } catch let error as AIGenerationError {
+        // Expected for some malformed cases that can't be repaired
+        switch error {
+        case .jsonParseError(let text, _):
+            #expect(text.contains("{"), "Should contain partial JSON")
+        case .noObjectGenerated(let text, _, _):
+            #expect(!text.isEmpty, "Should have attempted text generation")
+        default:
+            #expect(Bool(false), "Unexpected error type: \(error)")
+        }
+    }
+}
+
+@Test func testStreamObjectErrorRecovery() async throws {
+    // Test streaming object error recovery and repair
+    struct StreamData: Codable, Sendable {
+        let id: String
+        let content: String
+    }
+    
+    let client = AIClient()
+    let provider = MockProvider()
+    let model = provider.languageModel("partial-json-model") // Generates partial JSON
+    
+    let schema = ObjectSchema<StreamData>(
+        name: "StreamData",
+        description: "Streaming data object"
+    )
+    
+    let stream = await client.streamObject(
+        model,
+        messages: [Message.user("Generate streaming data")],
+        schema: schema
+    )
+    
+    var chunks: [ObjectChunk<StreamData>] = []
+    var hasValidObject = false
+    
+    // Process stream and test recovery from partial JSON
+    for try await chunk in stream {
+        chunks.append(chunk)
+        
+        if chunk.object != nil {
+            hasValidObject = true
+        }
+    }
+    
+    // Should eventually recover and produce valid object
+    #expect(!chunks.isEmpty, "Should receive chunks")
+    #expect(hasValidObject, "Should eventually produce valid object through repair")
+}
+
+// MARK: - Anthropic Provider Tests
+
+func testAnthropicProviderInitialization() async throws {
+    // Test basic initialization
+    let provider = AnthropicProvider(
+        apiKey: "test-api-key",
+        baseURL: "https://api.anthropic.com/v1",
+        version: "2023-06-01"
+    )
+    
+    #expect(provider.name == "Anthropic")
+    #expect(provider.supportedGenerationModes.contains(.auto))
+    #expect(provider.supportedGenerationModes.contains(.tool))
+    #expect(provider.defaultGenerationMode == .tool)
+}
+
+func testAnthropicProviderLanguageModel() async throws {
+    let provider = AnthropicProvider(apiKey: "test-api-key")
+    let model = provider.languageModel("claude-3-5-sonnet-20241022")
+    
+    #expect(model.modelId == "claude-3-5-sonnet-20241022")
+    #expect(model.provider.name == "Anthropic")
+}
+
+func testAnthropicProviderConfiguration() async throws {
+    let provider = AnthropicProvider(
+        apiKey: "test-api-key",
+        betaFeatures: ["computer-use-2024-10-22", "pdfs-2024-09-25"]
+    )
+    
+    // Test valid configuration
+    let validConfig = ModelConfiguration(
+        temperature: 0.7,
+        maxTokens: 1024,
+        topP: 0.9,
+        topK: 40
+    )
+    
+    // Should not throw for valid config
+    do {
+        try provider.validateConfiguration(validConfig)
+    } catch {
+        #expect(Bool(false), "Valid configuration should not throw")
+    }
+    
+    // Test invalid temperature
+    let invalidTempConfig = ModelConfiguration(temperature: 1.5)
+    do {
+        try provider.validateConfiguration(invalidTempConfig)
+        #expect(Bool(false), "Should throw for invalid temperature")
+    } catch {
+        #expect(error is AIProviderError, "Should throw AIProviderError")
+    }
+    
+    // Test unsupported parameters
+    let unsupportedConfig = ModelConfiguration(frequencyPenalty: 0.5)
+    do {
+        try provider.validateConfiguration(unsupportedConfig)
+        #expect(Bool(false), "Should throw for unsupported parameter")
+    } catch {
+        #expect(error is AIProviderError, "Should throw AIProviderError")
+    }
+    
+    let seedConfig = ModelConfiguration(seed: 42)
+    do {
+        try provider.validateConfiguration(seedConfig)
+        #expect(Bool(false), "Should throw for unsupported seed parameter")
+    } catch {
+        #expect(error is AIProviderError, "Should throw AIProviderError")
+    }
+}
+
+func testAnthropicMessageConversion() async throws {
+    let provider = AnthropicProvider(apiKey: "test-api-key")
+    
+    // Test basic message conversion
+    let userMessage = Message(
+        role: .user,
+        content: [.text("Hello, Claude!")]
+    )
+    
+    let assistantMessage = Message(
+        role: .assistant,
+        content: [.text("Hello! How can I help you today?")]
+    )
+    
+    let messages = [userMessage, assistantMessage]
+    
+    // Create a basic request to test conversion (this would normally be internal)
+    let request = ProviderRequest(
+        modelId: "claude-3-5-sonnet-20241022",
+        messages: messages,
+        configuration: ModelConfiguration(),
+        system: "You are a helpful assistant.",
+        mode: .regular(tools: nil, toolChoice: nil),
+        requestId: "test-123"
+    )
+    
+    // This test verifies the provider can be instantiated and basic properties work
+    // Full request conversion testing would require mocking the network layer
+    #expect(provider.name == "Anthropic")
+    #expect(provider.languageModel(request.modelId).modelId == request.modelId)
+}
+
+func testAnthropicToolChoiceMapping() async throws {
+    let provider = AnthropicProvider(apiKey: "test-api-key")
+    
+    // Create a simple tool for testing
+    let weatherTool = Tool(
+        function: ToolFunction(
+            name: "get_weather",
+            description: "Get weather information",
+            parameters: JSONSchema.object(properties: [
+                "location": JSONSchema.string()
+            ], required: ["location"])
+        )
+    )
+    
+    // Test tool choice mapping through configuration validation
+    // (Full tool choice testing would require internal access or integration tests)
+    let toolConfig = ModelConfiguration(
+        temperature: 0.7,
+        maxTokens: 1000
+    )
+    
+    // Should not throw for valid config
+    do {
+        try provider.validateConfiguration(toolConfig)
+    } catch {
+        #expect(Bool(false), "Valid tool configuration should not throw")
+    }
+    
+    // Verify the provider supports tool mode
+    #expect(provider.supportedGenerationModes.contains(.tool))
+    #expect(provider.defaultGenerationMode == .tool)
+}

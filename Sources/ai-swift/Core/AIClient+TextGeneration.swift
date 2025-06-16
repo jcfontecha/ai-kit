@@ -29,11 +29,21 @@ public extension AIClient {
         
         for stepIndex in 0..<maxSteps {
             // 1. Create provider request for this step
+            // Following Vercel AI SDK pattern: set toolChoice to 'auto' when tools are provided
+            let mode: ProviderMode = {
+                if let tools = tools, !tools.isEmpty {
+                    return .regular(tools: tools, toolChoice: .auto)
+                } else {
+                    return .regular(tools: nil, toolChoice: nil)
+                }
+            }()
+            
             let request = ProviderRequest(
                 modelId: model.modelId,
                 messages: currentMessages,
                 configuration: model.configuration,
-                tools: tools
+                tools: tools,
+                mode: mode
             )
             
             // 2. Apply request middleware
@@ -69,8 +79,24 @@ public extension AIClient {
                         toolResults.append(result)
                     }
                     
-                    // Step 3: Add tool results to conversation
-                    currentMessages.append(Message.assistant(providerResponse.content))
+                    // Step 3: Add assistant message with tool calls, then tool results to conversation
+                    // Create assistant message with both text content and tool calls if text exists
+                    let assistantContent: [MessageContent]
+                    if !providerResponse.content.isEmpty {
+                        // Include both text and tool calls
+                        assistantContent = [.text(providerResponse.content)] + toolCalls.map { .toolCall($0) }
+                    } else {
+                        // Just tool calls
+                        assistantContent = toolCalls.map { .toolCall($0) }
+                    }
+                    
+                    let assistantMessage = Message(
+                        role: .assistant,
+                        content: assistantContent,
+                        toolCalls: toolCalls
+                    )
+                    currentMessages.append(assistantMessage)
+                    
                     for result in toolResults {
                         currentMessages.append(Message.tool(result: result))
                     }
@@ -87,7 +113,22 @@ public extension AIClient {
                     continue
                 } else {
                     // No more steps available, return with tool calls
-                    currentMessages.append(Message.assistant(providerResponse.content))
+                    // Create assistant message with both text content and tool calls if text exists
+                    let assistantContent: [MessageContent]
+                    if !providerResponse.content.isEmpty {
+                        // Include both text and tool calls
+                        assistantContent = [.text(providerResponse.content)] + toolCalls.map { .toolCall($0) }
+                    } else {
+                        // Just tool calls
+                        assistantContent = toolCalls.map { .toolCall($0) }
+                    }
+                    
+                    let assistantMessage = Message(
+                        role: .assistant,
+                        content: assistantContent,
+                        toolCalls: toolCalls
+                    )
+                    currentMessages.append(assistantMessage)
                     
                     let textResponse = TextResponse(
                         text: providerResponse.content,
