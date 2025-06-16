@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import ai_swift
+@testable import AISwift
 
 // This file serves as the main test entry point for the ai-swift package.
 // 

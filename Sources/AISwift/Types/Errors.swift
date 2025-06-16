@@ -78,7 +78,7 @@ public enum AIGenerationError: AIError {
     case unexpectedResponse(String)
     case streamingError(Error)
     case toolExecutionFailed(toolName: String, error: Error)
-    case schemaValidationFailed([ai_swift.ValidationError])
+    case schemaValidationFailed([ValidationError])
     case objectParsingFailed(String)
     
     // Enhanced object generation errors following Vercel AI SDK patterns

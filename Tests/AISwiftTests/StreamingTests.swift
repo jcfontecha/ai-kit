@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import ai_swift
+@testable import AISwift
 
 @Test func testBasicStreaming() async throws {
     // Test basic streaming functionality using provider directly

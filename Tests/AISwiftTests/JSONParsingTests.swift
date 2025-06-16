@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import ai_swift
+@testable import AISwift
 
 /// Comprehensive unit tests for JSON parsing and extraction utilities
 /// 

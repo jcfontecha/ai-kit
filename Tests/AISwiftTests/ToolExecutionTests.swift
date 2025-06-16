@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import ai_swift
+@testable import AISwift
 
 @Test func testTextGenerationWithToolCalling() async throws {
     // Test text generation with tool calling integration

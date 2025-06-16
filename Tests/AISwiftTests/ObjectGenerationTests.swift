@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import ai_swift
+@testable import AISwift
 
 @Test func testBasicObjectSchema() {
     // Test object schema creation and validation for future object generation

@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import ai_swift
+@testable import AISwift
 
 @Test func testBasicTextGeneration() async throws {
     // Test basic text generation functionality using provider directly
