@@ -9,10 +9,10 @@ import Foundation
 // MARK: - Public Module Interface
 
 // Re-export core types for convenient access
-public typealias AI = AISwift
+public typealias AI = AIKit
 
 /// Main namespace for the AI Swift SDK
-public enum AISwift {
+public enum AIKit {
     
     // MARK: - Client Factory
     
@@ -58,7 +58,7 @@ public enum AISwift {
     
     /// Calculate cosine similarity between two embeddings
     public static func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
-        fatalError("AISwift.cosineSimilarity not implemented")
+        fatalError("AIKit.cosineSimilarity not implemented")
     }
     
     /// Generate a unique ID for requests
@@ -100,7 +100,7 @@ public enum AISwift {
 
 // MARK: - Version Information
 
-public extension AISwift {
+public extension AIKit {
     /// SDK version information
     static let version = "1.0.0"
     

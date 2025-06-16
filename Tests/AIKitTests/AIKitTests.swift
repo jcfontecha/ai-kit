@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import AISwift
+@testable import AIKit
 
 // This file serves as the main test entry point for the ai-swift package.
 // 
@@ -17,9 +17,9 @@ import Foundation
 
 @Test func testPackageImport() {
     // Basic smoke test to ensure the package imports correctly
-    _ = AISwift.client()
+    _ = AIKit.client()
     #expect(Bool(true)) // Client creation succeeded
     
-    let provider = AISwift.mockProvider()
+    let provider = AIKit.mockProvider()
     #expect(provider.name == "Mock Provider", "Should create mock provider")
 }

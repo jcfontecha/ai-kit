@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import AISwift
+@testable import AIKit
 
 @Test func testBasicObjectSchema() {
     // Test object schema creation and validation for future object generation
@@ -46,8 +46,8 @@ import Foundation
 
 @Test func testAIClientGenerateObject() async throws {
     // TRUE TDD: This test should FAIL first - AIClient.generateObject not implemented
-    let client = AISwift.client()
-    let provider = AISwift.mockProvider()
+    let client = AIKit.client()
+    let provider = AIKit.mockProvider()
     let model = provider.languageModel("mock-gpt-4")
     
     // Define a simple test object

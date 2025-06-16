@@ -1,15 +1,15 @@
 import Testing
 import Foundation
-@testable import AISwift
+@testable import AIKit
 
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 @Test func testNewArchitecture() async throws {
     // Test creating an AI client
-    let client = AISwift.client()
+    let client = AIKit.client()
     #expect(client != nil)
     
     // Test creating a mock provider
-    let provider = AISwift.mockProvider()
+    let provider = AIKit.mockProvider()
     #expect(provider.name == "Mock Provider")
     
     // Test creating a language model
@@ -86,7 +86,7 @@ import Foundation
 
 @Test func testProviderBasicFunctionality() async throws {
     // Test basic provider creation and properties
-    let provider = AISwift.mockProvider()
+    let provider = AIKit.mockProvider()
     
     // Test provider properties
     #expect(provider.name == "Mock Provider")

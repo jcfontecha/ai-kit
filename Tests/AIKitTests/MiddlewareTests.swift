@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import AISwift
+@testable import AIKit
 
 @Test func testMiddlewareChain() async throws {
     // Test that middleware chain is properly executed during text generation

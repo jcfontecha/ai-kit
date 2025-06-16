@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import AISwift
+@testable import AIKit
 
 // MARK: - Configuration Reader for Anthropic
 

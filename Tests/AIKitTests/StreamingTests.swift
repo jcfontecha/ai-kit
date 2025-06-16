@@ -1,10 +1,10 @@
 import Testing
 import Foundation
-@testable import AISwift
+@testable import AIKit
 
 @Test func testBasicStreaming() async throws {
     // Test basic streaming functionality using provider directly
-    let provider = AISwift.mockProvider()
+    let provider = AIKit.mockProvider()
     
     let request = ProviderRequest(
         modelId: "mock-gpt-4",
@@ -87,8 +87,8 @@ import Foundation
 
 @Test func testAIClientStreamText() async throws {
     // TRUE TDD: This test should FAIL first - AIClient.streamText not implemented
-    let client = AISwift.client()
-    let provider = AISwift.mockProvider()
+    let client = AIKit.client()
+    let provider = AIKit.mockProvider()
     let model = provider.languageModel("mock-gpt-4")
     
     // This will fail until we implement AIClient.streamText

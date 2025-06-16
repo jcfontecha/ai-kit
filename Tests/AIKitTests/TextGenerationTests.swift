@@ -1,10 +1,10 @@
 import Testing
 import Foundation
-@testable import AISwift
+@testable import AIKit
 
 @Test func testBasicTextGeneration() async throws {
     // Test basic text generation functionality using provider directly
-    let provider = AISwift.mockProvider()
+    let provider = AIKit.mockProvider()
     
     // Test simple text generation
     let request = ProviderRequest(
@@ -39,7 +39,7 @@ import Foundation
 
 @Test func testConversationHistory() async throws {
     // Test conversation history handling with multiple messages
-    let provider = AISwift.mockProvider()
+    let provider = AIKit.mockProvider()
     
     // Create a conversation with multiple turns
     let conversationMessages = [
@@ -80,7 +80,7 @@ import Foundation
 
 @Test func testCustomParameterConfiguration() async throws {
     // Test various parameter configurations and their impact on generation
-    let provider = AISwift.mockProvider()
+    let provider = AIKit.mockProvider()
     
     // Test with different temperature settings
     let creativeCconfiguration = ModelConfiguration.default
@@ -147,8 +147,8 @@ import Foundation
 
 @Test func testAIClientTextGeneration() async throws {
     // TRUE TDD: This test should FAIL first, then we implement to make it pass
-    let client = AISwift.client()
-    let provider = AISwift.mockProvider()
+    let client = AIKit.client()
+    let provider = AIKit.mockProvider()
     let model = provider.languageModel("mock-gpt-4")
     
     // This will fail until we implement AIClient.generateText

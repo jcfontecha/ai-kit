@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import AISwift
+@testable import AIKit
 
 @Test func testConfigurationValidation() async throws {
     // Test configuration validation in mock provider with strict validation
