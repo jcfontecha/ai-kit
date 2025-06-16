@@ -40,9 +40,10 @@ public struct ToolValidation {
             
             let _ = try JSONSerialization.jsonObject(with: argumentsData, options: [])
             
-            // TODO: Add comprehensive JSON schema validation
-            // For now, we just validate that it's valid JSON
-            // In a full implementation, we would validate against tool.function.parameters schema
+            // Note: Comprehensive JSON schema validation is available via SchemaValidator protocol
+            // but requires a validator implementation to be provided. For now, we validate JSON syntax only.
+            // To add schema validation, implement SchemaValidator and call:
+            // let result = try validator.validate(argumentsData, against: tool.function.parameters)
             
         } catch let jsonError {
             throw AIGenerationError.invalidToolArguments(

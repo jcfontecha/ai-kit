@@ -817,6 +817,46 @@ extension MockProvider: ExtendedAIProvider {
         ]
         """
         
+        // TodoItems array (for todo list generation tests)
+        let todoListJSON = """
+        [
+            {
+                "id": 1,
+                "task": "Morning exercise routine",
+                "completed": false
+            },
+            {
+                "id": 2, 
+                "task": "Review daily goals",
+                "completed": false
+            },
+            {
+                "id": 3,
+                "task": "Prepare healthy breakfast",
+                "completed": false
+            }
+        ]
+        """
+        
+        // Task object (for enum pattern tests)
+        let taskJSON = """
+        {
+            "title": "Fix critical authentication bug",
+            "priority": "urgent",
+            "estimatedHours": 4
+        }
+        """
+        
+        // WeatherReport object (for weather streaming tests)
+        let weatherReportJSON = """
+        {
+            "location": "San Francisco",
+            "temperature": 72,
+            "condition": "Partly cloudy",
+            "humidity": 65
+        }
+        """
+        
         // SimpleData object (for generation modes tests)
         let simpleDataJSON = """
         {
@@ -827,7 +867,13 @@ extension MockProvider: ExtendedAIProvider {
         
         // Choose appropriate JSON based on prompt or model and generation mode
         let selectedJSON: String
-        if prompt.lowercased().contains("vegetarian") || prompt.lowercased().contains("primavera") {
+        if prompt.lowercased().contains("todo") || prompt.lowercased().contains("daily routine") {
+            selectedJSON = todoListJSON // TodoItems array for testGenerateArrayPattern
+        } else if prompt.lowercased().contains("bug fix") || prompt.lowercased().contains("critical") || prompt.lowercased().contains("task") {
+            selectedJSON = taskJSON // Task object for testGenerateEnumPattern
+        } else if prompt.lowercased().contains("weather") || name == "WeatherReport" {
+            selectedJSON = weatherReportJSON // WeatherReport for testStreamObjectBasicPattern
+        } else if prompt.lowercased().contains("vegetarian") || prompt.lowercased().contains("primavera") {
             selectedJSON = mockJSONOptions[0] // Complex Recipe
         } else if (prompt.lowercased().contains("user") || prompt.lowercased().contains("profile")) && !prompt.lowercased().contains("person") && !prompt.lowercased().contains("employee") {
             selectedJSON = mockJSONOptions[1] // UserProfile

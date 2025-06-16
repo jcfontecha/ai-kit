@@ -20,11 +20,16 @@ internal extension AIClient {
         
         // Create middleware chain and execute request transformation
         let chain = MiddlewareChain(middlewares: middleware)
+        
+        // Extract available context information
+        let modelId = (request as? ProviderRequest)?.modelId ?? "unknown"
+        let operationType: OperationType = .generateText // Context: called from generateText operations
+        
         let context = MiddlewareContext(
             requestId: request.requestId,
-            operationType: .generateText, // TODO: determine actual operation type
-            modelId: "unknown", // TODO: extract from request context
-            providerId: "unknown" // TODO: extract from provider
+            operationType: operationType,
+            modelId: modelId,
+            providerId: "unknown" // Note: Provider ID not available in request - would need client context
         )
         
         return try await chain.transformRequest(request, context: context)
@@ -45,11 +50,16 @@ internal extension AIClient {
         
         // Create middleware chain and execute response transformation
         let chain = MiddlewareChain(middlewares: middleware)
+        
+        // Extract available context information  
+        let operationType: OperationType = .generateText // Context: called from generateText operations
+        // Note: Model ID not available in response - would need to pass from request context
+        
         let context = MiddlewareContext(
             requestId: response.responseId ?? "unknown",
-            operationType: .generateText, // TODO: determine actual operation type
-            modelId: "unknown", // TODO: extract from response context
-            providerId: "unknown" // TODO: extract from provider
+            operationType: operationType,
+            modelId: "unknown", // Note: Model ID not available in response - would need request context
+            providerId: "unknown" // Note: Provider ID not available in response - would need client context
         )
         
         return try await chain.transformResponse(response, context: context)
@@ -64,7 +74,21 @@ internal extension AIClient {
     /// - Returns: The transformed chunk
     /// - Throws: Any errors from middleware transformation
     func applyChunkMiddleware<T: StreamChunk>(_ chunk: T) async throws -> T {
-        // TODO: Implement middleware chain execution
-        return chunk
+        if middleware.isEmpty {
+            return chunk
+        }
+        
+        // Create middleware chain and execute chunk transformation
+        let chain = MiddlewareChain(middlewares: middleware)
+        
+        // Create minimal context for chunk processing
+        let context = MiddlewareContext(
+            requestId: chunk.chunkId,
+            operationType: .streamText, // Context: processing streaming chunks
+            modelId: "unknown", // Note: Model ID not available in chunk - would need request context
+            providerId: "unknown" // Note: Provider ID not available in chunk - would need client context
+        )
+        
+        return try await chain.transformChunk(chunk, context: context)
     }
 }
