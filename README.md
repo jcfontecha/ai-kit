@@ -38,18 +38,23 @@ The Swift AI SDK follows a clean three-layer architecture:
 
 ### Installation
 
-Add the Swift AI SDK to your project using Swift Package Manager:
+Add AIKit to your project using Swift Package Manager:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-org/ai-swift.git", from: "1.0.0")
+    .package(url: "https://github.com/jcfontecha/ai-kit.git", from: "1.0.0")
 ]
 ```
+
+Or add it directly in Xcode:
+1. File → Add Package Dependencies
+2. Enter the repository URL: `https://github.com/jcfontecha/ai-kit.git`
+3. Select the version and add to your target
 
 ### Basic Usage
 
 ```swift
-import ai_swift
+import AIKit
 
 // Create provider and model
 let provider = MockProvider() // Use real providers like OpenAIProvider in production
@@ -58,7 +63,7 @@ let model = provider.languageModel("gpt-4")
     .maxTokens(150)
 
 // Create client
-let client = AISwift.client()
+let client = AIKit.client()
 
 // Generate text
 let response = try await client.generateText(model, prompt: "Write a haiku about Swift")
@@ -117,7 +122,7 @@ let response = try await client.generateText(modelWithTools, prompt: "What's the
 The SDK is organized into focused modules:
 
 ```
-Sources/ai-swift/
+Sources/AIKit/
 ├── Core/                           # Core architecture components
 │   ├── AIClient.swift             # Main framework implementation
 │   ├── AIProvider.swift           # Provider protocol and capabilities
@@ -138,7 +143,7 @@ Sources/ai-swift/
 │   └── ConvenienceExtensions.swift # Builder patterns and utilities
 ├── Providers/
 │   └── MockProvider.swift         # Mock provider for testing
-└── ai_swift.swift                 # Main module interface
+└── AIKit.swift                    # Main module interface
 ```
 
 ## Configuration
@@ -158,14 +163,14 @@ let model = provider.languageModel("gpt-4")
 
 ```swift
 // For creative writing
-let creative = AISwift.creativeConfiguration
+let creative = AIKit.creativeConfiguration
 let model = provider.languageModel("gpt-4").configure { creative }
 
 // For precise, factual responses  
-let precise = AISwift.preciseConfiguration
+let precise = AIKit.preciseConfiguration
 
 // Balanced general-purpose
-let balanced = AISwift.balancedConfiguration
+let balanced = AIKit.balancedConfiguration
 ```
 
 ### Provider-Specific Settings
@@ -184,10 +189,10 @@ let model = provider.languageModel("gpt-4")
 
 ```swift
 // Add logging
-let client = AISwift.client(middleware: [
-    AISwift.loggingMiddleware(),
-    AISwift.rateLimitMiddleware(maxRequests: 100),
-    AISwift.retryMiddleware(maxRetries: 3)
+let client = AIKit.client(middleware: [
+    AIKit.loggingMiddleware(),
+    AIKit.rateLimitMiddleware(maxRequests: 100),
+    AIKit.retryMiddleware(maxRetries: 3)
 ])
 ```
 
@@ -266,7 +271,7 @@ The SDK includes comprehensive testing utilities:
 
 ```swift
 // Use mock provider for testing
-let mockProvider = AISwift.mockProvider()
+let mockProvider = AIKit.mockProvider()
 let testModel = mockProvider.languageModel("test-model")
 
 // Configure mock behavior
