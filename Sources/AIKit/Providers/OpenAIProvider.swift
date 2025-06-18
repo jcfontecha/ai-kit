@@ -374,6 +374,116 @@ public struct OpenAIProvider: AIProvider {
                modelId.hasPrefix("gpt-3.5-turbo-0125") ||
                modelId.hasPrefix("gpt-3.5-turbo-1106")
     }
+    
+    // MARK: - Transcription Methods
+    
+    /// Create a transcription model for OpenAI Whisper models.
+    ///
+    /// Overrides the default implementation to provide OpenAI-specific transcription capabilities.
+    /// Supports Whisper models and other OpenAI transcription models.
+    ///
+    /// - Parameter modelId: The OpenAI transcription model ID (e.g., "whisper-1")
+    /// - Returns: A configured TranscriptionModel for use with AIClient
+    public func transcriptionModel(_ modelId: String) -> TranscriptionModel {
+        return TranscriptionModel(provider: self, modelId: modelId)
+    }
+    
+    /// Execute transcription using OpenAI's transcription API.
+    ///
+    /// This method implements the OpenAI Whisper API for audio transcription,
+    /// following the Vercel AI SDK patterns and supporting all OpenAI transcription features.
+    ///
+    /// - Parameter request: The standardized transcription request
+    /// - Returns: A standardized transcription response
+    /// - Throws: OpenAI-specific errors converted to TranscriptionError
+    public func transcribeRaw(_ request: TranscriptionProviderRequest) async throws -> TranscriptionProviderResponse {
+        let startTime = Date()
+        
+        do {
+            // Convert request to OpenAI transcription API format
+            let openAIRequest = try await convertToOpenAITranscriptionRequest(request)
+            
+            // Create multipart form data
+            let boundary = "----formdata-swift-\(UUID().uuidString)"
+            let httpBody = try await createTranscriptionFormData(openAIRequest, boundary: boundary)
+            
+            // Prepare the HTTP request
+            var urlRequest = URLRequest(url: URL(string: "\(baseURL)/audio/transcriptions")!)
+            urlRequest.httpMethod = "POST"
+            urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+            urlRequest.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            
+            if let organization = organization {
+                urlRequest.setValue(organization, forHTTPHeaderField: "OpenAI-Organization")
+            }
+            
+            // Add custom headers from request
+            if let customHeaders = request.headers {
+                for (key, value) in customHeaders {
+                    urlRequest.setValue(value, forHTTPHeaderField: key)
+                }
+            }
+            
+            urlRequest.httpBody = httpBody
+            
+            // Make the API call
+            let (data, response) = try await URLSession.shared.data(for: urlRequest)
+            
+            // Check HTTP response
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw TranscriptionError.networkError(NSError(domain: "InvalidResponse", code: 0))
+            }
+            
+            guard 200...299 ~= httpResponse.statusCode else {
+                let errorMessage = try? parseOpenAIError(data)
+                throw TranscriptionError.providerSpecific(
+                    errorMessage ?? "HTTP \(httpResponse.statusCode)",
+                    underlyingError: nil
+                )
+            }
+            
+            // Parse the response
+            let openAIResponse = try JSONDecoder().decode(OpenAITranscriptionResponse.self, from: data)
+            
+            // Convert to standard format
+            let responseMetadata = TranscriptionResponseMetadata(
+                timestamp: startTime,
+                modelId: request.modelId,
+                headers: Dictionary(uniqueKeysWithValues: httpResponse.allHeaderFields.compactMap { key, value in
+                    guard let keyString = key as? String, let valueString = value as? String else { return nil }
+                    return (keyString, valueString)
+                }),
+                duration: Date().timeIntervalSince(startTime)
+            )
+            
+            return TranscriptionProviderResponse(
+                text: openAIResponse.text,
+                segments: openAIResponse.segments?.map { segment in
+                    TranscriptionSegment(
+                        text: segment.text,
+                        startSecond: segment.start,
+                        endSecond: segment.end
+                    )
+                } ?? [],
+                language: openAIResponse.language,
+                durationInSeconds: openAIResponse.duration,
+                warnings: [], // OpenAI doesn't typically return warnings for transcription
+                responseMetadata: responseMetadata,
+                providerMetadata: [
+                    "model": openAIResponse.model ?? request.modelId,
+                    "task": openAIResponse.task ?? "transcribe"
+                ]
+            )
+            
+        } catch let error as TranscriptionError {
+            throw error
+        } catch {
+            throw TranscriptionError.providerSpecific(
+                "OpenAI transcription failed: \(error.localizedDescription)",
+                underlyingError: error
+            )
+        }
+    }
 }
 
 // MARK: - Private Helper Methods
@@ -786,6 +896,195 @@ private extension OpenAIProvider {
             return NSNull()
         }
     }
+    
+    /// Convert TranscriptionProviderRequest to OpenAI transcription API format.
+    func convertToOpenAITranscriptionRequest(_ request: TranscriptionProviderRequest) async throws -> OpenAITranscriptionRequest {
+        // Get audio data
+        let audioData = try await request.audio.audioData()
+        
+        // Determine filename and mime type from audio input
+        let (filename, mimeType) = getAudioFileInfo(for: request.audio)
+        
+        // Check if this model supports timestamps
+        let supportsTimestamps = modelSupportsTimestamps(request.modelId)
+        
+        // For models that don't support timestamps, exclude timestamp-related parameters
+        let timestampGranularities: [String]?
+        let responseFormat: String
+        
+        if supportsTimestamps {
+            // Get timestampGranularities from provider options (OpenAI-specific)
+            timestampGranularities = extractTimestampGranularitiesFromProviderOptions(request.providerOptions)
+            responseFormat = request.configuration.responseFormat?.rawValue ?? "json"
+        } else {
+            // Models like gpt-4o-mini-transcribe don't support timestamps
+            timestampGranularities = nil
+            
+            // If verbose_json was requested but timestamps aren't supported, use regular json
+            let requestedFormat = request.configuration.responseFormat?.rawValue ?? "json"
+            responseFormat = (requestedFormat == "verbose_json") ? "json" : requestedFormat
+        }
+        
+        return OpenAITranscriptionRequest(
+            file: audioData,
+            filename: filename,
+            mimeType: mimeType,
+            model: request.modelId,
+            language: request.configuration.language,
+            prompt: request.configuration.prompt,
+            responseFormat: responseFormat,
+            temperature: request.configuration.temperature,
+            timestampGranularities: timestampGranularities
+        )
+    }
+    
+    /// Check if a transcription model supports timestamp features.
+    func modelSupportsTimestamps(_ modelId: String) -> Bool {
+        // Based on OpenAI documentation, gpt-4o-mini-transcribe doesn't support timestamps
+        // while whisper-1 and other models do
+        switch modelId.lowercased() {
+        case "gpt-4o-mini-transcribe":
+            return false
+        default:
+            return true
+        }
+    }
+    
+    /// Extract timestampGranularities from provider options following Vercel AI SDK pattern.
+    func extractTimestampGranularitiesFromProviderOptions(_ providerOptions: [String: String]?) -> [String]? {
+        guard let providerOptions = providerOptions,
+              let openaiOptions = providerOptions["openai"],
+              let timestampGranularitiesString = parseProviderOptionValue(openaiOptions, key: "timestampGranularities") else {
+            return nil
+        }
+        
+        // Parse the timestamp granularities string (could be comma-separated or JSON array)
+        if timestampGranularitiesString.hasPrefix("[") {
+            // JSON array format: ["word", "segment"]
+            return parseJSONArrayString(timestampGranularitiesString)
+        } else {
+            // Comma-separated format: "word,segment" 
+            return timestampGranularitiesString.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        }
+    }
+    
+    /// Parse a provider option value from a string representation.
+    private func parseProviderOptionValue(_ optionString: String, key: String) -> String? {
+        // For now, assume simple key=value format within the option string
+        // In a real implementation, this might be JSON parsing
+        let components = optionString.components(separatedBy: "=")
+        if components.count == 2 && components[0] == key {
+            return components[1]
+        }
+        return nil
+    }
+    
+    /// Parse a JSON array string into an array of strings.
+    private func parseJSONArrayString(_ jsonString: String) -> [String]? {
+        guard let data = jsonString.data(using: .utf8),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [String] else {
+            return nil
+        }
+        return array
+    }
+    
+    /// Get filename and MIME type information for audio input.
+    func getAudioFileInfo(for audio: AudioInput) -> (filename: String, mimeType: String) {
+        switch audio {
+        case .fileURL(let url):
+            let filename = url.lastPathComponent
+            let mimeType = mimeTypeForFileExtension(url.pathExtension)
+            return (filename, mimeType)
+        case .url(let url):
+            let filename = url.lastPathComponent.isEmpty ? "audio.mp3" : url.lastPathComponent
+            let mimeType = mimeTypeForFileExtension(URL(string: filename)?.pathExtension ?? "mp3")
+            return (filename, mimeType)
+        case .data(_):
+            return ("audio.mp3", "audio/mpeg")
+        case .base64String(_):
+            return ("audio.mp3", "audio/mpeg")
+        }
+    }
+    
+    /// Get MIME type for file extension.
+    func mimeTypeForFileExtension(_ ext: String) -> String {
+        switch ext.lowercased() {
+        case "mp3":
+            return "audio/mpeg"
+        case "wav":
+            return "audio/wav"
+        case "m4a":
+            return "audio/mp4"
+        case "flac":
+            return "audio/flac"
+        case "ogg":
+            return "audio/ogg"
+        case "webm":
+            return "audio/webm"
+        default:
+            return "audio/mpeg"
+        }
+    }
+    
+    /// Create multipart form data for transcription request.
+    func createTranscriptionFormData(_ request: OpenAITranscriptionRequest, boundary: String) async throws -> Data {
+        var body = Data()
+        let lineBreak = "\r\n"
+        
+        // Helper function to add form field
+        func addFormField(name: String, value: String) {
+            body.append("--\(boundary)\(lineBreak)".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\(lineBreak)\(lineBreak)".data(using: .utf8)!)
+            body.append("\(value)\(lineBreak)".data(using: .utf8)!)
+        }
+        
+        // Add file data
+        body.append("--\(boundary)\(lineBreak)".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(request.filename)\"\(lineBreak)".data(using: .utf8)!)
+        body.append("Content-Type: \(request.mimeType)\(lineBreak)\(lineBreak)".data(using: .utf8)!)
+        body.append(request.file)
+        body.append(lineBreak.data(using: .utf8)!)
+        
+        // Add model
+        addFormField(name: "model", value: request.model)
+        
+        // Add optional fields
+        if let language = request.language {
+            addFormField(name: "language", value: language)
+        }
+        
+        if let prompt = request.prompt {
+            addFormField(name: "prompt", value: prompt)
+        }
+        
+        addFormField(name: "response_format", value: request.responseFormat)
+        
+        if let temperature = request.temperature {
+            addFormField(name: "temperature", value: String(temperature))
+        }
+        
+        if let granularities = request.timestampGranularities, !granularities.isEmpty {
+            for granularity in granularities {
+                addFormField(name: "timestamp_granularities[]", value: granularity)
+            }
+        }
+        
+        // Close boundary
+        body.append("--\(boundary)--\(lineBreak)".data(using: .utf8)!)
+        
+        return body
+    }
+    
+    /// Parse OpenAI error response.
+    func parseOpenAIError(_ data: Data) throws -> String {
+        if let errorResponse = try? JSONDecoder().decode(OpenAIErrorResponse.self, from: data) {
+            return errorResponse.error.message
+        } else if let errorString = String(data: data, encoding: .utf8) {
+            return errorString
+        } else {
+            return "Unknown OpenAI error"
+        }
+    }
 }
 
 // MARK: - OpenAI API Types
@@ -1073,6 +1372,52 @@ private struct OpenAIErrorDetail: Codable {
     let type: String?
     let param: String?
     let code: String?
+}
+
+// MARK: - OpenAI Transcription API Types
+
+/// OpenAI transcription request structure (for multipart form data).
+private struct OpenAITranscriptionRequest {
+    let file: Data
+    let filename: String
+    let mimeType: String
+    let model: String
+    let language: String?
+    let prompt: String?
+    let responseFormat: String
+    let temperature: Double?
+    let timestampGranularities: [String]?
+}
+
+/// OpenAI transcription response structure.
+private struct OpenAITranscriptionResponse: Codable {
+    let text: String
+    let language: String?
+    let duration: Double?
+    let segments: [OpenAITranscriptionSegment]?
+    let task: String?
+    let model: String?
+}
+
+/// OpenAI transcription segment structure.
+private struct OpenAITranscriptionSegment: Codable {
+    let id: Int
+    let seek: Int
+    let start: Double
+    let end: Double
+    let text: String
+    let tokens: [Int]
+    let temperature: Double
+    let avgLogprob: Double
+    let compressionRatio: Double
+    let noSpeechProb: Double
+    
+    enum CodingKeys: String, CodingKey {
+        case id, seek, start, end, text, tokens, temperature
+        case avgLogprob = "avg_logprob"
+        case compressionRatio = "compression_ratio"
+        case noSpeechProb = "no_speech_prob"
+    }
 }
 
 // MARK: - OpenAI Errors

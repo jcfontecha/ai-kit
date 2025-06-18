@@ -137,6 +137,45 @@ public protocol AIProvider: Sendable {
     /// - Ensure proper resource cleanup on cancellation
     func streamTextRaw(_ request: ProviderRequest) -> AsyncThrowingStream<ProviderChunk, Error>
     
+    // MARK: - Transcription Methods
+    
+    /// Create a configured transcription model instance.
+    ///
+    /// This factory method creates a `TranscriptionModel` that encapsulates the provider,
+    /// model ID, and default configuration. The returned model can be further
+    /// configured using the builder pattern methods.
+    ///
+    /// - Parameter modelId: The specific transcription model identifier (e.g., "whisper-1", "nova-2")
+    /// - Returns: A `TranscriptionModel` instance ready for use with `AIClient`
+    ///
+    /// ## Example
+    /// ```swift
+    /// let model = provider.transcriptionModel("whisper-1")
+    /// let configuredModel = model.language("en").temperature(0.2)
+    /// ```
+    func transcriptionModel(_ modelId: String) -> TranscriptionModel
+    
+    /// Execute raw transcription with provider-specific format translation.
+    ///
+    /// This method handles the complete pipeline for a transcription request:
+    /// 1. Transform the standard `TranscriptionProviderRequest` to the provider's API format
+    /// 2. Validate the request parameters against provider capabilities
+    /// 3. Make the HTTP request to the provider's transcription API
+    /// 4. Parse the provider's response format
+    /// 5. Transform the response to the standard `TranscriptionProviderResponse` format
+    ///
+    /// - Parameter request: The standardized transcription request containing audio and configuration
+    /// - Returns: A `TranscriptionProviderResponse` with the transcribed text and metadata
+    /// - Throws: Provider-specific errors that will be handled by the framework
+    ///
+    /// ## Implementation Notes
+    /// - Handle provider-specific authentication (API keys, headers)
+    /// - Map configuration parameters to provider equivalents
+    /// - Convert audio input formats to provider schemas
+    /// - Parse transcription results and timing information
+    /// - Handle rate limiting and provider-specific errors
+    func transcribeRaw(_ request: TranscriptionProviderRequest) async throws -> TranscriptionProviderResponse
+    
     // MARK: - Provider Capabilities
     
     /// Provider capabilities for mode support
@@ -182,6 +221,25 @@ public extension AIProvider {
     func validateConfiguration(_ configuration: ModelConfiguration) throws {
         // Default implementation: accept all configurations
         // Providers should override this to implement specific validation
+    }
+    
+    /// Default transcription model factory implementation.
+    ///
+    /// Providers should override this to create provider-specific transcription models.
+    /// The default implementation creates a basic TranscriptionModel with this provider.
+    func transcriptionModel(_ modelId: String) -> TranscriptionModel {
+        return TranscriptionModel(provider: self, modelId: modelId)
+    }
+    
+    /// Default transcription implementation that throws an unsupported error.
+    ///
+    /// Providers must override this method to implement actual transcription functionality.
+    /// The default implementation throws an error indicating transcription is not supported.
+    func transcribeRaw(_ request: TranscriptionProviderRequest) async throws -> TranscriptionProviderResponse {
+        throw AIProviderError.unsupportedParameter(
+            "transcription",
+            "Provider '\(name)' does not support transcription"
+        )
     }
 }
 
@@ -275,6 +333,9 @@ public struct ProviderCapabilities: Sendable {
     /// Whether the provider supports embedding generation.
     public let supportsEmbeddings: Bool
     
+    /// Whether the provider supports audio transcription.
+    public let supportsTranscription: Bool
+    
     /// Configuration parameters supported by this provider.
     public let supportedParameters: Set<String>
     
@@ -291,6 +352,7 @@ public struct ProviderCapabilities: Sendable {
         supportsObjectGeneration: Bool = false,
         supportsImageInputs: Bool = false,
         supportsEmbeddings: Bool = false,
+        supportsTranscription: Bool = false,
         supportedParameters: Set<String> = [],
         maxTokens: Int? = nil,
         maxContextLength: Int? = nil
@@ -301,6 +363,7 @@ public struct ProviderCapabilities: Sendable {
         self.supportsObjectGeneration = supportsObjectGeneration
         self.supportsImageInputs = supportsImageInputs
         self.supportsEmbeddings = supportsEmbeddings
+        self.supportsTranscription = supportsTranscription
         self.supportedParameters = supportedParameters
         self.maxTokens = maxTokens
         self.maxContextLength = maxContextLength
