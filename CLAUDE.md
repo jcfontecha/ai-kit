@@ -6,11 +6,13 @@ Swift AI SDK - A type-safe, protocol-oriented Swift framework for AI model inter
 
 **IMPERATIVE**: Before implementing ANY feature, you MUST research how Vercel AI SDK implements it:
 
-1. **Online Documentation**: Visit https://ai-sdk.dev/docs for public API patterns
+1. **Online Documentation**: Visit https://ai-sdk.dev/docs for public API patternsr
 2. **Local Implementation**: Study `vercel-sdk/content/docs/` and `vercel-sdk/examples/` for technical details
 3. **Plan Swift Translation**: Adapt TypeScript patterns to Swift idioms while maintaining API compatibility
 
 Never implement features based on assumptions. Always consult Vercel AI SDK first.
+
+The repo owner is jcfontech.
 
 ## Development Commands
 
