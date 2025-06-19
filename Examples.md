@@ -41,26 +41,112 @@ for try await chunk in stream {
 
 ## Object Generation
 
+### Basic ObjectSchema Usage
+
 ```swift
-import ai_swift
+import AIKit
 
 struct Recipe: Codable {
     let name: String
     let ingredients: [String]
     let instructions: [String]
+    let prepTime: Int
+    let difficulty: String
 }
 
-let anthropic = AnthropicProvider(apiKey: "...")  // This would be a real provider
-let model = anthropic.languageModel("claude-3-sonnet")
-let client = AISwift.client()
+let openai = OpenAIProvider(apiKey: "...")
+let model = openai.languageModel("gpt-4")
+let client = AIKit.client()
+
+// Basic automatic schema generation
+let basicSchema = ObjectSchema<Recipe>()
 
 let response = try await client.generateObject(
     model,
     prompt: "Create a chocolate chip cookie recipe",
-    schema: ObjectSchema<Recipe>()
+    schema: basicSchema
 )
 
 let recipe: Recipe = response.object
+```
+
+### ObjectSchema with Field Descriptions
+
+```swift
+// Enhanced schema with field descriptions for better AI generation
+let enhancedSchema = ObjectSchema<Recipe>()
+    .describe(\.name, "Recipe name that is descriptive and appealing")
+    .describe(\.ingredients, "List of ingredients with specific quantities and measurements")
+    .describe(\.instructions, "Clear step-by-step cooking instructions")
+    .describe(\.prepTime, "Preparation time in minutes", minimum: 1, maximum: 480)
+    .describe(\.difficulty, "Cooking difficulty level", enum: ["easy", "medium", "hard"])
+
+let response = try await client.generateObject(
+    model,
+    prompt: "Create a beginner-friendly chocolate chip cookie recipe",
+    schema: enhancedSchema
+)
+```
+
+### Complex ObjectSchema Example
+
+```swift
+struct Product: Codable {
+    let name: String
+    let price: Double
+    let category: String
+    let description: String
+    let tags: [String]
+    let inStock: Bool
+    let rating: Double?
+}
+
+let productSchema = ObjectSchema<Product>()
+    .describe(\.name, "Product name", minLength: 1, maxLength: 100)
+    .describe(\.price, "Price in USD", minimum: 0.01, maximum: 10000.0)
+    .describe(\.category, "Product category", enum: ["electronics", "books", "clothing", "home"])
+    .describe(\.description, "Product description", minLength: 10, maxLength: 500)
+    .describe(\.tags, "Product tags for search", maxItems: 10)
+    .describe(\.inStock, "Whether product is currently available")
+    .describe(\.rating, "Optional customer rating from 1-5", minimum: 1.0, maximum: 5.0)
+
+let productResponse = try await client.generateObject(
+    model,
+    prompt: "Create a product listing for a wireless headphone",
+    schema: productSchema
+)
+```
+
+### Nested ObjectSchema Example
+
+```swift
+struct Address: Codable {
+    let street: String
+    let city: String
+    let state: String
+    let zipCode: String
+}
+
+struct Person: Codable {
+    let name: String
+    let age: Int
+    let email: String?
+    let address: Address
+    let hobbies: [String]
+}
+
+let personSchema = ObjectSchema<Person>()
+    .describe(\.name, "Full name", minLength: 2, maxLength: 50)
+    .describe(\.age, "Age in years", minimum: 0, maximum: 150)
+    .describe(\.email, "Optional email address in valid format")
+    .describe(\.address, "Home address information")
+    .describe(\.hobbies, "List of hobbies and interests", maxItems: 5)
+
+let personResponse = try await client.generateObject(
+    model,
+    prompt: "Generate a profile for a software developer",
+    schema: personSchema
+)
 ```
 
 ## Current Mock Implementation

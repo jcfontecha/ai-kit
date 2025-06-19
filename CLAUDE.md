@@ -95,4 +95,88 @@ swift build                   # Ensure compilation
 
 This ensures predictable costs and consistent test behavior across all E2E test scenarios.
 
+## ObjectSchema Implementation Patterns
+
+### 🎯 Core Design Principles
+
+**Based on Vercel AI SDK patterns adapted for Swift:**
+
+1. **Automatic Generation**: `ObjectSchema<T>()` should generate working schemas from Codable types
+2. **Field Descriptions**: Use KeyPath-based `.describe()` for AI guidance
+3. **Provider Agnostic**: Same schema works across OpenAI, Anthropic, Google
+4. **Type Safety**: Leverage Swift's type system and compile-time checks
+
+### 🏗️ Implementation Patterns
+
+#### Schema Creation
+```swift
+// Always prefer automatic generation
+let schema = ObjectSchema<Person>()
+    .describe(\.name, "Full legal name")
+    .describe(\.age, "Age in years", minimum: 0, maximum: 150)
+    .describe(\.email, "Optional contact email")
+
+// Manual only when automatic fails
+let manual = ObjectSchema<Person>.manual(
+    jsonSchema: customSchema,
+    name: "Person"
+)
+```
+
+#### Provider Integration Pattern
+```swift
+// Each provider handles schema transformation internally
+protocol AIProvider {
+    func formatSchemaForAPI<T>(_ schema: ObjectSchema<T>) -> ProviderAPIFormat
+}
+
+// OpenAI: response_format with strict mode
+// Anthropic: tool input_schema format  
+// Google: OpenAPI conversion
+```
+
+#### Field Constraint Patterns
+```swift
+// Numeric constraints
+.describe(\.price, "Price in USD", minimum: 0.01, maximum: 99999.99)
+
+// String constraints  
+.describe(\.name, "Product name", minLength: 1, maxLength: 100)
+
+// Enum constraints
+.describe(\.category, "Category", enum: ["electronics", "books", "clothing"])
+
+// Array constraints
+.describe(\.tags, "Product tags", maxItems: 10)
+```
+
+### 🧪 Testing Patterns
+
+#### Schema Generation Tests
+```swift
+func testObjectSchemaGeneration() {
+    let schema = ObjectSchema<TestType>()
+    XCTAssertNotNil(schema.jsonSchema)
+    XCTAssertEqual(schema.name, "TestType")
+}
+```
+
+#### E2E Object Generation Tests
+```swift
+func testRealObjectGeneration() async throws {
+    let schema = ObjectSchema<Person>()
+        .describe(\.name, "Full name")
+        .describe(\.age, "Age in years", minimum: 0, maximum: 150)
+    
+    let response = try await client.generateObject(
+        model, // Always use gpt-4.1-nano for E2E
+        prompt: "Generate a test person",
+        schema: schema
+    )
+    
+    XCTAssertTrue(response.object.age >= 0)
+    XCTAssertTrue(response.object.age <= 150)
+}
+```
+
 This methodology ensures high-quality, maintainable code that mirrors Vercel AI SDK while being idiomatic to Swift.

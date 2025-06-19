@@ -11,7 +11,7 @@ A comprehensive Swift framework for AI model interactions, inspired by the Verce
 - 🎯 **Type-Safe API**: Comprehensive Swift types with full Codable support
 - 🔄 **Streaming Support**: Real-time text and object generation with AsyncSequence
 - 🛠️ **Tool Integration**: Function calling with automatic execution
-- 📋 **Structured Output**: JSON schema-validated object generation  
+- 📋 **Structured Output**: Automatic schema generation with field descriptions and validation  
 - 🔌 **Provider Agnostic**: Clean abstraction over multiple AI providers
 - 🧬 **Middleware System**: Extensible request/response transformation
 - 🏗️ **Vercel AI SDK Compatible**: Familiar patterns for web developers
@@ -82,14 +82,25 @@ for try await chunk in stream {
 
 ### Structured Object Generation
 
+AIKit's ObjectSchema system provides automatic schema generation from Swift types with field-level descriptions for improved AI generation quality:
+
 ```swift
 struct Recipe: Codable {
     let name: String
     let ingredients: [String]
     let instructions: [String]
+    let prepTime: Int
+    let difficulty: String
 }
 
+// Automatic schema generation with field descriptions
 let schema = ObjectSchema<Recipe>()
+    .describe(\.name, "Recipe name that is descriptive and appealing")
+    .describe(\.ingredients, "List of ingredients with specific quantities")
+    .describe(\.instructions, "Step-by-step cooking instructions")
+    .describe(\.prepTime, "Preparation time in minutes", minimum: 1, maximum: 480)
+    .describe(\.difficulty, "Cooking difficulty level", enum: ["easy", "medium", "hard"])
+
 let response = try await client.generateObject(
     model, 
     prompt: "Create a chocolate chip cookie recipe",
@@ -99,6 +110,14 @@ let response = try await client.generateObject(
 let recipe: Recipe = response.object
 print("Recipe: \(recipe.name)")
 ```
+
+#### ObjectSchema Features
+
+- **Automatic Generation**: `ObjectSchema<T>()` automatically generates JSON schemas from Swift types
+- **Field Descriptions**: Improve AI generation quality with `.describe()` for each field
+- **Type Constraints**: Add validation rules like `minimum`, `maximum`, `enum` values
+- **Provider Agnostic**: Works seamlessly across OpenAI, Anthropic, and Google providers
+- **Swift-Idiomatic**: Uses KeyPath-based APIs for type safety and IDE completion
 
 ### Tool Calling
 
