@@ -2,7 +2,6 @@ import Foundation
 
 // MARK: - JSON Parsing Utilities
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 internal extension AIClient {
     
     /// Parse JSON response content into the specified type with two-phase validation

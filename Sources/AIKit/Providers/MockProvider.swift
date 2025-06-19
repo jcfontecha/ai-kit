@@ -7,7 +7,6 @@ import Foundation
 /// This mock provider eliminates hardcoded patterns in favor of proper
 /// schema analysis and configuration-driven responses. Suitable for
 /// production testing environments and enterprise use cases.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct MockProvider: AIProvider {
     
     // MARK: - Properties
@@ -590,7 +589,6 @@ extension JSONSchemaValue {
 
 // MARK: - Extended Provider Implementation
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension MockProvider: ExtendedAIProvider {
     
     public var capabilities: ProviderCapabilities {

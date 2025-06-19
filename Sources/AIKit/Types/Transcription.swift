@@ -22,7 +22,6 @@ import Foundation
 /// // From base64 string
 /// let audio = AudioInput.base64String(base64AudioString)
 /// ```
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public enum AudioInput: Sendable {
     
     /// Raw audio data.
@@ -109,7 +108,6 @@ public extension AudioInput {
 ///     .prompt("This is a technical discussion about AI.")
 ///     .temperature(0.2)
 /// ```
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct TranscriptionConfiguration: Sendable {
     
     /// Language of the input audio (ISO-639-1 format).
@@ -202,7 +200,6 @@ public struct TranscriptionConfiguration: Sendable {
 ///
 /// Different formats provide different levels of detail and structure.
 /// Not all providers support all formats.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public enum TranscriptionResponseFormat: String, Sendable, CaseIterable {
     
     /// JSON format with basic transcription data.
@@ -241,7 +238,6 @@ public enum TranscriptionResponseFormat: String, Sendable, CaseIterable {
 ///     print("\(segment.startSecond)s-\(segment.endSecond)s: \(segment.text)")
 /// }
 /// ```
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct TranscriptionResponse: Sendable {
     
     /// The complete transcribed text from the audio input.
@@ -312,7 +308,6 @@ public struct TranscriptionResponse: Sendable {
 ///
 /// Represents a portion of the transcribed audio with start and end times.
 /// The granularity depends on the timestamp granularity setting used.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct TranscriptionSegment: Sendable {
     
     /// The text content of this segment.
@@ -337,7 +332,6 @@ public struct TranscriptionSegment: Sendable {
 ///
 /// Contains non-fatal issues encountered during transcription,
 /// such as unsupported settings or quality concerns.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct TranscriptionWarning: Sendable {
     
     /// The type of warning.
@@ -361,7 +355,6 @@ public struct TranscriptionWarning: Sendable {
 /// Metadata about the transcription response from the provider.
 ///
 /// Contains information about the API call, timing, and provider-specific details.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct TranscriptionResponseMetadata: Sendable {
     
     /// Timestamp when the response was generated.
@@ -400,7 +393,6 @@ public struct TranscriptionResponseMetadata: Sendable {
 ///
 /// These errors represent issues that can occur during transcription,
 /// from audio processing problems to provider-specific failures.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public enum TranscriptionError: Error, Sendable {
     
     /// No transcript was generated from the audio input.
@@ -446,7 +438,6 @@ public enum TranscriptionError: Error, Sendable {
 
 // MARK: - Transcription Error Extensions
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension TranscriptionError: LocalizedError {
     
     /// Localized description of the transcription error.
@@ -476,7 +467,6 @@ extension TranscriptionError: LocalizedError {
 /// Standardized request format for transcription at the provider layer.
 ///
 /// Contains all information needed by providers to make transcription API calls.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct TranscriptionProviderRequest: Sendable {
     
     /// The transcription model to use.
@@ -522,7 +512,6 @@ public struct TranscriptionProviderRequest: Sendable {
 /// Standardized response format from transcription providers.
 ///
 /// Providers transform their API responses to this standard format.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct TranscriptionProviderResponse: Sendable {
     
     /// The transcribed text.

@@ -66,7 +66,6 @@ import Foundation
 ///     }
 /// }
 /// ```
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public protocol AIProvider: Sendable {
     
     // MARK: - Provider Identity
@@ -211,7 +210,6 @@ public protocol AIProvider: Sendable {
 
 // MARK: - Default Implementations
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension AIProvider {
     
     /// Default validation implementation that accepts all configurations.
@@ -376,7 +374,6 @@ public struct ProviderCapabilities: Sendable {
 ///
 /// Providers can optionally implement this protocol to expose additional
 /// capabilities and metadata.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public protocol ExtendedAIProvider: AIProvider {
     
     /// The capabilities of this provider.

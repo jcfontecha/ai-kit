@@ -2,7 +2,6 @@ import Testing
 import Foundation
 @testable import AIKit
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 @Test func testNewArchitecture() async throws {
     // Test creating an AI client
     let client = AIKit.client()

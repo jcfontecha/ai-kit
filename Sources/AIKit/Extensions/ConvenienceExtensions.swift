@@ -107,7 +107,6 @@ public extension JSONSchema {
 
 // MARK: - Stream Processing Extensions
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension AsyncThrowingStream where Element == TextChunk {
     /// Collect all text chunks into final text
     func collectText() async throws -> String {

@@ -3,7 +3,6 @@ import Foundation
 // MARK: - Tool Validation
 
 /// Tool validation utilities following Vercel AI SDK patterns
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct ToolValidation {
     
     /// Validate that a tool exists in the available tools
@@ -119,7 +118,6 @@ public struct ToolValidation {
 
 // MARK: - Tool Call Extensions
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension ToolCall {
     /// Validate this tool call against available tools
     /// - Parameter availableTools: Array of available tools

@@ -17,7 +17,6 @@ public enum AIKit {
     // MARK: - Client Factory
     
     /// Create an AI client for framework operations
-    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     public static func client(middleware: [any AIMiddleware] = []) -> AIClient {
         AIClient(middleware: middleware)
     }
@@ -25,7 +24,6 @@ public enum AIKit {
     // MARK: - Provider Factory
     
     /// Create a mock provider for testing and development
-    @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     public static func mockProvider(configuration: MockConfiguration = .default) -> MockProvider {
         MockProvider(configuration: configuration)
     }

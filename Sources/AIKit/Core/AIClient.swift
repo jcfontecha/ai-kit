@@ -41,7 +41,6 @@ import Foundation
 /// )
 /// let recipe: Recipe = response.object
 /// ```
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public actor AIClient {
     
     // MARK: - Properties

@@ -2,7 +2,6 @@ import Foundation
 
 // MARK: - Middleware Operations
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 internal extension AIClient {
     
     /// Execute middleware chain for request transformation.

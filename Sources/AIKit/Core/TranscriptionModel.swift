@@ -39,7 +39,6 @@ import Foundation
 ///     .language("en")
 ///     .providerOptions(["openai": ["timestampGranularities": ["word", "segment"]]])
 /// ```
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct TranscriptionModel: Sendable {
     
     // MARK: - Properties
@@ -226,7 +225,6 @@ public struct TranscriptionModel: Sendable {
 
 // MARK: - TranscriptionModel Extensions
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension TranscriptionModel {
     
     /// Validate the transcription model configuration.

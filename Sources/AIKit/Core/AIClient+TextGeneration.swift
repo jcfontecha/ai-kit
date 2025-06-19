@@ -2,7 +2,6 @@ import Foundation
 
 // MARK: - Text Generation
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension AIClient {
     
     /// Generate a text response from the given model and messages.

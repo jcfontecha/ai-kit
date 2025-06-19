@@ -283,7 +283,6 @@ public struct StreamConfiguration: Sendable {
 // MARK: - Stream Protocol
 
 /// Protocol for streaming operations
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public protocol AIStream: AsyncSequence where Element: Sendable {
     
     /// Current state of the stream

@@ -2,7 +2,6 @@ import Foundation
 
 // MARK: - Object Generation
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension AIClient {
     
     /// Generate a structured object response from the given model, messages, and schema.
@@ -405,7 +404,6 @@ public extension AIClient {
 
 // MARK: - Object Generation Private Helpers
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 internal extension AIClient {
     
     /// Validate input parameters for object generation (following Vercel AI SDK patterns)

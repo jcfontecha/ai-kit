@@ -53,7 +53,6 @@ import Foundation
 ///     print("Transcription failed: \(error)")
 /// }
 /// ```
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension AIClient {
     
     // MARK: - Primary Transcription Method
@@ -298,7 +297,6 @@ public extension AIClient {
 /// like caching, logging, metrics collection, and request/response modification.
 ///
 /// Note: This is defined for future extensibility but not currently used.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public protocol TranscriptionMiddleware: Sendable {
     
     /// Transform a transcription request before it's sent to the provider.

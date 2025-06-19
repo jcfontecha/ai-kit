@@ -2,7 +2,6 @@ import Foundation
 
 // MARK: - Tool Execution
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 internal extension AIClient {
     
     /// Execute a tool call and return the result.

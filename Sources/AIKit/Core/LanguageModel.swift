@@ -38,7 +38,6 @@ import Foundation
 /// let client = AIClient()
 /// let response = try await client.generateText(model, prompt: "Hello")
 /// ```
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public struct LanguageModel: Sendable {
     
     // MARK: - Properties
@@ -73,7 +72,6 @@ public struct LanguageModel: Sendable {
 ///
 /// These methods provide a fluent interface for configuring model parameters,
 /// following Swift conventions and enabling easy chaining of configuration calls.
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension LanguageModel {
     
     /// Set the temperature for text generation.
@@ -185,7 +183,6 @@ public extension LanguageModel {
 
 // MARK: - Utility Methods
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 public extension LanguageModel {
     
     /// Get a human-readable description of this model configuration.
@@ -236,7 +233,6 @@ public extension LanguageModel {
 
 // MARK: - Equatable Conformance
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension LanguageModel: Equatable {
     
     /// Compare two LanguageModel instances for equality.
@@ -258,7 +254,6 @@ extension LanguageModel: Equatable {
 
 // MARK: - Hashable Conformance
 
-@available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 extension LanguageModel: Hashable {
     
     /// Hash this LanguageModel instance.
