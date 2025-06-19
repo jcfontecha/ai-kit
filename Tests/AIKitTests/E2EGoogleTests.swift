@@ -248,7 +248,7 @@ struct E2EGoogleTests {
             additionalProperties: .boolean(false)
         ))
         
-        let objectSchema = ObjectSchema<UserProfile>(
+        let objectSchema = ObjectSchema<UserProfile>.manual(
             jsonSchema: userSchema,
             name: "UserProfile",
             description: "A user profile with name, age, email, and active status"
@@ -346,7 +346,7 @@ struct E2EGoogleTests {
             required: ["name", "description", "prepTime", "cookTime", "difficulty", "ingredients", "steps", "servings"]
         ))
         
-        let objectSchema = ObjectSchema<Recipe>(
+        let objectSchema = ObjectSchema<Recipe>.manual(
             jsonSchema: recipeSchema,
             name: "Recipe",
             description: "A detailed recipe with ingredients and cooking instructions"

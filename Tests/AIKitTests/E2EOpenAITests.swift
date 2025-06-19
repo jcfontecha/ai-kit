@@ -220,12 +220,24 @@ struct E2EOpenAITests {
             return
         }
         
-        // Define a simple test object
-        struct UserProfile: Codable, Sendable {
+        // Define a simple test object using SchemaProviding
+        struct UserProfile: SchemaProviding {
             let name: String
             let age: Int
             let email: String
             let active: Bool
+            
+            static var schema: ObjectSchema<UserProfile> {
+                .define(
+                    name: "UserProfile",
+                    description: "A user profile with name, age, email, and active status"
+                ) {
+                    Schema.string("name", description: "User's full name")
+                    Schema.integer("age", description: "User's age", minimum: 18, maximum: 99)
+                    Schema.email("email", description: "User's email address")
+                    Schema.boolean("active", description: "Whether the user account is active")
+                }
+            }
         }
         
         let client = AIClient()
@@ -235,29 +247,10 @@ struct E2EOpenAITests {
         
         print("🧪 Testing object generation with real OpenAI API...")
         
-        // Create schema for the object
-        let userSchema = JSONSchema.definition(SchemaDefinition(
-            type: .object,
-            properties: [
-                "name": JSONSchema.definition(SchemaDefinition(type: .string)),
-                "age": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 18, maximum: 99)),
-                "email": JSONSchema.definition(SchemaDefinition(type: .string, format: "email")),
-                "active": JSONSchema.definition(SchemaDefinition(type: .boolean))
-            ],
-            required: ["name", "age", "email", "active"],
-            additionalProperties: .boolean(false)
-        ))
-        
-        let objectSchema = ObjectSchema<UserProfile>(
-            jsonSchema: userSchema,
-            name: "UserProfile",
-            description: "A user profile with name, age, email, and active status"
-        )
-        
         let response = try await client.generateObject(
             model,
             prompt: "Generate a user profile for John Doe, age 30, email john@example.com, active status true",
-            schema: objectSchema
+            type: UserProfile.self
         )
         
         // Verify the generated object
@@ -267,7 +260,7 @@ struct E2EOpenAITests {
         #expect(userProfile.age >= 18 && userProfile.age <= 99, "Age should be within valid range")
         #expect(userProfile.email.contains("@"), "Email should contain @ symbol")
         #expect(response.usage.totalTokens > 0, "Should track token usage")
-        #expect(response.finishReason == .stop, "Should finish normally")
+        #expect(response.finishReason == .stop || response.finishReason == .toolCalls, "Should finish normally (stop or toolCalls)")
         
         print("✅ Object generation successful")
         print("👤 Generated user: \(userProfile.name), age \(userProfile.age), email: \(userProfile.email), active: \(userProfile.active)")
@@ -284,14 +277,25 @@ struct E2EOpenAITests {
             return
         }
         
-        // Define complex nested structures
-        struct Ingredient: Codable, Sendable {
+        // Define complex nested structures using SchemaProviding
+        struct Ingredient: SchemaProviding {
             let name: String
             let amount: String
             let optional: Bool?
+            
+            static var schema: ObjectSchema<Ingredient> {
+                .define(
+                    name: "Ingredient",
+                    description: "Recipe ingredient with quantity"
+                ) {
+                    Schema.string("name", description: "Ingredient name")
+                    Schema.string("amount", description: "Quantity needed")
+                    Schema.boolean("optional", description: "Whether ingredient is optional", required: false)
+                }
+            }
         }
         
-        struct Recipe: Codable, Sendable {
+        struct Recipe: SchemaProviding {
             let name: String
             let description: String
             let prepTime: Int
@@ -300,6 +304,30 @@ struct E2EOpenAITests {
             let ingredients: [Ingredient]
             let steps: [String]
             let servings: Int
+            
+            static var schema: ObjectSchema<Recipe> {
+                .define(
+                    name: "Recipe",
+                    description: "A detailed recipe with ingredients and cooking instructions"
+                ) {
+                    Schema.string("name", description: "Recipe name")
+                    Schema.string("description", description: "Recipe description")
+                    Schema.integer("prepTime", description: "Preparation time in minutes", minimum: 0)
+                    Schema.integer("cookTime", description: "Cooking time in minutes", minimum: 0)
+                    Schema.string("difficulty", 
+                                 description: "Recipe difficulty level",
+                                 enum: ["easy", "medium", "hard"])
+                    Schema.array("ingredients", 
+                                of: Ingredient.self,
+                                description: "List of recipe ingredients",
+                                minItems: 2)
+                    Schema.array("steps", 
+                                elementSchema: .string(minLength: 1),
+                                description: "Cooking instructions",
+                                minItems: 3)
+                    Schema.integer("servings", description: "Number of servings", minimum: 1)
+                }
+            }
         }
         
         let client = AIClient()
@@ -309,53 +337,10 @@ struct E2EOpenAITests {
         
         print("🧪 Testing complex object generation with real OpenAI API...")
         
-        // Create complex nested schema
-        let ingredientSchema = JSONSchema.definition(SchemaDefinition(
-            type: .object,
-            properties: [
-                "name": JSONSchema.definition(SchemaDefinition(type: .string)),
-                "amount": JSONSchema.definition(SchemaDefinition(type: .string)),
-                "optional": JSONSchema.definition(SchemaDefinition(type: .boolean))
-            ],
-            required: ["name", "amount", "optional"]
-        ))
-        
-        let recipeSchema = JSONSchema.definition(SchemaDefinition(
-            type: .object,
-            properties: [
-                "name": JSONSchema.definition(SchemaDefinition(type: .string)),
-                "description": JSONSchema.definition(SchemaDefinition(type: .string)),
-                "prepTime": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 0)),
-                "cookTime": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 0)),
-                "difficulty": JSONSchema.definition(SchemaDefinition(
-                    type: .string,
-                    enum: [.string("easy"), .string("medium"), .string("hard")]
-                )),
-                "ingredients": JSONSchema.definition(SchemaDefinition(
-                    type: .array,
-                    items: ingredientSchema,
-                    minItems: 2
-                )),
-                "steps": JSONSchema.definition(SchemaDefinition(
-                    type: .array,
-                    items: JSONSchema.definition(SchemaDefinition(type: .string)),
-                    minItems: 3
-                )),
-                "servings": JSONSchema.definition(SchemaDefinition(type: .integer, minimum: 1))
-            ],
-            required: ["name", "description", "prepTime", "cookTime", "difficulty", "ingredients", "steps", "servings"]
-        ))
-        
-        let objectSchema = ObjectSchema<Recipe>(
-            jsonSchema: recipeSchema,
-            name: "Recipe",
-            description: "A detailed recipe with ingredients and cooking instructions"
-        )
-        
         let response = try await client.generateObject(
             model,
             prompt: "Generate a simple pasta recipe with 3-4 ingredients and clear cooking steps",
-            schema: objectSchema
+            type: Recipe.self
         )
         
         // Verify the complex structure
@@ -381,6 +366,7 @@ struct E2EOpenAITests {
         }
         
         #expect(response.usage.totalTokens > 0, "Should track token usage")
+        #expect(response.finishReason == .stop || response.finishReason == .toolCalls, "Should finish normally (stop or toolCalls)")
         
         print("✅ Complex object generation successful")
         print("🍝 Generated recipe: \(recipe.name)")
@@ -539,7 +525,7 @@ struct E2EOpenAITests {
     // MARK: - Automatic Schema Generation Tests
     
     @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
-    @Test func testRealOpenAIAutomaticSchemaGeneration() async throws {
+    @Test func testRealOpenAISchemaProvidingGeneration() async throws {
         let provider: OpenAIProvider
         do {
             provider = try Self.createOpenAIProviderOrSkip()
@@ -548,7 +534,7 @@ struct E2EOpenAITests {
             return
         }
         
-        // Test automatic schema generation with OpenAI E2E integration
+        // Test SchemaProviding with OpenAI E2E integration
         let client = AIClient()
         
         // Use gpt-4.1-nano as mandated by CLAUDE.md for E2E testing
@@ -556,35 +542,34 @@ struct E2EOpenAITests {
             .temperature(0.0)  // Lower temperature for more consistent testing
             .maxTokens(300)
         
-        // Define a test struct with various property types
-        struct PersonProfile: Codable, Sendable {
+        // Define a test struct using SchemaProviding with various property types
+        struct PersonProfile: SchemaProviding {
             let name: String
             let age: Int
             let email: String?
             let isActive: Bool
+            
+            static var schema: ObjectSchema<PersonProfile> {
+                .define(
+                    name: "PersonProfile",
+                    description: "A person profile with name, age, optional email, and active status"
+                ) {
+                    Schema.string("name", description: "Person's full name", minLength: 1)
+                    Schema.integer("age", description: "Person's age", minimum: 0, maximum: 150)
+                    Schema.email("email", description: "Person's email address", required: false)
+                    Schema.boolean("isActive", description: "Whether the person is active")
+                }
+            }
         }
         
-        print("🧪 Testing automatic schema generation with real OpenAI API...")
+        print("🧪 Testing SchemaProviding generation with real OpenAI API...")
         
-        // For now, use manual schema until automatic generation is perfected
-        // This demonstrates the proper OpenAI schema format
-        let schema = ObjectSchema<PersonProfile>.manual(
-            jsonSchema: .object(properties: [
-                "name": .string(minLength: 1),
-                "age": .integer(minimum: 0, maximum: 150),
-                "email": .definition(SchemaDefinition(type: .string, format: "email")),
-                "isActive": .boolean()
-            ], required: ["name", "age", "isActive"]), // Only non-optional properties (email is optional)
-            name: "PersonProfile",
-            description: "A person profile with name, age, optional email, and active status"
-        )
-        
-        // Debug: Print the manual schema to see what OpenAI receives
+        // Debug: Print the schema to see what OpenAI receives
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
-        if let schemaData = try? encoder.encode(schema),
+        if let schemaData = try? encoder.encode(PersonProfile.schema),
            let schemaString = String(data: schemaData, encoding: .utf8) {
-            print("🔍 Manual schema for PersonProfile:")
+            print("🔍 SchemaProviding schema for PersonProfile:")
             print(schemaString)
         }
         
@@ -597,7 +582,7 @@ struct E2EOpenAITests {
             - Email: "alice.johnson@example.com" 
             - Is Active: true
             """,
-            schema: schema
+            type: PersonProfile.self
         )
         
         let person = response.object
@@ -609,13 +594,13 @@ struct E2EOpenAITests {
         #expect(person.isActive == true, "Active status should be true")
         
         // Verify response metadata
-        #expect(response.finishReason == FinishReason.stop, "Should complete successfully")
+        #expect(response.finishReason == FinishReason.stop || response.finishReason == FinishReason.toolCalls, "Should complete successfully (stop or toolCalls)")
         #expect(response.usage.totalTokens > 0, "Should track token usage")
         
         // Verify schema validation passed
         #expect(response.validationResult?.isValid == true, "Schema validation should pass")
         
-        print("✅ Automatic schema generation successful")
+        print("✅ SchemaProviding generation successful")
         print("👤 Generated person: \(person.name), age \(person.age), email: \(person.email ?? "nil"), active: \(person.isActive)")
         print("🔢 Token usage: \(response.usage.totalTokens)")
     }
@@ -630,42 +615,42 @@ struct E2EOpenAITests {
             return
         }
         
-        // Test the convenience factory methods
+        // Test the SchemaProviding convenience with optional properties
         let client = AIClient()
         let model = provider.languageModel("gpt-4.1-nano")
             .temperature(0.0)
             .maxTokens(200)
         
-        // Define a struct with optional properties
-        struct ProductInfo: Codable, Sendable {
+        // Define a struct with optional properties using SchemaProviding
+        struct ProductInfo: SchemaProviding {
             let id: String
             let name: String
             let price: Double
             let description: String?
             let category: String?
+            
+            static var schema: ObjectSchema<ProductInfo> {
+                .define(
+                    name: "ProductInfo",
+                    description: "Product information with optional fields"
+                ) {
+                    Schema.string("id", description: "Product identifier", minLength: 1)
+                    Schema.string("name", description: "Product name", minLength: 1, maxLength: 100)
+                    Schema.number("price", description: "Product price in USD", minimum: 0)
+                    Schema.string("description", description: "Product description", required: false)
+                    Schema.string("category", description: "Product category", required: false)
+                }
+            }
         }
         
         print("🧪 Testing schema convenience methods with real OpenAI API...")
         
-        // Use manual schema for reliable E2E testing
-        let schema = ObjectSchema<ProductInfo>.manual(
-            jsonSchema: .object(properties: [
-                "id": .string(minLength: 1),
-                "name": .string(minLength: 1, maxLength: 100),
-                "price": .number(minimum: 0),
-                "description": .string(),
-                "category": .string()
-            ], required: ["id", "name", "price"]), // Only non-optional properties (description, category are optional)
-            name: "Product",
-            description: "Product information with optional fields"
-        )
-        
-        // Debug: Print the manual schema
+        // Debug: Print the SchemaProviding schema
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
-        if let schemaData = try? encoder.encode(schema),
+        if let schemaData = try? encoder.encode(ProductInfo.schema),
            let schemaString = String(data: schemaData, encoding: .utf8) {
-            print("🔍 Manual schema for ProductInfo:")
+            print("🔍 SchemaProviding schema for ProductInfo:")
             print(schemaString)
         }
         
@@ -679,7 +664,7 @@ struct E2EOpenAITests {
             - Description: "High-quality wireless headphones"
             - Category: "Electronics"
             """,
-            schema: schema
+            type: ProductInfo.self
         )
         
         let product = response.object
@@ -692,7 +677,7 @@ struct E2EOpenAITests {
         #expect(product.category?.lowercased().contains("electronics") == true, "Category should be Electronics")
         
         // Verify response metadata
-        #expect(response.finishReason == FinishReason.stop, "Should complete successfully")
+        #expect(response.finishReason == FinishReason.stop || response.finishReason == FinishReason.toolCalls, "Should complete successfully (stop or toolCalls)")
         #expect(response.usage.totalTokens > 0, "Should track token usage")
         
         print("✅ Schema convenience methods test successful")

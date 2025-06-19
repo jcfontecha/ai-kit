@@ -26,8 +26,8 @@ public enum AIKit {
     
     /// Create a mock provider for testing and development
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
-    public static func mockProvider(apiKey: String = "mock-key") -> MockProvider {
-        MockProvider(apiKey: apiKey)
+    public static func mockProvider(configuration: MockConfiguration = .default) -> MockProvider {
+        MockProvider(configuration: configuration)
     }
     
     // MARK: - Middleware Factory

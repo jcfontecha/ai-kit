@@ -11,7 +11,8 @@ A comprehensive Swift framework for AI model interactions, inspired by the Verce
 - 🎯 **Type-Safe API**: Comprehensive Swift types with full Codable support
 - 🔄 **Streaming Support**: Real-time text and object generation with AsyncSequence
 - 🛠️ **Tool Integration**: Function calling with automatic execution
-- 📋 **Structured Output**: Automatic schema generation with field descriptions and validation  
+- 🏗️ **Modern Schema DSL**: SwiftUI-like declarative schema definition with compile-time safety
+- ✅ **SchemaProviding Protocol**: Clean type-safe schemas with automatic nesting
 - 🔌 **Provider Agnostic**: Clean abstraction over multiple AI providers
 - 🧬 **Middleware System**: Extensible request/response transformation
 - 🏗️ **Vercel AI SDK Compatible**: Familiar patterns for web developers
@@ -82,53 +83,177 @@ for try await chunk in stream {
 
 ### Structured Object Generation
 
-AIKit's ObjectSchema system provides automatic schema generation from Swift types with field-level descriptions for improved AI generation quality:
+AIKit provides two powerful approaches for structured object generation: **SchemaProviding protocol** for clean type-safe schemas and **Manual ObjectSchema** for full control.
+
+#### Approach 1: SchemaProviding Protocol (Recommended)
+
+The modern, SwiftUI-like approach with compile-time safety:
 
 ```swift
-struct Recipe: Codable {
+struct Recipe: SchemaProviding {
     let name: String
     let ingredients: [String]
     let instructions: [String]
     let prepTime: Int
     let difficulty: String
+    
+    // Clean, declarative schema definition
+    static var schema: ObjectSchema<Recipe> {
+        .define(
+            name: "Recipe",
+            description: "A cooking recipe with ingredients and instructions"
+        ) {
+            Schema.string("name", 
+                         description: "Recipe name that is descriptive and appealing",
+                         minLength: 1, maxLength: 100)
+            Schema.array("ingredients", 
+                        elementSchema: .string(minLength: 1),
+                        description: "List of ingredients with specific quantities",
+                        minItems: 1, maxItems: 20)
+            Schema.array("instructions", 
+                        elementSchema: .string(minLength: 5),
+                        description: "Step-by-step cooking instructions",
+                        minItems: 1)
+            Schema.integer("prepTime", 
+                          description: "Preparation time in minutes",
+                          minimum: 1, maximum: 480)
+            Schema.string("difficulty", 
+                         description: "Cooking difficulty level",
+                         enum: ["easy", "medium", "hard"])
+        }
+    }
 }
 
-// Automatic schema generation with field descriptions
-let schema = ObjectSchema<Recipe>()
-    .describe(\.name, "Recipe name that is descriptive and appealing")
-    .describe(\.ingredients, "List of ingredients with specific quantities")
-    .describe(\.instructions, "Step-by-step cooking instructions")
-    .describe(\.prepTime, "Preparation time in minutes", minimum: 1, maximum: 480)
-    .describe(\.difficulty, "Cooking difficulty level", enum: ["easy", "medium", "hard"])
-
-let response = try await client.generateObject(
+// Clean, type-safe API
+let recipe = try await client.generateObject(
     model, 
     prompt: "Create a chocolate chip cookie recipe",
-    schema: schema
+    type: Recipe.self  // Type provides its own schema!
 )
 
-let recipe: Recipe = response.object
 print("Recipe: \(recipe.name)")
 ```
 
-#### ObjectSchema Features
+#### Approach 2: Manual ObjectSchema
 
-- **Automatic Generation**: `ObjectSchema<T>()` automatically generates JSON schemas from Swift types
-- **Field Descriptions**: Improve AI generation quality with `.describe()` for each field
-- **Type Constraints**: Add validation rules like `minimum`, `maximum`, `enum` values
-- **Provider Agnostic**: Works seamlessly across OpenAI, Anthropic, and Google providers
-- **Swift-Idiomatic**: Uses KeyPath-based APIs for type safety and IDE completion
+For full control over schema definition:
+
+```swift
+struct User: Codable, Sendable {
+    let name: String
+    let age: Int
+    let email: String?
+}
+
+// Manual schema with full control
+let userSchema = ObjectSchema<User>.manual(
+    jsonSchema: .object(properties: [
+        "name": .string(minLength: 1, maxLength: 100),
+        "age": .integer(minimum: 0, maximum: 150),
+        "email": .string(format: "email")
+    ], required: ["name", "age"]),
+    name: "User",
+    description: "A user profile with personal information"
+)
+
+let response = try await client.generateObject(
+    model, 
+    prompt: "Create a user profile",
+    schema: userSchema
+)
+
+let user: User = response.object
+```
+
+#### Advanced SchemaProviding Examples
+
+**Nested Objects:**
+```swift
+struct Address: SchemaProviding {
+    let street: String
+    let city: String
+    let country: String
+    
+    static var schema: ObjectSchema<Address> {
+        .define(description: "Physical address") {
+            Schema.string("street", minLength: 1)
+            Schema.string("city", minLength: 1)
+            Schema.string("country", minLength: 2, maxLength: 2)
+        }
+    }
+}
+
+struct Company: SchemaProviding {
+    let name: String
+    let address: Address
+    let employees: [User]
+    
+    static var schema: ObjectSchema<Company> {
+        .define(description: "Company information") {
+            Schema.string("name", minLength: 1, maxLength: 100)
+            Schema.object("address", of: Address.self)  // Automatic nesting!
+            Schema.array("employees", of: User.self, minItems: 1)
+        }
+    }
+}
+```
+
+**Built-in Type Support:**
+```swift
+// Common types work out of the box
+let userId = try await client.generateObject(model, prompt: "Generate a UUID", type: UUID.self)
+let timestamp = try await client.generateObject(model, prompt: "Current timestamp", type: Date.self)
+let count = try await client.generateObject(model, prompt: "Random number 1-100", type: Int.self)
+```
+
+#### Schema Features
+
+- **🏗️ SwiftUI-like DSL**: Declarative schema definition with result builders
+- **✅ Compile-time Safety**: SchemaProviding protocol ensures types define their schemas
+- **🔄 Automatic Nesting**: Reference other SchemaProviding types seamlessly
+- **📝 Rich Constraints**: String lengths, numeric ranges, array sizes, enum values
+- **🎯 Type Inference**: Clean API that infers schemas from types
+- **🔌 Provider Agnostic**: Works across OpenAI, Anthropic, and Google providers
+- **⚡ Performance**: No runtime reflection - all compile-time
+
+### Array Generation
+
+```swift
+// Generate arrays using SchemaProviding types
+let users = try await client.generateArray(
+    model,
+    prompt: "Create 3 diverse user profiles",
+    elementType: User.self
+)
+
+// Or with manual schemas
+let recipes = try await client.generateArray(
+    model,
+    prompt: "Create 5 quick breakfast recipes",
+    elementSchema: Recipe.schema
+)
+```
 
 ### Tool Calling
 
 ```swift
-// Define a tool
+// Define a tool using SchemaProviding
+struct WeatherQuery: SchemaProviding {
+    let location: String
+    let units: String
+    
+    static var schema: ObjectSchema<WeatherQuery> {
+        .define(description: "Weather query parameters") {
+            Schema.string("location", description: "City and state, e.g. San Francisco, CA")
+            Schema.string("units", enum: ["celsius", "fahrenheit"], description: "Temperature units")
+        }
+    }
+}
+
 let weatherTool = Tool.function(
     name: "get_weather",
     description: "Get current weather for a location",
-    parameters: .object(properties: [
-        "location": .string(description: "City and state, e.g. San Francisco, CA")
-    ], required: ["location"])
+    parameters: WeatherQuery.schema.jsonSchema
 )
 
 // Use with model (future implementation)
@@ -155,6 +280,7 @@ Sources/AIKit/
 │   ├── Responses.swift            # Response types (TextResponse, ObjectResponse)
 │   ├── ProviderTypes.swift        # Provider request/response types
 │   ├── ObjectSchema.swift         # Structured object schemas
+│   ├── SchemaProviding.swift      # Modern schema DSL and protocol
 │   ├── Streaming.swift            # Streaming types and utilities
 │   ├── Errors.swift               # Error types
 │   └── JSONSchema.swift           # JSON schema definitions

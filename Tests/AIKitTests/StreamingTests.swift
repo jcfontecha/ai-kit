@@ -39,7 +39,7 @@ import Foundation
 @Test func testStreamingErrorHandling() async throws {
     // Test streaming error handling using error-prone configuration
     let errorConfig = MockConfiguration(errorRate: 1.0) // 100% error rate
-    let provider = MockProvider(apiKey: "test-key", configuration: errorConfig)
+    let provider = MockProvider(configuration: errorConfig)
     
     let request = ProviderRequest(
         modelId: "mock-gpt-4",
@@ -71,7 +71,7 @@ import Foundation
     
     // Test streaming with lower error rate (should sometimes succeed)
     let lowErrorConfig = MockConfiguration(errorRate: 0.0) // No errors
-    let reliableProvider = MockProvider(apiKey: "test-key", configuration: lowErrorConfig)
+    let reliableProvider = MockProvider(configuration: lowErrorConfig)
     
     let reliableStream = reliableProvider.streamTextRaw(request)
     var receivedChunks = 0
@@ -253,7 +253,7 @@ import Foundation
 @Test func testStreamTextErrorHandling() async throws {
     // Test streaming error handling (Vercel pattern: onError callback)
     let errorConfig = MockConfiguration(errorRate: 1.0) // Force errors
-    let provider = MockProvider(apiKey: "test", configuration: errorConfig)
+    let provider = MockProvider(configuration: errorConfig)
     let model = provider.languageModel("gpt-4.1-nano")
     let client = AIClient()
     

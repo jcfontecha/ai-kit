@@ -69,19 +69,34 @@ import Foundation
 }
 
 @Test func testObjectSchema() {
-    // Test ObjectSchema creation
+    // Test ObjectSchema creation with explicit manual API
     struct TestType: Codable {
         let name: String
         let value: Int
     }
     
-    let schema = ObjectSchema<TestType>()
-    #expect(schema.name == "TestType") // Default name is the type name
-    #expect(schema.description == nil)
+    let jsonSchema = JSONSchema.object(properties: [
+        "name": .string(),
+        "value": .integer()
+    ], required: ["name", "value"])
     
-    let namedSchema = ObjectSchema<TestType>(name: "CustomTestType", description: "A test type")
+    // Use the explicit manual constructor API
+    let schema = ObjectSchema<TestType>.manual(
+        jsonSchema: jsonSchema,
+        name: "TestType",
+        description: "A test type for schema validation"
+    )
+    #expect(schema.name == "TestType")
+    #expect(schema.description == "A test type for schema validation")
+    
+    // Test with custom name and description
+    let namedSchema = ObjectSchema<TestType>.manual(
+        jsonSchema: jsonSchema,
+        name: "CustomTestType",
+        description: "A custom test type"
+    )
     #expect(namedSchema.name == "CustomTestType")
-    #expect(namedSchema.description == "A test type")
+    #expect(namedSchema.description == "A custom test type")
 }
 
 @Test func testProviderBasicFunctionality() async throws {

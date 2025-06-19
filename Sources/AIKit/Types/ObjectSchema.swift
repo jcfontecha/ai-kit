@@ -12,7 +12,7 @@ import Foundation
 /// ## Key Features
 /// - **Type Safety**: Ensures generated objects match the expected Swift type
 /// - **JSON Schema Integration**: Uses standard JSON Schema for model communication
-/// - **Automatic Generation**: Can automatically derive schemas from Swift types
+/// - **Explicit Schema Definition**: Requires explicit JSON Schema definitions
 /// - **Validation**: Provides runtime validation of generated objects
 /// - **Provider Agnostic**: Works with any AI provider that supports structured output
 ///
@@ -20,13 +20,21 @@ import Foundation
 ///
 /// ### Basic Object Schema
 /// ```swift
-/// struct Person: Codable {
+/// struct Person: Codable, SchemaProviding {
 ///     let name: String
 ///     let age: Int
 ///     let email: String?
+///     
+///     static var jsonSchema: JSONSchema {
+///         .object(properties: [
+///             "name": .string(),
+///             "age": .integer(),
+///             "email": .string()
+///         ], required: ["name", "age"])
+///     }
 /// }
 /// 
-/// let schema = ObjectSchema<Person>()
+/// let schema = ObjectSchema<Person>(jsonSchema: Person.jsonSchema)
 /// let response = try await client.generateObject(model, prompt: "Create a person", schema: schema)
 /// let person: Person = response.object
 /// ```
@@ -44,13 +52,6 @@ import Foundation
 ///     name: "Person",
 ///     description: "A person with name, age, and optional email"
 /// )
-/// ```
-///
-/// ### Schema with Examples
-/// ```swift
-/// let schema = ObjectSchema<Person>()
-///     .withExample(Person(name: "John Doe", age: 30, email: "john@example.com"))
-///     .withExample(Person(name: "Jane Smith", age: 25, email: nil))
 /// ```
 public struct ObjectSchema<T: Codable & Sendable>: Sendable {
     
@@ -91,30 +92,27 @@ public struct ObjectSchema<T: Codable & Sendable>: Sendable {
     
     // MARK: - Initialization
     
-    /// Creates a new ObjectSchema with automatic schema generation.
+    /// Creates a new ObjectSchema with an explicit JSON schema.
     ///
-    /// This initializer attempts to automatically generate a JSON Schema
-    /// from the Swift type `T`. For complex types, consider providing
-    /// a custom `jsonSchema`.
+    /// This is the primary initializer that requires an explicit JSON Schema
+    /// definition. Use this when you have full control over the schema definition.
     ///
     /// - Parameters:
-    ///   - jsonSchema: Custom JSON schema (auto-generated if nil)
+    ///   - jsonSchema: The JSON schema that defines the object structure
     ///   - name: Optional name for the schema
     ///   - description: Optional description
     ///   - examples: Optional example instances
     ///   - validationMode: Validation strictness (defaults to .strict)
     ///   - allowAdditionalProperties: Allow extra properties (defaults to false)
     public init(
-        jsonSchema: JSONSchema? = nil,
+        jsonSchema: JSONSchema,
         name: String? = nil,
         description: String? = nil,
         examples: [T]? = nil,
         validationMode: ValidationMode = .strict,
         allowAdditionalProperties: Bool = false
     ) {
-        // In a real implementation, this would use reflection or code generation
-        // to automatically derive a JSON Schema from the Swift type T
-        self.jsonSchema = jsonSchema ?? Self.generateSchemaForType()
+        self.jsonSchema = jsonSchema
         self.name = name ?? String(describing: T.self)
         self.description = description
         self.examples = examples
@@ -122,15 +120,15 @@ public struct ObjectSchema<T: Codable & Sendable>: Sendable {
         self.allowAdditionalProperties = allowAdditionalProperties
     }
     
-    /// Creates an ObjectSchema with a fully specified JSON Schema.
+    /// Creates an ObjectSchema with a fully specified JSON Schema and required name.
     ///
     /// Use this initializer when you need full control over the JSON Schema
-    /// definition, such as for complex validation rules or provider-specific
-    /// schema features.
+    /// definition with an explicit name, such as for complex validation rules
+    /// or provider-specific schema features.
     ///
     /// - Parameters:
     ///   - jsonSchema: The complete JSON Schema definition
-    ///   - name: Schema name
+    ///   - name: Required schema name
     ///   - description: Schema description
     ///   - examples: Example instances
     ///   - validationMode: Validation mode
@@ -151,306 +149,10 @@ public struct ObjectSchema<T: Codable & Sendable>: Sendable {
         self.allowAdditionalProperties = allowAdditionalProperties
     }
     
-    // MARK: - Private Methods
-    
-    /// Generate a JSON Schema for the Swift type T using Codable infrastructure.
-    ///
-    /// This method leverages Swift's Codable encoding/decoding system to automatically
-    /// generate appropriate JSON Schemas. It provides better reliability than reflection
-    /// and aligns with Swift's type system.
-    private static func generateSchemaForType() -> JSONSchema {
-        do {
-            return try generateSchemaFromCodable()
-        } catch {
-            // Fallback to a flexible object schema for complex types
-            // This follows the principle of "fail gracefully" rather than breaking
-            print("⚠️ Warning: Auto-generation failed for \(T.self): \(error.localizedDescription)")
-            print("💡 Consider using ObjectSchema.manual() or ObjectSchema.from() with explicit schema")
-            
-            return .definition(SchemaDefinition(
-                type: .object,
-                description: "Flexible schema for \(T.self) - automatic generation not available",
-                additionalProperties: .boolean(true) // Allow any properties
-            ))
-        }
-    }
-    
-    /// Generate schema using Codable's encoding infrastructure.
-    private static func generateSchemaFromCodable() throws -> JSONSchema {
-        // For basic types, return appropriate schemas directly
-        if let basicSchema = generateBasicTypeSchema() {
-            return basicSchema
-        }
-        
-        // For complex types, use encoding introspection
-        let typeAnalysis = try analyzeCodableType()
-        
-        var properties: [String: JSONSchema] = [:]
-        var requiredProperties: [String] = []
-        
-        for property in typeAnalysis.properties {
-            let propertySchema = generateSchemaForProperty(property)
-            properties[property.codingKey] = propertySchema
-            
-            // Only non-optional properties are marked as required (following Vercel AI SDK pattern)
-            // Optional properties are excluded from the required array entirely
-            if !property.isOptional {
-                requiredProperties.append(property.codingKey)
-            }
-        }
-        
-        return .object(
-            properties: properties,
-            required: requiredProperties.isEmpty ? nil : requiredProperties,
-            additionalProperties: .boolean(false)
-        )
-    }
-    
-    /// Generate schema for basic Swift types.
-    private static func generateBasicTypeSchema() -> JSONSchema? {
-        let typeName = String(describing: T.self)
-        
-        switch typeName {
-        case "String":
-            return .string()
-        case "Int", "Int8", "Int16", "Int32", "Int64":
-            return .integer()
-        case "UInt", "UInt8", "UInt16", "UInt32", "UInt64":
-            return .integer(minimum: 0)
-        case "Float", "Double":
-            return .number()
-        case "Bool":
-            return .boolean()
-        case "Date":
-            return .string(format: "date-time")
-        case "URL":
-            return .string(format: "uri")
-        case "UUID":
-            return .string(format: "uuid")
-        default:
-            return nil
-        }
-    }
-    
-    /// Analyze a Codable type to extract property information.
-    private static func analyzeCodableType() throws -> CodableTypeAnalysis {
-        // Try to create a minimal instance to understand the encoding structure
-        if let sampleInstance = createSampleInstance() {
-            return try analyzeThroughEncoding(sampleInstance)
-        }
-        
-        // Fallback: analyze through type metadata
-        return try analyzeTypeMetadata()
-    }
-    
-    /// Create a sample instance for encoding analysis.
-    private static func createSampleInstance() -> T? {
-        // For many Codable types, we can create sample instances
-        // This is a best-effort approach that works for common patterns
-        
-        // Handle basic types
-        if T.self == String.self { return "" as? T }
-        if T.self == Int.self { return 0 as? T }
-        if T.self == Bool.self { return false as? T }
-        if T.self == Double.self { return 0.0 as? T }
-        
-        // For complex types, try to create a default instance using reflection
-        // This is a more aggressive approach to get property information
-        return createDefaultInstance()
-    }
-    
-    /// Attempt to create a default instance of a complex type.
-    private static func createDefaultInstance() -> T? {
-        // This is a simplified approach - in production this would need more sophistication
-        // For now, we'll focus on making the system work with manual schemas
-        
-        // Try to use unsafeBitCast with a zero-initialized memory region for structs
-        // This is unsafe but can work for simple structs with basic types
-        // NOTE: This is experimental and should be used with caution
-        
-        let typeSize = MemoryLayout<T>.size
-        if typeSize > 0 && typeSize < 1024 { // Reasonable size limits
-            let buffer = UnsafeMutablePointer<T>.allocate(capacity: 1)
-            defer { buffer.deallocate() }
-            
-            // Initialize memory to zero
-            buffer.withMemoryRebound(to: UInt8.self, capacity: typeSize) { ptr in
-                ptr.initialize(repeating: 0, count: typeSize)
-            }
-            
-            // This is very unsafe - only works for simple structs
-            // In practice, we should recommend manual schema definition
-            return nil // Disabled for safety
-        }
-        
-        return nil
-    }
-    
-    /// Analyze type structure through encoding.
-    private static func analyzeThroughEncoding(_ instance: T) throws -> CodableTypeAnalysis {
-        let encoder = JSONEncoder()
-        let data = try encoder.encode(instance)
-        
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw SchemaGenerationError.typeIntrospectionFailed("Could not decode as JSON object")
-        }
-        
-        var properties: [CodablePropertyInfo] = []
-        
-        for (key, value) in json {
-            let propertyInfo = CodablePropertyInfo(
-                codingKey: key,
-                swiftType: type(of: value),
-                isOptional: isNullable(value),
-                isArray: value is [Any]
-            )
-            properties.append(propertyInfo)
-        }
-        
-        return CodableTypeAnalysis(properties: properties)
-    }
-    
-    /// Analyze type through metadata when instance creation fails.
-    private static func analyzeTypeMetadata() throws -> CodableTypeAnalysis {
-        // Use Mirror to introspect the type structure
-        // This works for most Swift types without requiring instance creation
-        return try analyzeTypeWithMirror()
-    }
-    
-    /// Analyze type using Swift's Mirror reflection.
-    private static func analyzeTypeWithMirror() throws -> CodableTypeAnalysis {
-        // For types we can't instantiate directly, we need to use a different approach
-        // Let's try using a nil-initialized Mirror (works for many cases)
-        
-        // Try to get type info through various approaches
-        let typeName = String(describing: T.self)
-        
-        // If this is a struct with properties, we need to use the sample instance approach
-        // but with better fallback handling
-        do {
-            // Try to create a temporary instance for analysis
-            // This is a more sophisticated approach than the simple createSampleInstance
-            if let analyzedProperties = try extractPropertiesFromType() {
-                return CodableTypeAnalysis(properties: analyzedProperties)
-            }
-        } catch {
-            // Continue to fallback
-        }
-        
-        // For complex types we can't analyze, create a basic object schema
-        // This ensures we at least have a valid schema structure
-        throw SchemaGenerationError.typeIntrospectionFailed("Cannot analyze type \(typeName) - consider using manual schema definition")
-    }
-    
-    /// Extract properties from a type using various reflection techniques.
-    private static func extractPropertiesFromType() throws -> [CodablePropertyInfo]? {
-        let typeName = String(describing: T.self)
-        
-        // For now, return nil to indicate we need manual schema definition
-        // In a production implementation, this would use more sophisticated reflection
-        // or require developers to provide schemas for complex types
-        return nil
-    }
-    
-    /// Generate schema for a specific property.
-    private static func generateSchemaForProperty(_ property: CodablePropertyInfo) -> JSONSchema {
-        let baseSchema = generateSchemaForSwiftType(property.swiftType, isArray: property.isArray)
-        
-        // Handle optional properties with oneOf pattern
-        if property.isOptional {
-            return .definition(SchemaDefinition(
-                type: .object,
-                oneOf: [baseSchema, .definition(SchemaDefinition(type: .null))]
-            ))
-        }
-        
-        return baseSchema
-    }
-    
-    /// Generate schema for a Swift type.
-    private static func generateSchemaForSwiftType(_ swiftType: Any.Type, isArray: Bool) -> JSONSchema {
-        if isArray {
-            // For arrays, extract element type and create array schema
-            let elementSchema = generateSchemaForElementType(swiftType)
-            return .array(items: elementSchema)
-        }
-        
-        let typeName = String(describing: swiftType)
-        
-        switch typeName {
-        case "String", "__NSCFString", "NSTaggedPointerString":
-            return .string()
-        case "Int", "Int8", "Int16", "Int32", "Int64", "__NSCFNumber":
-            return .integer()
-        case "UInt", "UInt8", "UInt16", "UInt32", "UInt64":
-            return .integer(minimum: 0)
-        case "Float", "Double":
-            return .number()
-        case "Bool":
-            return .boolean()
-        case "Date":
-            return .string(format: "date-time")
-        case "URL":
-            return .string(format: "uri")
-        case "UUID":
-            return .string(format: "uuid")
-        default:
-            // For unknown types, return generic object schema
-            return .definition(SchemaDefinition(
-                type: .object,
-                description: "Object of type \(typeName)"
-            ))
-        }
-    }
-    
-    /// Generate schema for array element type.
-    private static func generateSchemaForElementType(_ arrayType: Any.Type) -> JSONSchema {
-        // For arrays, assume elements are basic types or objects
-        // This is a simplified approach - could be enhanced with more sophisticated analysis
-        return .string() // Default to string for array elements
-    }
-    
-    /// Check if a value represents a nullable/optional property.
-    private static func isNullable(_ value: Any) -> Bool {
-        return value is NSNull
-    }
-    
     
     
 }
 
-// MARK: - Codable Analysis Support Types
-
-/// Information about a Swift type extracted through Codable analysis.
-private struct CodableTypeAnalysis {
-    let properties: [CodablePropertyInfo]
-}
-
-/// Information about a property within a Codable Swift type.
-private struct CodablePropertyInfo {
-    let codingKey: String
-    let swiftType: Any.Type
-    let isOptional: Bool
-    let isArray: Bool
-}
-
-/// Enum to represent schema generation errors
-private enum SchemaGenerationError: Error, LocalizedError {
-    case typeIntrospectionFailed(String)
-    case unsupportedType(String)
-    case encodingFailed(String)
-    
-    var errorDescription: String? {
-        switch self {
-        case .typeIntrospectionFailed(let message):
-            return "Type introspection failed: \(message)"
-        case .unsupportedType(let type):
-            return "Unsupported type for schema generation: \(type)"
-        case .encodingFailed(let message):
-            return "Encoding analysis failed: \(message)"
-        }
-    }
-}
 
 // MARK: - Generation Mode
 
@@ -682,24 +384,29 @@ public extension ObjectSchema {
     
     // MARK: - Private Helper Methods
     
-    /// Extract field name from KeyPath.
+    /// Extract field name from KeyPath using simple string parsing.
     ///
-    /// This is a simplified implementation. In practice, this would need
-    /// more sophisticated KeyPath reflection or use compiler assistance.
+    /// This implementation provides basic field name extraction from KeyPaths
+    /// by parsing the string representation of the KeyPath.
     private func getFieldName<Value>(for keyPath: KeyPath<T, Value>) -> String {
-        // For now, return a placeholder. 
-        // Real implementation would use KeyPath reflection or codegen
         let keyPathString = String(describing: keyPath)
         
-        // Try to extract property name from keyPath description
-        // KeyPath descriptions typically look like: \SomeType.propertyName
+        // Parse KeyPath string: \TypeName.propertyName
         if let dotIndex = keyPathString.lastIndex(of: ".") {
             let propertyName = String(keyPathString[keyPathString.index(after: dotIndex)...])
-            return propertyName
+            
+            // Clean up the property name (remove trailing characters)
+            let cleanedName = propertyName.components(separatedBy: CharacterSet.alphanumerics.inverted).first ?? propertyName
+            
+            if !cleanedName.isEmpty && cleanedName != "self" {
+                return cleanedName
+            }
         }
         
-        // Fallback to hash-based name
-        return "field_\(abs(keyPath.hashValue))"
+        // Fallback: Generate stable name based on KeyPath hash
+        let hashValue = abs(keyPath.hashValue)
+        let valueTypeName = String(describing: Value.self)
+        return "field_\(valueTypeName)_\(hashValue)"
     }
     
     /// Add field description and constraints to the JSON Schema.
@@ -827,24 +534,26 @@ public extension ObjectSchema {
 
 public extension ObjectSchema {
     
-    /// Create an ObjectSchema with automatic schema generation from a Swift type.
+    /// Create an ObjectSchema from a type that conforms to SchemaProviding.
     ///
-    /// This is the recommended way to create schemas for Swift types. It provides
-    /// better error handling and clearer intent than the default initializer.
+    /// This is the recommended way to create schemas for types that define
+    /// their own JSON Schema through the SchemaProviding protocol.
     ///
     /// - Parameters:
-    ///   - type: The Swift type to generate a schema for
+    ///   - type: The Swift type that conforms to SchemaProviding
     ///   - name: Optional custom name for the schema
     ///   - description: Optional description of the schema
-    /// - Returns: An ObjectSchema with automatically generated JSON Schema
+    /// - Returns: An ObjectSchema using the type's provided JSON Schema
     static func from(
         _ type: T.Type,
         name: String? = nil,
         description: String? = nil
-    ) -> ObjectSchema<T> {
+    ) -> ObjectSchema<T> where T: SchemaProviding {
+        let providedSchema = type.schema
         return ObjectSchema<T>(
-            name: name ?? String(describing: type).components(separatedBy: ".").last,
-            description: description ?? "Auto-generated schema for \(type)"
+            jsonSchema: providedSchema.jsonSchema,
+            name: name ?? providedSchema.name ?? String(describing: type).components(separatedBy: ".").last,
+            description: description ?? providedSchema.description
         )
     }
     
@@ -879,14 +588,13 @@ public extension ObjectSchema {
 
 // MARK: - Global Schema Factory Functions
 
-/// Create a schema for an array of objects.
+/// Create a schema for an array of objects using SchemaProviding types.
 ///
-/// - Parameter elementType: The type of array elements
+/// - Parameter elementType: The type of array elements that conforms to SchemaProviding
 /// - Returns: An ObjectSchema for arrays of the specified type
-public func arraySchema<U: Codable & Sendable>(of elementType: U.Type) -> ObjectSchema<[U]> {
-    let elementSchema = ObjectSchema<U>().jsonSchema
+public func arraySchema<U: Codable & Sendable & SchemaProviding>(of elementType: U.Type) -> ObjectSchema<[U]> {
     let arraySchema = JSONSchema.array(
-        items: elementSchema,
+        items: elementType.schema.jsonSchema,
         minItems: 0
     )
     
@@ -897,20 +605,20 @@ public func arraySchema<U: Codable & Sendable>(of elementType: U.Type) -> Object
     )
 }
 
-/// Create a schema for optional objects.
+/// Create a schema for optional objects using SchemaProviding types.
 ///
-/// - Parameter wrappedType: The wrapped type
+/// - Parameter wrappedType: The wrapped type that conforms to SchemaProviding
 /// - Returns: An ObjectSchema for optional values of the specified type
-public func optionalSchema<U: Codable & Sendable>(_ wrappedType: U.Type) -> ObjectSchema<U?> {
-    let baseSchema = ObjectSchema<U>().jsonSchema
+public func optionalSchema<U: Codable & Sendable & SchemaProviding>(_ wrappedType: U.Type) -> ObjectSchema<U?> {
+    let wrappedSchema = wrappedType.schema.jsonSchema
     
     // Create a schema that allows either the base type or null
     let optionalSchema = JSONSchema.definition(SchemaDefinition(
-        type: baseSchema.definition.type,
-        properties: baseSchema.definition.properties,
-        items: baseSchema.definition.items,
-        required: baseSchema.definition.required,
-        oneOf: [baseSchema, .definition(SchemaDefinition(type: .null))]
+        type: wrappedSchema.definition.type,
+        properties: wrappedSchema.definition.properties,
+        items: wrappedSchema.definition.items,
+        required: wrappedSchema.definition.required,
+        oneOf: [wrappedSchema, .definition(SchemaDefinition(type: .null))]
     ))
     
     return ObjectSchema<U?>(

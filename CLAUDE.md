@@ -35,8 +35,8 @@ Three-layer design: `AIClient` (Framework) → `LanguageModel` (Configuration) �
 - **LanguageModel**: Configuration container with builder pattern
 - **AIProvider**: Protocol for provider-specific API translation
 
-**Key Types** (`Sources/ai-swift/Types/`):
-- Messages, Streaming, Responses, Tools, Errors, Usage, ObjectSchema
+**Key Types** (`Sources/AIKit/Types/`):
+- Messages, Streaming, Responses, Tools, Errors, Usage, ObjectSchema, SchemaProviding
 
 ## Development Patterns
 
@@ -57,14 +57,15 @@ public struct YourProvider: AIProvider {
 - See `TEST-PLAN.md` for implementation roadmap
 
 ## Key Files
-- `Sources/ai-swift/ai_swift.swift`: Main module interface
-- `Sources/ai-swift/Core/`: Core architecture components
-- `Tests/ai-swiftTests/`: Test suite with mock implementations
+- `Sources/AIKit/AIKit.swift`: Main module interface
+- `Sources/AIKit/Core/`: Core architecture components
+- `Sources/AIKit/Types/SchemaProviding.swift`: Modern schema DSL and protocol
+- `Tests/AIKitTests/`: Test suite with mock implementations
 
 ## Provider Implementation Workflow
 
 1. **Research**: Study Vercel AI SDK provider patterns and official API docs
-2. **Plan**: Create todo list, set up file structure in `Sources/ai-swift/Providers/`
+2. **Plan**: Create todo list, set up file structure in `Sources/AIKit/Providers/`
 3. **Implement**: Build provider struct, API types, generateTextRaw, streamTextRaw, error handling
 4. **Verify**: Build check, platform requirements, type safety, integration testing
 
@@ -87,7 +88,7 @@ swift build                   # Ensure compilation
 
 ## ⚠️ CRITICAL: E2E Test Model Requirements
 
-**MANDATORY**: For E2E tests in `Tests/ai-swiftTests/E2EOpenAITests.swift`:
+**MANDATORY**: For E2E tests in `Tests/AIKitTests/E2EOpenAITests.swift`:
 
 - **ALWAYS use `gpt-4.1-nano`** - This is the ONLY model allowed for E2E testing
 - **NEVER change the model** - It's specifically chosen for cost-effectiveness and consistency
@@ -95,32 +96,48 @@ swift build                   # Ensure compilation
 
 This ensures predictable costs and consistent test behavior across all E2E test scenarios.
 
-## ObjectSchema Implementation Patterns
+## Schema Implementation Patterns
 
-### 🎯 Core Design Principles
+### 🎯 Modern Approach: SchemaProviding Protocol
 
-**Based on Vercel AI SDK patterns adapted for Swift:**
+**The recommended pattern for AIKit schema definition:**
 
-1. **Automatic Generation**: `ObjectSchema<T>()` should generate working schemas from Codable types
-2. **Field Descriptions**: Use KeyPath-based `.describe()` for AI guidance
-3. **Provider Agnostic**: Same schema works across OpenAI, Anthropic, Google
-4. **Type Safety**: Leverage Swift's type system and compile-time checks
+1. **SchemaProviding Protocol**: Types define their own schemas via protocol conformance
+2. **SwiftUI-like DSL**: Declarative schema definition with result builders
+3. **Compile-time Safety**: No runtime reflection, all schemas verified at compile time
+4. **Provider Agnostic**: Same schema works across OpenAI, Anthropic, Google
+5. **Type Safety**: Leverage Swift's type system and compile-time checks
 
 ### 🏗️ Implementation Patterns
 
-#### Schema Creation
+#### SchemaProviding Types (Recommended)
 ```swift
-// Always prefer automatic generation
-let schema = ObjectSchema<Person>()
-    .describe(\.name, "Full legal name")
-    .describe(\.age, "Age in years", minimum: 0, maximum: 150)
-    .describe(\.email, "Optional contact email")
+struct Person: SchemaProviding {
+    let name: String
+    let age: Int
+    let email: String?
+    
+    static var schema: ObjectSchema<Person> {
+        .define(description: "A person profile") {
+            Schema.string("name", description: "Full legal name", minLength: 1)
+            Schema.integer("age", description: "Age in years", minimum: 0, maximum: 150)
+            Schema.email("email", description: "Optional contact email", required: false)
+        }
+    }
+}
 
-// Manual only when automatic fails
+// Clean, type-safe API
+let person = try await client.generateObject(model, prompt: "Create a person", type: Person.self)
+```
+
+#### Manual ObjectSchema (When needed)
+```swift
+// Manual only when you need full control
 let manual = ObjectSchema<Person>.manual(
     jsonSchema: customSchema,
     name: "Person"
 )
+let response = try await client.generateObject(model, prompt: "Create a person", schema: manual)
 ```
 
 #### Provider Integration Pattern
@@ -154,29 +171,89 @@ protocol AIProvider {
 
 #### Schema Generation Tests
 ```swift
-func testObjectSchemaGeneration() {
-    let schema = ObjectSchema<TestType>()
+struct TestType: SchemaProviding {
+    let field: String
+    
+    static var schema: ObjectSchema<TestType> {
+        .define {
+            Schema.string("field", description: "Test field")
+        }
+    }
+}
+
+func testSchemaProvidingTypes() {
+    let schema = TestType.schema
     XCTAssertNotNil(schema.jsonSchema)
     XCTAssertEqual(schema.name, "TestType")
+    
+    // Test clean API
+    // let result = try await client.generateObject(model, prompt: "test", type: TestType.self)
 }
 ```
 
 #### E2E Object Generation Tests
 ```swift
-func testRealObjectGeneration() async throws {
-    let schema = ObjectSchema<Person>()
-        .describe(\.name, "Full name")
-        .describe(\.age, "Age in years", minimum: 0, maximum: 150)
+struct TestPerson: SchemaProviding {
+    let name: String
+    let age: Int
     
-    let response = try await client.generateObject(
+    static var schema: ObjectSchema<TestPerson> {
+        .define {
+            Schema.string("name", description: "Full name")
+            Schema.integer("age", description: "Age in years", minimum: 0, maximum: 150)
+        }
+    }
+}
+
+func testRealObjectGeneration() async throws {
+    let person = try await client.generateObject(
         model, // Always use gpt-4.1-nano for E2E
         prompt: "Generate a test person",
-        schema: schema
+        type: TestPerson.self  // Clean type-safe API
     )
     
-    XCTAssertTrue(response.object.age >= 0)
-    XCTAssertTrue(response.object.age <= 150)
+    XCTAssertTrue(person.age >= 0)
+    XCTAssertTrue(person.age <= 150)
 }
 ```
+
+### ✨ Schema Evolution: From Reflection to Protocol-Based Design
+
+**Old Approach (Deprecated):**
+```swift
+// ❌ Unsafe runtime reflection, no compile-time guarantees
+let schema = ObjectSchema<Person>()
+    .describe(\.name, "Full name")  // KeyPath-based, brittle
+    .describe(\.age, "Age", minimum: 0, maximum: 150)
+```
+
+**New Approach (Recommended):**
+```swift
+// ✅ Compile-time safety, explicit schema definition
+struct Person: SchemaProviding {
+    let name: String
+    let age: Int
+    
+    static var schema: ObjectSchema<Person> {
+        .define {
+            Schema.string("name", description: "Full name")
+            Schema.integer("age", minimum: 0, maximum: 150)
+        }
+    }
+}
+
+// Clean API that leverages the schema
+let person = try await client.generateObject(model, prompt: "Create person", type: Person.self)
+```
+
+### 🏆 Benefits of SchemaProviding
+
+1. **🏗️ SwiftUI-like DSL**: Familiar declarative syntax with result builders
+2. **⚡ Compile-time Safety**: No runtime failures, all schemas verified upfront
+3. **🔗 Automatic Nesting**: Reference other SchemaProviding types seamlessly
+4. **📝 Self-Documenting**: Schema lives with the type, improving discoverability
+5. **🎯 Type-safe API**: `generateObject(type: T.self)` vs manual schema passing
+6. **🔄 Composable**: Easy to build complex nested structures
+7. **🚀 Performance**: No reflection overhead, faster execution
 
 This methodology ensures high-quality, maintainable code that mirrors Vercel AI SDK while being idiomatic to Swift.

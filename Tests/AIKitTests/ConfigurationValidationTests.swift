@@ -3,9 +3,9 @@ import Foundation
 @testable import AIKit
 
 @Test func testConfigurationValidation() async throws {
-    // Test configuration validation in mock provider with strict validation
-    let strictConfig = MockConfiguration(strictValidation: true)
-    let provider = MockProvider(apiKey: "test-key", configuration: strictConfig)
+    // Test configuration validation in mock provider
+    let strictConfig = MockConfiguration()
+    let provider = MockProvider(configuration: strictConfig)
     
     // Test valid configuration
     let validConfig = ModelConfiguration.default

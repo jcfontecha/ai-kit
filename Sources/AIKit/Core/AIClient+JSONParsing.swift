@@ -5,34 +5,106 @@ import Foundation
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 internal extension AIClient {
     
-    /// Parse JSON response content into the specified type with proper error handling
+    /// Parse JSON response content into the specified type with two-phase validation
     func parseJSONResponse<T: Codable>(_ content: String, as type: T.Type) throws -> T {
-        // Extract JSON from the response content
-        // Some providers might include extra text, so we need to find the JSON portion
-        let jsonString = extractJSONFromResponse(content, expectingArray: isArrayType(type))
+        // Phase 1: Safe JSON parsing (following Vercel AI SDK pattern)
+        let parseResult = safeParseJSON(content, expectingArray: isArrayType(type))
         
-        guard let jsonData = jsonString.data(using: .utf8) else {
-            throw AIGenerationError.jsonParseError(
+        switch parseResult {
+        case .success(let jsonData):
+            // Phase 2: Safe type validation
+            return try safeValidateTypes(jsonData, as: type)
+        case .failure(let error):
+            throw error
+        }
+    }
+    
+    /// Phase 1: Safe JSON parsing with detailed error context
+    func safeParseJSON(_ content: String, expectingArray: Bool = false) -> Result<Data, AIGenerationError> {
+        // Extract JSON from the response content
+        let jsonString = extractJSONFromResponse(content, expectingArray: expectingArray)
+        
+        // Validate that we have valid JSON structure
+        guard !jsonString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .failure(AIGenerationError.jsonParseError(
                 text: content,
                 parseError: NSError(domain: "AIClient", code: 1, userInfo: [
-                    NSLocalizedDescriptionKey: "Could not convert response to UTF-8 data"
+                    NSLocalizedDescriptionKey: "Empty JSON content after extraction"
                 ])
-            )
+            ))
         }
         
+        guard let jsonData = jsonString.data(using: .utf8) else {
+            return .failure(AIGenerationError.jsonParseError(
+                text: content,
+                parseError: NSError(domain: "AIClient", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: "Could not convert response to UTF-8 data"
+                ])
+            ))
+        }
+        
+        // Validate JSON syntax
         do {
-            let decoder = JSONDecoder()
+            _ = try JSONSerialization.jsonObject(with: jsonData)
+            return .success(jsonData)
+        } catch {
+            return .failure(AIGenerationError.jsonParseError(
+                text: content,
+                parseError: error
+            ))
+        }
+    }
+    
+    /// Phase 2: Safe type validation with detailed error context
+    func safeValidateTypes<T: Codable>(_ jsonData: Data, as type: T.Type) throws -> T {
+        do {
+            let decoder = createJSONDecoder()
             return try decoder.decode(T.self, from: jsonData)
         } catch let decodingError as DecodingError {
-            throw AIGenerationError.jsonParseError(
-                text: content,
-                parseError: decodingError
+            // Enhanced decoding error with context
+            throw AIGenerationError.schemaValidationError(
+                objectData: String(data: jsonData, encoding: .utf8),
+                validationErrors: [extractDecodingErrorMessage(decodingError)]
             )
         } catch {
-            throw AIGenerationError.jsonParseError(
-                text: content, 
-                parseError: error
+            throw AIGenerationError.schemaValidationError(
+                objectData: String(data: jsonData, encoding: .utf8),
+                validationErrors: [error.localizedDescription]
             )
+        }
+    }
+    
+    /// Create configured JSON decoder
+    private func createJSONDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        
+        // Configure decoder for better compatibility
+        decoder.dateDecodingStrategy = .iso8601
+        decoder.dataDecodingStrategy = .base64
+        
+        // Allow case-insensitive key matching for better robustness
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        
+        return decoder
+    }
+    
+    /// Extract meaningful error message from DecodingError
+    private func extractDecodingErrorMessage(_ error: DecodingError) -> String {
+        switch error {
+        case .typeMismatch(let type, let context):
+            let path = context.codingPath.map { $0.stringValue }.joined(separator: ".")
+            return "Type mismatch at '\(path)': expected \(type), got different type"
+        case .valueNotFound(let type, let context):
+            let path = context.codingPath.map { $0.stringValue }.joined(separator: ".")
+            return "Missing required value at '\(path)': expected \(type)"
+        case .keyNotFound(let key, let context):
+            let path = context.codingPath.map { $0.stringValue }.joined(separator: ".")
+            return "Missing required key '\(key.stringValue)' at '\(path)'"
+        case .dataCorrupted(let context):
+            let path = context.codingPath.map { $0.stringValue }.joined(separator: ".")
+            return "Corrupted data at '\(path)': \(context.debugDescription)"
+        @unknown default:
+            return "Unknown decoding error: \(error.localizedDescription)"
         }
     }
     
