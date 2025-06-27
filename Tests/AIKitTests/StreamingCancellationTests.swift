@@ -78,7 +78,8 @@ import Foundation
         }
     }
     
-    // Cancel immediately
+    // Give the stream a moment to start, then cancel
+    try await Task.sleep(nanoseconds: 5_000_000) // 0.005 seconds
     task.cancel()
     
     do {

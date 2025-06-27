@@ -305,7 +305,9 @@ import Foundation
             model,
             prompt: "Use the faulty operation",
             tools: [faultyTool],
-            toolExecutor: failingExecutor
+            toolChoice: .required, // Force tool usage
+            toolExecutor: failingExecutor,
+            maxSteps: 2 // Allow tool execution
         )
         #expect(Bool(false), "Should have thrown tool execution error")
     } catch let error as AIGenerationError {

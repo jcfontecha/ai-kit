@@ -250,10 +250,50 @@ public extension AIClient {
     /// - Returns: A `TextResponse` containing the generated text and metadata
     /// - Throws: `AIError` for various failure conditions
     func generateText(_ model: LanguageModel, prompt: String, mode: GenerationMode) async throws -> TextResponse {
-        // For JSON mode, we need to create a special request
-        // This implementation will need to be updated when we add mode support to the core method
         let messages = [Message.user(prompt)]
-        // For now, just call the basic method - this will be enhanced when we add full mode support
-        return try await generateText(model, messages: messages)
+        
+        // For JSON mode, we need to create a provider request with explicit JSON mode
+        if mode == .json {
+            // Create a special request that forces JSON output
+            let request = ProviderRequest(
+                modelId: model.modelId,
+                messages: messages,
+                configuration: model.configuration,
+                mode: .objectJSON(
+                    schema: JSONSchema.object(properties: [:]),
+                    name: nil,
+                    description: "Generate a valid JSON object"
+                )
+            )
+            
+            // Apply request middleware
+            let processedRequest = try await applyRequestMiddleware(request)
+            
+            // Call provider directly for JSON mode
+            let providerResponse = try await model.provider.generateTextRaw(processedRequest)
+            
+            // Build response
+            let textResponse = TextResponse(
+                text: providerResponse.content,
+                finishReason: providerResponse.finishReason,
+                usage: Usage(
+                    promptTokens: providerResponse.usage.promptTokens,
+                    completionTokens: providerResponse.usage.completionTokens,
+                    totalTokens: providerResponse.usage.totalTokens
+                ),
+                messages: messages + [Message.assistant(providerResponse.content)],
+                steps: nil,
+                responseId: nil,
+                modelId: model.modelId,
+                timestamp: Date(),
+                warnings: nil,
+                responseHeaders: nil
+            )
+            
+            return try await applyResponseMiddleware(textResponse)
+        } else {
+            // For other modes, use the basic method
+            return try await generateText(model, messages: messages)
+        }
     }
 }
