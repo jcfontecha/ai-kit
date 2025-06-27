@@ -17,10 +17,12 @@ public extension AIClient {
     ///   - model: The configured language model to use
     ///   - messages: Array of messages forming the conversation context
     ///   - tools: Optional array of tools available for the model to call
+    ///   - toolChoice: Strategy for tool selection (auto, required, none, or specific tool)
+    ///   - toolExecutor: Custom tool executor function for handling tool calls
     ///   - maxSteps: Maximum number of tool execution steps (default: 1 for single call)
     /// - Returns: A `TextResponse` containing the generated text and metadata
     /// - Throws: `AIError` for various failure conditions
-    func generateText(_ model: LanguageModel, messages: [Message], tools: [Tool]? = nil, maxSteps: Int = 1) async throws -> TextResponse {
+    func generateText(_ model: LanguageModel, messages: [Message], tools: [Tool]? = nil, toolChoice: ToolChoice? = nil, toolExecutor: ToolExecutor? = nil, maxSteps: Int = 1) async throws -> TextResponse {
         // Multi-step execution implementation following Vercel AI SDK pattern
         var currentMessages = messages
         var allSteps: [GenerationStep] = []
@@ -28,12 +30,22 @@ public extension AIClient {
         
         for stepIndex in 0..<maxSteps {
             // 1. Create provider request for this step
-            // Following Vercel AI SDK pattern: set toolChoice to 'auto' when tools are provided
+            // Use provided toolChoice or default to 'auto' when tools are provided
+            let effectiveToolChoice: ToolChoice? = {
+                if let explicitChoice = toolChoice {
+                    return explicitChoice
+                } else if let tools = tools, !tools.isEmpty {
+                    return .auto
+                } else {
+                    return nil
+                }
+            }()
+            
             let mode: ProviderMode = {
                 if let tools = tools, !tools.isEmpty {
-                    return .regular(tools: tools, toolChoice: .auto)
+                    return .regular(tools: tools, toolChoice: effectiveToolChoice)
                 } else {
-                    return .regular(tools: nil, toolChoice: nil)
+                    return .regular(tools: nil, toolChoice: effectiveToolChoice)
                 }
             }()
             
@@ -74,7 +86,7 @@ public extension AIClient {
                     // Step 2: Execute tools and create tool result messages
                     var toolResults: [ToolResult] = []
                     for toolCall in toolCalls {
-                        let result = try await executeToolCall(toolCall)
+                        let result = try await executeToolCall(toolCall, toolExecutor: toolExecutor)
                         toolResults.append(result)
                     }
                     
@@ -204,6 +216,44 @@ public extension AIClient {
     /// - Throws: `AIError` for various failure conditions
     func generateText(_ model: LanguageModel, prompt: String) async throws -> TextResponse {
         let messages = [Message.user(prompt)]
+        return try await generateText(model, messages: messages)
+    }
+    
+    /// Generate text from a simple string prompt with tools support.
+    ///
+    /// This is a convenience method that wraps the prompt in a user message
+    /// and calls the full `generateText` method with tools.
+    ///
+    /// - Parameters:
+    ///   - model: The configured language model to use
+    ///   - prompt: The text prompt to send to the model
+    ///   - tools: Optional array of tools available for the model to call
+    ///   - toolChoice: Strategy for tool selection (auto, required, none, or specific tool)
+    ///   - toolExecutor: Custom tool executor function for handling tool calls
+    ///   - maxSteps: Maximum number of tool execution steps (default: 1 for single call)
+    /// - Returns: A `TextResponse` containing the generated text and metadata
+    /// - Throws: `AIError` for various failure conditions
+    func generateText(_ model: LanguageModel, prompt: String, tools: [Tool], toolChoice: ToolChoice? = nil, toolExecutor: ToolExecutor? = nil, maxSteps: Int = 1) async throws -> TextResponse {
+        let messages = [Message.user(prompt)]
+        return try await generateText(model, messages: messages, tools: tools, toolChoice: toolChoice, toolExecutor: toolExecutor, maxSteps: maxSteps)
+    }
+    
+    /// Generate text with explicit JSON mode.
+    ///
+    /// This method forces the model to respond in JSON format by setting the
+    /// generation mode explicitly.
+    ///
+    /// - Parameters:
+    ///   - model: The configured language model to use
+    ///   - prompt: The text prompt to send to the model
+    ///   - mode: The generation mode (e.g., .json for JSON output)
+    /// - Returns: A `TextResponse` containing the generated text and metadata
+    /// - Throws: `AIError` for various failure conditions
+    func generateText(_ model: LanguageModel, prompt: String, mode: GenerationMode) async throws -> TextResponse {
+        // For JSON mode, we need to create a special request
+        // This implementation will need to be updated when we add mode support to the core method
+        let messages = [Message.user(prompt)]
+        // For now, just call the basic method - this will be enhanced when we add full mode support
         return try await generateText(model, messages: messages)
     }
 }

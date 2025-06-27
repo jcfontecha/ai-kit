@@ -31,7 +31,7 @@ public extension AIClient {
         // Minimal implementation to make tests pass - apply middleware, call provider, transform chunks
         
         return AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     // 1. Create provider request
                     let request = ProviderRequest(
@@ -48,6 +48,9 @@ public extension AIClient {
                     var accumulatedText = ""
                     
                     for try await providerChunk in providerStream {
+                        // Check for cancellation before processing each chunk
+                        try Task.checkCancellation()
+                        
                         accumulatedText += providerChunk.delta
                         
                         // Transform ProviderChunk to TextChunk with tool call support
@@ -81,8 +84,17 @@ public extension AIClient {
                     }
                     
                     continuation.finish()
+                } catch is CancellationError {
+                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
+                }
+            }
+            
+            // Handle cancellation from the continuation side
+            continuation.onTermination = { @Sendable termination in
+                if case .cancelled = termination {
+                    task.cancel()
                 }
             }
         }

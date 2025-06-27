@@ -2,6 +2,27 @@ import Foundation
 
 // MARK: - Tool System Types
 
+/// Type alias for tool execution functions.
+///
+/// A tool executor is a function that takes a ToolCall and asynchronously
+/// executes it, returning a ToolResult. This allows custom tool implementations
+/// to be provided by the user.
+///
+/// ## Usage Example
+/// ```swift
+/// let executor: ToolExecutor = { toolCall in
+///     switch toolCall.function.name {
+///     case "get_weather":
+///         let location = try parseLocation(from: toolCall.function.arguments)
+///         let weather = try await weatherService.getWeather(for: location)
+///         return ToolResult.success(toolCallId: toolCall.id, text: weather)
+///     default:
+///         throw AIGenerationError.noSuchTool(toolName: toolCall.function.name, availableTools: ["get_weather"])
+///     }
+/// }
+/// ```
+public typealias ToolExecutor = (ToolCall) async throws -> ToolResult
+
 /// Tool and function calling system for AI models.
 ///
 /// The tool system enables AI models to call external functions and tools

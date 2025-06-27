@@ -187,28 +187,200 @@ public struct MockProvider: AIProvider {
     ) throws -> ProviderResponse {
         
         let prompt = extractPrompt(from: request)
-        let content = responseBuilder.generateTextResponse(prompt: prompt)
         
-        let usage = responseBuilder.calculateUsage(
-            prompt: prompt,
-            response: content
-        )
-        
-        return ProviderResponse(
-            content: content,
-            usage: usage,
-            finishReason: .stop,
-            providerMetadata: [
-                "provider": self.name,
-                "mode": "regular"
-            ]
-        )
+        // Check if we should generate tool calls based on tools and toolChoice
+        if let tools = tools, !tools.isEmpty, shouldCallTools(tools: tools, request: request) {
+            // Generate tool call response
+            let selectedTool = selectToolForPrompt(tools: tools, prompt: prompt)
+            let toolCall = try generateToolCall(tool: selectedTool, prompt: prompt)
+            
+            let usage = responseBuilder.calculateUsage(
+                prompt: prompt,
+                response: "I need to call a tool to help with your request."
+            )
+            
+            return ProviderResponse(
+                content: "",
+                toolCalls: [toolCall],
+                usage: usage,
+                finishReason: .toolCalls,
+                providerMetadata: [
+                    "provider": self.name,
+                    "mode": "regular_with_tools"
+                ]
+            )
+        } else {
+            // Generate regular text response
+            let content = responseBuilder.generateTextResponse(prompt: prompt)
+            
+            let usage = responseBuilder.calculateUsage(
+                prompt: prompt,
+                response: content
+            )
+            
+            return ProviderResponse(
+                content: content,
+                usage: usage,
+                finishReason: .stop,
+                providerMetadata: [
+                    "provider": self.name,
+                    "mode": "regular"
+                ]
+            )
+        }
     }
     
     // MARK: - Helper Methods
     
     private func extractPrompt(from request: ProviderRequest) -> String {
         return request.messages.last { $0.role == .user }?.content.first?.textValue ?? ""
+    }
+    
+    private func shouldCallTools(tools: [Tool], request: ProviderRequest) -> Bool {
+        // Extract tool choice from request mode
+        if case .regular(_, let toolChoice) = request.mode {
+            switch toolChoice {
+            case .some(.none):
+                return false
+            case .some(.required):
+                return true
+            case .some(.auto), .none:
+                // For auto mode, decide based on prompt content and available tools
+                let prompt = extractPrompt(from: request)
+                return promptSuggestsToolUsage(prompt: prompt, tools: tools)
+            case .some(.specific):
+                return true
+            }
+        }
+        return false
+    }
+    
+    private func promptSuggestsToolUsage(prompt: String, tools: [Tool]) -> Bool {
+        let lowercasePrompt = prompt.lowercased()
+        
+        // Check if the prompt suggests using any of the available tools
+        for tool in tools {
+            let toolName = tool.function.name.lowercased()
+            let description = tool.function.description?.lowercased() ?? ""
+            
+            // Enhanced heuristic: check for various patterns
+            
+            // Weather-related
+            if (lowercasePrompt.contains("weather") || lowercasePrompt.contains("temperature") || lowercasePrompt.contains("forecast")) 
+                && (toolName.contains("weather") || description.contains("weather")) {
+                return true
+            }
+            
+            // Math/calculation-related  
+            if (lowercasePrompt.contains("calculate") || lowercasePrompt.contains("math") || 
+                lowercasePrompt.contains("=") || lowercasePrompt.contains("+") || 
+                lowercasePrompt.contains("-") || lowercasePrompt.contains("*") ||
+                lowercasePrompt.contains("/") || lowercasePrompt.contains("what is")) 
+                && (toolName.contains("calc") || toolName.contains("math") || description.contains("math") || description.contains("calculation")) {
+                return true
+            }
+            
+            // Time-related
+            if (lowercasePrompt.contains("time") || lowercasePrompt.contains("clock") || lowercasePrompt.contains("when")) 
+                && (toolName.contains("time") || description.contains("time")) {
+                return true
+            }
+            
+            // Data-related
+            if (lowercasePrompt.contains("data") || lowercasePrompt.contains("get") || lowercasePrompt.contains("fetch")) 
+                && (toolName.contains("data") || toolName.contains("get") || description.contains("data")) {
+                return true
+            }
+        }
+        
+        return false
+    }
+    
+    private func selectToolForPrompt(tools: [Tool], prompt: String) -> Tool {
+        // Enhanced selection logic - return the first tool that seems relevant
+        let lowercasePrompt = prompt.lowercased()
+        
+        for tool in tools {
+            let toolName = tool.function.name.lowercased()
+            let description = tool.function.description?.lowercased() ?? ""
+            
+            // Weather-related
+            if (lowercasePrompt.contains("weather") || lowercasePrompt.contains("temperature") || lowercasePrompt.contains("forecast")) 
+                && (toolName.contains("weather") || description.contains("weather")) {
+                return tool
+            }
+            
+            // Math/calculation-related  
+            if (lowercasePrompt.contains("calculate") || lowercasePrompt.contains("math") || 
+                lowercasePrompt.contains("=") || lowercasePrompt.contains("+") || 
+                lowercasePrompt.contains("-") || lowercasePrompt.contains("*") ||
+                lowercasePrompt.contains("/") || lowercasePrompt.contains("what is")) 
+                && (toolName.contains("calc") || toolName.contains("math") || description.contains("math") || description.contains("calculation")) {
+                return tool
+            }
+            
+            // Time-related
+            if (lowercasePrompt.contains("time") || lowercasePrompt.contains("clock") || lowercasePrompt.contains("when")) 
+                && (toolName.contains("time") || description.contains("time")) {
+                return tool
+            }
+            
+            // Data-related
+            if (lowercasePrompt.contains("data") || lowercasePrompt.contains("get") || lowercasePrompt.contains("fetch")) 
+                && (toolName.contains("data") || toolName.contains("get") || description.contains("data")) {
+                return tool
+            }
+        }
+        
+        // If no specific match, return the first tool
+        return tools.first!
+    }
+    
+    private func generateToolCall(tool: Tool, prompt: String) throws -> ToolCall {
+        // Generate realistic arguments based on the tool's schema
+        let args = try generateToolArguments(for: tool, prompt: prompt)
+        let argsJSON = try JSONSerialization.data(withJSONObject: args)
+        let argsString = String(data: argsJSON, encoding: .utf8) ?? "{}"
+        
+        return ToolCall(
+            id: "call_\(UUID().uuidString.prefix(8))",
+            function: ToolCallFunction(
+                name: tool.function.name,
+                arguments: argsString
+            )
+        )
+    }
+    
+    private func generateToolArguments(for tool: Tool, prompt: String) throws -> [String: Any] {
+        // Generate realistic arguments based on the tool's parameter schema
+        let schema = tool.function.parameters
+        let args = try schemaAnalyzer.generateObjectFromSchema(schema)
+        
+        // Enhance arguments based on prompt content for more realistic results
+        if tool.function.name.contains("weather") {
+            if let location = extractLocationFromPrompt(prompt) {
+                return ["location": location, "unit": "celsius"]
+            }
+        }
+        
+        return args
+    }
+    
+    private func extractLocationFromPrompt(_ prompt: String) -> String? {
+        let lowercasePrompt = prompt.lowercased()
+        
+        // Simple location extraction
+        if lowercasePrompt.contains("san francisco") {
+            return "San Francisco, CA"
+        }
+        if lowercasePrompt.contains("new york") {
+            return "New York, NY"
+        }
+        if lowercasePrompt.contains("london") {
+            return "London, UK"
+        }
+        
+        return nil
     }
     
     private func generateArrayJSONForTool(tool: Tool, schema: JSONSchema) -> String {
@@ -230,6 +402,29 @@ public struct MockProvider: AIProvider {
     }
     
     private func checkForErrors(request: ProviderRequest) throws {
+        // Check specific error simulation flags first
+        if configuration.simulateTimeout {
+            throw AIProviderError.serviceUnavailable("Simulated timeout error")
+        }
+        
+        if configuration.simulateRateLimit {
+            throw AIProviderError.rateLimitExceeded(retryAfter: 60.0)
+        }
+        
+        if configuration.simulateInvalidKey {
+            throw AIProviderError.authenticationFailed("Simulated invalid API key")
+        }
+        
+        if configuration.simulateMalformedResponse {
+            throw AIProviderError.invalidResponse("Simulated malformed response")
+        }
+        
+        if configuration.simulateNetworkFailure {
+            let networkError = NSError(domain: "MockProvider", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Simulated network failure"])
+            throw AIProviderError.networkError(networkError)
+        }
+        
+        // Check random error rate
         if let errorRate = configuration.errorRate, Double.random(in: 0...1) < errorRate {
             throw AIProviderError.serviceUnavailable("Simulated random error")
         }
@@ -551,6 +746,13 @@ public struct MockConfiguration: Sendable {
     /// Error simulation rate (0.0 to 1.0)
     public let errorRate: Double?
     
+    /// Error simulation flags
+    public let simulateTimeout: Bool
+    public let simulateRateLimit: Bool
+    public let simulateInvalidKey: Bool
+    public let simulateMalformedResponse: Bool
+    public let simulateNetworkFailure: Bool
+    
     /// Feature support flags
     public let supportsTools: Bool
     public let supportsObjectGeneration: Bool
@@ -560,6 +762,11 @@ public struct MockConfiguration: Sendable {
         responseDelay: TimeInterval? = nil,
         chunkDelay: TimeInterval? = nil,
         errorRate: Double? = nil,
+        simulateTimeout: Bool = false,
+        simulateRateLimit: Bool = false,
+        simulateInvalidKey: Bool = false,
+        simulateMalformedResponse: Bool = false,
+        simulateNetworkFailure: Bool = false,
         supportsTools: Bool = true,
         supportsObjectGeneration: Bool = true,
         supportsImageInputs: Bool = false
@@ -567,6 +774,11 @@ public struct MockConfiguration: Sendable {
         self.responseDelay = responseDelay
         self.chunkDelay = chunkDelay
         self.errorRate = errorRate
+        self.simulateTimeout = simulateTimeout
+        self.simulateRateLimit = simulateRateLimit
+        self.simulateInvalidKey = simulateInvalidKey
+        self.simulateMalformedResponse = simulateMalformedResponse
+        self.simulateNetworkFailure = simulateNetworkFailure
         self.supportsTools = supportsTools
         self.supportsObjectGeneration = supportsObjectGeneration
         self.supportsImageInputs = supportsImageInputs
