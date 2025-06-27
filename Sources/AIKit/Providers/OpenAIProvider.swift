@@ -605,8 +605,47 @@ private extension OpenAIProvider {
                     content: .text(message.content.first?.textValue ?? "")
                 )
             case .user:
-                let textContent = message.content.compactMap { $0.textValue }.joined(separator: "\n")
-                return OpenAIMessage(role: "user", content: .text(textContent))
+                // Check if we have image content
+                let hasImages = message.content.contains { $0.imageValue != nil }
+                
+                if hasImages {
+                    // Multi-part content with images
+                    var parts: [OpenAIContentPart] = []
+                    
+                    for content in message.content {
+                        switch content {
+                        case .text(let text):
+                            parts.append(OpenAIContentPart(type: "text", text: text, imageUrl: nil))
+                        case .image(let imageContent):
+                            if let imageUrl = imageContent.url {
+                                // URL-based image
+                                parts.append(OpenAIContentPart(
+                                    type: "image_url",
+                                    text: nil,
+                                    imageUrl: OpenAIImageURL(url: imageUrl.absoluteString, detail: nil)
+                                ))
+                            } else if let imageData = imageContent.data {
+                                // Data-based image - convert to base64 data URL
+                                let base64String = imageData.base64EncodedString()
+                                let dataUrl = "data:\(imageContent.mimeType);base64,\(base64String)"
+                                parts.append(OpenAIContentPart(
+                                    type: "image_url",
+                                    text: nil,
+                                    imageUrl: OpenAIImageURL(url: dataUrl, detail: nil)
+                                ))
+                            }
+                        default:
+                            // Skip other content types for user messages
+                            break
+                        }
+                    }
+                    
+                    return OpenAIMessage(role: "user", content: .array(parts))
+                } else {
+                    // Text-only content
+                    let textContent = message.content.compactMap { $0.textValue }.joined(separator: "\n")
+                    return OpenAIMessage(role: "user", content: .text(textContent))
+                }
             case .assistant:
                 let textContent = message.content.compactMap { $0.textValue }.joined(separator: "\n")
                 
@@ -1144,12 +1183,15 @@ private struct OpenAIMessage: Codable {
 /// OpenAI content type (text or other formats).
 private enum OpenAIContent: Codable {
     case text(String)
+    case array([OpenAIContentPart])
     
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .text(let string):
             try container.encode(string)
+        case .array(let parts):
+            try container.encode(parts)
         }
     }
     
@@ -1157,12 +1199,33 @@ private enum OpenAIContent: Codable {
         let container = try decoder.singleValueContainer()
         if let string = try? container.decode(String.self) {
             self = .text(string)
+        } else if let array = try? container.decode([OpenAIContentPart].self) {
+            self = .array(array)
         } else {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Invalid content format")
             )
         }
     }
+}
+
+/// OpenAI content part for multi-modal messages.
+private struct OpenAIContentPart: Codable {
+    let type: String
+    let text: String?
+    let imageUrl: OpenAIImageURL?
+    
+    enum CodingKeys: String, CodingKey {
+        case type
+        case text
+        case imageUrl = "image_url"
+    }
+}
+
+/// OpenAI image URL structure.
+private struct OpenAIImageURL: Codable {
+    let url: String
+    let detail: String?
 }
 
 /// OpenAI tool definition.

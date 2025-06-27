@@ -24,7 +24,12 @@ let package = Package(
             name: "AIKit"),
         .testTarget(
             name: "AIKitTests",
-            dependencies: ["AIKit"]
+            dependencies: ["AIKit"],
+            resources: [
+                .copy("sample_image.jpg"),
+                .copy("sample_image_2.jpg"),
+                .copy("sample_audio.m4a")
+            ]
         ),
     ]
 )

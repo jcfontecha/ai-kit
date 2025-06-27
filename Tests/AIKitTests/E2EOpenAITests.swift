@@ -101,7 +101,7 @@ struct E2EOpenAITests {
         #expect(response.usage.totalTokens > 0, "Should track token usage")
         #expect(response.usage.promptTokens > 0, "Should track prompt tokens")
         #expect(response.usage.completionTokens > 0, "Should track completion tokens")
-        #expect(response.finishReason == .stop, "Should finish normally")
+        #expect(response.finishReason == FinishReason.stop, "Should finish normally")
         #expect(!response.messages.isEmpty, "Should have message history")
         #expect(response.messages.last?.role == .assistant, "Last message should be from assistant")
         
@@ -140,7 +140,7 @@ struct E2EOpenAITests {
         #expect(!response.text.isEmpty, "Response text should not be empty")
         #expect(response.text.contains("84"), "Should contain the correct answer (84)")
         #expect(response.usage.totalTokens > 0, "Should track token usage")
-        #expect(response.finishReason == .stop, "Should finish normally")
+        #expect(response.finishReason == FinishReason.stop, "Should finish normally")
         
         print("✅ Conversation test successful")
         print("📝 Response: \(response.text)")
@@ -684,6 +684,197 @@ struct E2EOpenAITests {
         print("🛍️ Generated product: \(product.name) (\(product.id)) - $\(product.price)")
         print("📝 Description: \(product.description ?? "nil")")
         print("🏷️ Category: \(product.category ?? "nil")")
+        print("🔢 Token usage: \(response.usage.totalTokens)")
+    }
+    
+    // MARK: - Image Support Tests
+    
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealOpenAIImageSupport() async throws {
+        let provider: OpenAIProvider
+        do {
+            provider = try Self.createOpenAIProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient()
+        // Use a vision-capable model for image analysis
+        let model = provider.languageModel("gpt-4o-mini")
+            .temperature(0.5)
+            .maxTokens(150)
+        
+        print("🧪 Testing image support with real OpenAI API...")
+        
+        // Load the sample image
+        let testBundle = Bundle.module
+        guard let imagePath = testBundle.path(forResource: "sample_image", ofType: "jpg") else {
+            print("⚠️ Could not find sample_image.jpg, skipping test")
+            return
+        }
+        
+        let imageURL = URL(fileURLWithPath: imagePath)
+        let imageData = try Data(contentsOf: imageURL)
+        
+        print("📸 Loaded image: \(imageData.count) bytes")
+        
+        // Create message with image
+        let imageContent = ImageContent.data(imageData, mimeType: "image/jpeg")
+        let messages = [CoreMessage.user("What do you see in this image? Please describe it briefly.", image: imageContent)]
+        
+        let response = try await client.generateText(model, messages: messages)
+        
+        // Verify response
+        #expect(!response.text.isEmpty, "Should have a response describing the image")
+        #expect(response.text.count > 20, "Response should be substantive")
+        #expect(response.text.lowercased().contains("cat"), "Response should identify the cat in the image")
+        #expect(response.finishReason == FinishReason.stop, "Should finish normally")
+        #expect(response.usage.totalTokens > 0, "Should track token usage")
+        
+        print("✅ Image support test successful")
+        print("📝 Image description: \(response.text)")
+        print("🔢 Token usage: \(response.usage.totalTokens)")
+    }
+    
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealOpenAIImageURLSupport() async throws {
+        let provider: OpenAIProvider
+        do {
+            provider = try Self.createOpenAIProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient()
+        // Use a vision-capable model for image analysis
+        let model = provider.languageModel("gpt-4o-mini")
+            .temperature(0.5)
+            .maxTokens(100)
+        
+        print("🧪 Testing image URL support with real OpenAI API...")
+        
+        // Use a public image URL for testing
+        let imageURL = URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/320px-Cat03.jpg")!
+        let imageContent = ImageContent.url(imageURL, mimeType: "image/jpeg")
+        let messages = [CoreMessage.user("What animal is in this image?", image: imageContent)]
+        
+        let response = try await client.generateText(model, messages: messages)
+        
+        // Verify response mentions a cat
+        #expect(!response.text.isEmpty, "Should have a response")
+        #expect(response.text.lowercased().contains("cat"), "Response should identify the cat")
+        #expect(response.finishReason == FinishReason.stop, "Should finish normally")
+        #expect(response.usage.totalTokens > 0, "Should track token usage")
+        
+        print("✅ Image URL support test successful")
+        print("📝 Response: \(response.text)")
+        print("🔢 Token usage: \(response.usage.totalTokens)")
+    }
+    
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealOpenAIMultipleImagesAndText() async throws {
+        let provider: OpenAIProvider
+        do {
+            provider = try Self.createOpenAIProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient()
+        // Use a vision-capable model
+        let model = provider.languageModel("gpt-4o-mini")
+            .temperature(0.5)
+            .maxTokens(150)
+        
+        print("🧪 Testing multiple images with text using real OpenAI API...")
+        
+        // Create a message with text and image content mixed
+        let imageURL = URL(string: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4d/Cat_November_2010-1a.jpg/320px-Cat_November_2010-1a.jpg")!
+        let message = CoreMessage(
+            role: .user,
+            content: [
+                .text("I have a question about this image:"),
+                .image(ImageContent.url(imageURL)),
+                .text("What color is the cat in the image?")
+            ]
+        )
+        
+        let response = try await client.generateText(model, messages: [message])
+        
+        // Verify response
+        #expect(!response.text.isEmpty, "Should have a response")
+        #expect(response.text.count > 10, "Response should be substantive")
+        #expect(response.finishReason == FinishReason.stop, "Should finish normally")
+        
+        print("✅ Multiple content types test successful")
+        print("📝 Response: \(response.text)")
+        print("🔢 Token usage: \(response.usage.totalTokens)")
+    }
+    
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealOpenAIMultipleImagesInSingleMessage() async throws {
+        let provider: OpenAIProvider
+        do {
+            provider = try Self.createOpenAIProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient()
+        // Use a vision-capable model
+        let model = provider.languageModel("gpt-4o-mini")
+            .temperature(0.5)
+            .maxTokens(200)
+        
+        print("🧪 Testing multiple images (cat and dog) in single message with real OpenAI API...")
+        
+        // Load both sample images
+        let testBundle = Bundle.module
+        guard let catImagePath = testBundle.path(forResource: "sample_image", ofType: "jpg"),
+              let dogImagePath = testBundle.path(forResource: "sample_image_2", ofType: "jpg") else {
+            print("⚠️ Could not find sample images, skipping test")
+            return
+        }
+        
+        let catImageURL = URL(fileURLWithPath: catImagePath)
+        let dogImageURL = URL(fileURLWithPath: dogImagePath)
+        
+        let catImageData = try Data(contentsOf: catImageURL)
+        let dogImageData = try Data(contentsOf: dogImageURL)
+        
+        print("📸 Loaded cat image: \(catImageData.count) bytes")
+        print("📸 Loaded dog image: \(dogImageData.count) bytes")
+        
+        // Create message with both images
+        let catImageContent = ImageContent.data(catImageData, mimeType: "image/jpeg")
+        let dogImageContent = ImageContent.data(dogImageData, mimeType: "image/jpeg")
+        
+        let message = CoreMessage(
+            role: .user,
+            content: [
+                .text("Look at these two images:"),
+                .image(catImageContent),
+                .text("and"),
+                .image(dogImageContent),
+                .text("What animals do you see in these images? Please describe both.")
+            ]
+        )
+        
+        let response = try await client.generateText(model, messages: [message])
+        
+        // Verify response mentions both animals
+        #expect(!response.text.isEmpty, "Should have a response")
+        #expect(response.text.lowercased().contains("cat"), "Response should mention the cat")
+        #expect(response.text.lowercased().contains("dog") || response.text.lowercased().contains("puppy"), "Response should mention the dog/puppy")
+        #expect(response.finishReason == FinishReason.stop, "Should finish normally")
+        #expect(response.usage.totalTokens > 0, "Should track token usage")
+        
+        print("✅ Multiple images test successful")
+        print("📝 Response: \(response.text)")
         print("🔢 Token usage: \(response.usage.totalTokens)")
     }
 }

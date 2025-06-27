@@ -33,6 +33,14 @@ Based on recent implementation work, here's the current status of AIKit vs Verce
 - ✅ Provider-specific settings validation **IMPLEMENTED**
 - ✅ Temperature/top-p parameter validation **IMPLEMENTED**
 
+### ✅ Image Support - **COMPLETE**
+- ✅ Image messages with data or URL **IMPLEMENTED**
+- ✅ Multi-modal content (text + image) **IMPLEMENTED**
+- ✅ Base64 encoding for image data **IMPLEMENTED**
+- ✅ OpenAI provider image handling **IMPLEMENTED**
+- ✅ Unit tests for image functionality **IMPLEMENTED**
+- ✅ E2E tests with vision models **IMPLEMENTED**
+
 ## 🟡 **PARTIAL IMPLEMENTATION**
 
 ### 🟡 Streaming Enhancements - **MOSTLY COMPLETE**
