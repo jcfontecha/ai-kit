@@ -520,7 +520,7 @@ private extension OpenAIProvider {
                     function: OpenAIFunction(
                         name: tool.function.name,
                         description: tool.function.description,
-                        parameters: try convertJSONSchemaToDict(tool.function.parameters),
+                        parameters: try convertJSONSchemaToDict(tool.function.parameters, forStrictMode: supportsStructuredOutputs),
                         strict: supportsStructuredOutputs ? true : nil
                     )
                 )
@@ -553,7 +553,7 @@ private extension OpenAIProvider {
                     type: "json_schema",
                     jsonSchema: OpenAIJSONSchema(
                         name: name ?? "response",
-                        schema: try convertJSONSchemaToDict(schema),
+                        schema: try convertJSONSchemaToDict(schema, forStrictMode: true),
                         description: description,
                         strict: true
                     )
@@ -570,7 +570,7 @@ private extension OpenAIProvider {
                 function: OpenAIFunction(
                     name: tool.function.name,
                     description: tool.function.description,
-                    parameters: try convertJSONSchemaToDict(tool.function.parameters),
+                    parameters: try convertJSONSchemaToDict(tool.function.parameters, forStrictMode: supportsStructuredOutputs),
                     strict: supportsStructuredOutputs ? true : nil
                 )
             )]
@@ -824,15 +824,15 @@ private extension OpenAIProvider {
     
     /// Convert JSONSchema to dictionary format for OpenAI API.
     /// Following Vercel AI SDK approach: recursively unwrap schema enums to plain dictionaries.
-    func convertJSONSchemaToDict(_ schema: JSONSchema) throws -> [String: Any] {
-        let dict = try convertSchemaDefinitionToDict(schema.definition)
+    func convertJSONSchemaToDict(_ schema: JSONSchema, forStrictMode: Bool = false) throws -> [String: Any] {
+        let dict = try convertSchemaDefinitionToDict(schema.definition, forStrictMode: forStrictMode)
         
         
         return dict
     }
     
     /// Recursively convert SchemaDefinition to dictionary, unwrapping nested schemas
-    private func convertSchemaDefinitionToDict(_ definition: SchemaDefinition) throws -> [String: Any] {
+    private func convertSchemaDefinitionToDict(_ definition: SchemaDefinition, forStrictMode: Bool = false) throws -> [String: Any] {
         var dict: [String: Any] = [:]
         
         // Basic properties
@@ -841,16 +841,22 @@ private extension OpenAIProvider {
         if let properties = definition.properties {
             var propertiesDict: [String: Any] = [:]
             for (key, schema) in properties {
-                propertiesDict[key] = try convertJSONSchemaToDict(schema)
+                propertiesDict[key] = try convertJSONSchemaToDict(schema, forStrictMode: forStrictMode)
             }
             dict["properties"] = propertiesDict
+            
+            // For OpenAI strict mode, ALL properties must be in the required array
+            if forStrictMode && definition.type == .object {
+                dict["required"] = Array(properties.keys).sorted()
+            }
         }
         
         if let items = definition.items {
-            dict["items"] = try convertJSONSchemaToDict(items)
+            dict["items"] = try convertJSONSchemaToDict(items, forStrictMode: forStrictMode)
         }
         
-        if let required = definition.required {
+        // Only set required if not already set by strict mode above
+        if dict["required"] == nil, let required = definition.required {
             dict["required"] = required
         }
         
@@ -892,7 +898,7 @@ private extension OpenAIProvider {
                 // Explicitly ensure boolean is not encoded as integer
                 dict["additionalProperties"] = value ? true : false
             case .schema(let schema):
-                dict["additionalProperties"] = try convertJSONSchemaToDict(schema)
+                dict["additionalProperties"] = try convertJSONSchemaToDict(schema, forStrictMode: forStrictMode)
             }
         } else if definition.type == .object {
             // For structured outputs, OpenAI requires additionalProperties to be explicitly false
@@ -901,16 +907,16 @@ private extension OpenAIProvider {
         
         // Schema composition
         if let oneOf = definition.oneOf {
-            dict["oneOf"] = try oneOf.map { try convertJSONSchemaToDict($0) }
+            dict["oneOf"] = try oneOf.map { try convertJSONSchemaToDict($0, forStrictMode: forStrictMode) }
         }
         if let anyOf = definition.anyOf {
-            dict["anyOf"] = try anyOf.map { try convertJSONSchemaToDict($0) }
+            dict["anyOf"] = try anyOf.map { try convertJSONSchemaToDict($0, forStrictMode: forStrictMode) }
         }
         if let allOf = definition.allOf {
-            dict["allOf"] = try allOf.map { try convertJSONSchemaToDict($0) }
+            dict["allOf"] = try allOf.map { try convertJSONSchemaToDict($0, forStrictMode: forStrictMode) }
         }
         if let not = definition.not {
-            dict["not"] = try convertJSONSchemaToDict(not)
+            dict["not"] = try convertJSONSchemaToDict(not, forStrictMode: forStrictMode)
         }
         
         if let examples = definition.examples {

@@ -33,6 +33,35 @@ public struct MockProvider: AIProvider {
         return LanguageModel(provider: self, modelId: modelId)
     }
     
+    public func validateConfiguration(_ configuration: ModelConfiguration) throws {
+        // Validate temperature
+        if let temperature = configuration.temperature {
+            if temperature > 2.0 {
+                throw AIProviderError.unsupportedParameter("temperature", "Temperature must be <= 2.0, got \(temperature)")
+            }
+            if temperature < 0.0 {
+                throw AIProviderError.unsupportedParameter("temperature", "Temperature must be >= 0.0, got \(temperature)")
+            }
+        }
+        
+        // Validate max tokens
+        if let maxTokens = configuration.maxTokens {
+            if maxTokens > 4096 {
+                throw AIProviderError.unsupportedParameter("maxTokens", "Max tokens must be <= 4096, got \(maxTokens)")
+            }
+            if maxTokens < 1 {
+                throw AIProviderError.unsupportedParameter("maxTokens", "Max tokens must be >= 1, got \(maxTokens)")
+            }
+        }
+        
+        // Validate top-p
+        if let topP = configuration.topP {
+            if topP > 1.0 || topP < 0.0 {
+                throw AIProviderError.unsupportedParameter("topP", "Top-p must be between 0.0 and 1.0, got \(topP)")
+            }
+        }
+    }
+    
     public func generateTextRaw(_ request: ProviderRequest) async throws -> ProviderResponse {
         // Apply configured delay
         if let delay = configuration.responseDelay {
@@ -111,7 +140,8 @@ public struct MockProvider: AIProvider {
             providerMetadata: [
                 "provider": self.name,
                 "mode": "object_json",
-                "schema_name": name ?? "unknown"
+                "schema_name": name ?? "unknown",
+                "model_id": request.modelId
             ]
         )
     }
@@ -176,7 +206,8 @@ public struct MockProvider: AIProvider {
             providerMetadata: [
                 "provider": self.name,
                 "mode": "object_tool",
-                "tool_name": tool.function.name
+                "tool_name": tool.function.name,
+                "model_id": request.modelId
             ]
         )
     }
@@ -200,13 +231,14 @@ public struct MockProvider: AIProvider {
             )
             
             return ProviderResponse(
-                content: "",
+                content: "I need to call the \(selectedTool.function.name) tool to help with your request about \(selectedTool.function.description ?? "this task").",
                 toolCalls: [toolCall],
                 usage: usage,
                 finishReason: .toolCalls,
                 providerMetadata: [
                     "provider": self.name,
-                    "mode": "regular_with_tools"
+                    "mode": "regular_with_tools",
+                    "model_id": request.modelId
                 ]
             )
         } else {
@@ -224,7 +256,8 @@ public struct MockProvider: AIProvider {
                 finishReason: .stop,
                 providerMetadata: [
                     "provider": self.name,
-                    "mode": "regular"
+                    "mode": "regular",
+                    "model_id": request.modelId
                 ]
             )
         }
@@ -428,6 +461,53 @@ public struct MockProvider: AIProvider {
         if let errorRate = configuration.errorRate, Double.random(in: 0...1) < errorRate {
             throw AIProviderError.serviceUnavailable("Simulated random error")
         }
+        
+        // Check for test error scenarios based on prompt content
+        let prompt = extractPrompt(from: request)
+        let lowercasePrompt = prompt.lowercased()
+        
+        if lowercasePrompt.contains("test no such tool error scenario") {
+            throw AIGenerationError.noSuchTool(
+                toolName: "non_existent_tool",
+                availableTools: {
+                    switch request.mode {
+                    case .regular(let tools, _):
+                        return tools?.map { $0.function.name } ?? []
+                    case .objectTool(let tool):
+                        return [tool.function.name]
+                    case .objectJSON:
+                        return []
+                    }
+                }()
+            )
+        }
+        
+        if lowercasePrompt.contains("test invalid arguments error scenario") {
+            let validationError = NSError(
+                domain: "MockProvider",
+                code: 1002,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid location format"]
+            )
+            throw AIGenerationError.invalidToolArguments(
+                toolName: "get_weather",
+                toolArgs: "{\"location\": \"invalid\"}",
+                cause: validationError
+            )
+        }
+        
+        if lowercasePrompt.contains("test tool execution error scenario") {
+            let executionError = NSError(
+                domain: "MockProvider",
+                code: 1003,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to fetch weather data"]
+            )
+            throw AIGenerationError.toolExecutionError(
+                toolName: "get_weather",
+                toolArgs: "{\"location\": \"San Francisco, CA\"}",
+                toolCallId: "tool_123",
+                cause: executionError
+            )
+        }
     }
     
     private func streamResponse(
@@ -435,27 +515,117 @@ public struct MockProvider: AIProvider {
         continuation: AsyncThrowingStream<ProviderChunk, Error>.Continuation
     ) async throws {
         
-        let words = response.content.split(separator: " ")
+        var chunkIndex = 0
         
-        for (index, word) in words.enumerated() {
-            let delta = (index == 0 ? "" : " ") + String(word)
-            let isLast = index == words.count - 1
-            
-            let chunk = ProviderChunk(
-                delta: delta,
-                usage: isLast ? response.usage : nil,
-                finishReason: isLast ? response.finishReason : nil,
-                chunkIndex: index
-            )
-            
-            continuation.yield(chunk)
-            
-            if let delay = configuration.chunkDelay {
-                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        // Stream tool calls first if present
+        if let toolCalls = response.toolCalls, !toolCalls.isEmpty {
+            for toolCall in toolCalls {
+                // Send tool call streaming start
+                let startChunk = ProviderChunk(
+                    delta: "",
+                    usage: nil,
+                    finishReason: nil,
+                    chunkIndex: chunkIndex,
+                    toolCallStreamingStart: ProviderChunk.ToolCallStreamingStart(
+                        toolCallId: toolCall.id,
+                        toolName: toolCall.function.name
+                    )
+                )
+                continuation.yield(startChunk)
+                chunkIndex += 1
+                
+                if let delay = configuration.chunkDelay {
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
+                
+                // Stream tool call arguments in chunks
+                let argsString = toolCall.function.arguments
+                let argChunks = argsString.chunked(into: 20) // Chunk arguments
+                
+                for (index, argChunk) in argChunks.enumerated() {
+                    let deltaChunk = ProviderChunk(
+                        delta: "",
+                        usage: nil,
+                        finishReason: nil,
+                        chunkIndex: chunkIndex,
+                        toolCallDelta: ProviderChunk.ToolCallDelta(
+                            toolCallId: toolCall.id,
+                            toolName: toolCall.function.name,
+                            argsTextDelta: argChunk
+                        )
+                    )
+                    continuation.yield(deltaChunk)
+                    chunkIndex += 1
+                    
+                    if let delay = configuration.chunkDelay {
+                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    }
+                }
+                
+                // Send completed tool call
+                let completeChunk = ProviderChunk(
+                    delta: response.content.isEmpty ? "" : " ",
+                    toolCall: toolCall,
+                    usage: nil,
+                    finishReason: nil,
+                    chunkIndex: chunkIndex
+                )
+                continuation.yield(completeChunk)
+                chunkIndex += 1
             }
         }
         
+        // Stream text content if present
+        if !response.content.isEmpty {
+            let words = response.content.split(separator: " ")
+            
+            for (index, word) in words.enumerated() {
+                let delta = (index == 0 ? "" : " ") + String(word)
+                let isLast = index == words.count - 1
+                
+                let chunk = ProviderChunk(
+                    delta: delta,
+                    usage: isLast ? response.usage : nil,
+                    finishReason: isLast ? response.finishReason : nil,
+                    chunkIndex: chunkIndex
+                )
+                
+                continuation.yield(chunk)
+                chunkIndex += 1
+                
+                if let delay = configuration.chunkDelay {
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
+            }
+        } else if response.toolCalls?.isEmpty ?? true {
+            // If no content and no tool calls, send at least one chunk
+            let chunk = ProviderChunk(
+                delta: "",
+                usage: response.usage,
+                finishReason: response.finishReason,
+                chunkIndex: chunkIndex
+            )
+            continuation.yield(chunk)
+        }
+        
         continuation.finish()
+    }
+}
+
+// MARK: - String Extension
+
+private extension String {
+    func chunked(into size: Int) -> [String] {
+        var chunks: [String] = []
+        var startIndex = self.startIndex
+        
+        while startIndex < self.endIndex {
+            let endIndex = self.index(startIndex, offsetBy: size, limitedBy: self.endIndex) ?? self.endIndex
+            chunks.append(String(self[startIndex..<endIndex]))
+            startIndex = endIndex
+        }
+        
+        return chunks
     }
 }
 

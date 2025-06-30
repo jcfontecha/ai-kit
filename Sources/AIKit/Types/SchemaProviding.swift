@@ -279,7 +279,7 @@ public extension ObjectSchema {
         
         let jsonSchema = JSONSchema.object(
             properties: schemaProperties,
-            required: required.isEmpty ? nil : required,
+            required: required,
             additionalProperties: .boolean(allowAdditionalProperties)
         )
         

@@ -19,7 +19,7 @@ import Foundation
         
         func transformResponse<T: AIResponse>(_ response: T) async throws -> T {
             // Modify TextResponse by appending a marker
-            if var textResponse = response as? TextResponse {
+            if let textResponse = response as? TextResponse {
                 let modifiedResponse = TextResponse(
                     text: textResponse.text + " [MIDDLEWARE_PROCESSED]",
                     finishReason: textResponse.finishReason,
@@ -75,7 +75,7 @@ import Foundation
         }
         
         func transformResponse<T: AIResponse>(_ response: T) async throws -> T {
-            if var textResponse = response as? TextResponse {
+            if let textResponse = response as? TextResponse {
                 let modifiedResponse = TextResponse(
                     text: "[HIGH]" + textResponse.text,
                     finishReason: textResponse.finishReason,
@@ -112,7 +112,7 @@ import Foundation
         }
         
         func transformResponse<T: AIResponse>(_ response: T) async throws -> T {
-            if var textResponse = response as? TextResponse {
+            if let textResponse = response as? TextResponse {
                 let modifiedResponse = TextResponse(
                     text: textResponse.text + "[LOW]",
                     finishReason: textResponse.finishReason,
@@ -168,7 +168,7 @@ import Foundation
         }
         
         func transformChunk<T: StreamChunk>(_ chunk: T) async throws -> T {
-            if var textChunk = chunk as? TextChunk {
+            if let textChunk = chunk as? TextChunk {
                 let modifiedChunk = TextChunk(
                     delta: "[" + textChunk.delta + "]",
                     snapshot: textChunk.snapshot,
