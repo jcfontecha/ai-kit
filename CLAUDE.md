@@ -2,6 +2,36 @@
 
 Swift AI SDK - A type-safe, protocol-oriented Swift framework for AI model interactions, inspired by the Vercel AI SDK.
 
+## 🎉 NEW: Automatic Tool Execution & Message Management
+
+AIKit now provides Vercel AI SDK-style automatic tool execution and message management:
+
+### Automatic Tool Execution in Streaming
+```swift
+// Just like Vercel - tools execute automatically during streaming!
+let stream = await client.streamText(
+    model,
+    messages: messages,
+    tools: tools,
+    maxSteps: 3  // Multi-step execution
+)
+
+for try await chunk in stream {
+    print(chunk.delta)  // Tool execution happens automatically
+}
+```
+
+### Automatic Response Messages
+```swift
+// No more manual message formatting!
+let response = try await client.generateText(model, messages: messages, tools: tools)
+
+// Automatically formatted messages with tool calls
+conversationHistory.append(contentsOf: response.responseMessages)
+```
+
+This eliminates common errors like forgetting to include tool calls in assistant messages.
+
 ## ⚠️ CRITICAL: Vercel AI SDK Reference Requirement
 
 **IMPERATIVE**: Before implementing ANY feature, you MUST research how Vercel AI SDK implements it:

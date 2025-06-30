@@ -114,80 +114,129 @@ public extension AIClient {
         return streamText(model, messages: messages)
     }
     
-    /// Stream text response with tool calling support.
+    /// Stream text response with automatic tool execution support.
     ///
-    /// This method provides real-time streaming of text generation with tool calls:
-    /// 1. Applies request middleware
-    /// 2. Creates streaming connection to provider with tools
-    /// 3. Handles tool call streaming events 
-    /// 4. Returns an AsyncThrowingStream of text chunks with tool information
+    /// Following Vercel AI SDK's approach, this method automatically handles tool execution:
+    /// 1. Streams text chunks with tool call information
+    /// 2. Automatically executes tools when tool calls are received
+    /// 3. Continues streaming with tool results
+    /// 4. Supports multi-step tool execution
+    ///
+    /// Tool execution is automatic when tools are provided. The stream seamlessly
+    /// includes chunks from both the initial generation and follow-up responses
+    /// after tool execution.
     ///
     /// - Parameters:
     ///   - model: The configured language model to use
     ///   - messages: Array of messages forming the conversation context
     ///   - tools: Optional array of tools available for the model to call
     ///   - toolChoice: Optional tool choice configuration
-    ///   - maxSteps: Maximum number of tool execution steps
+    ///   - toolExecutor: Custom tool executor function (uses default if not provided)
+    ///   - maxSteps: Maximum number of tool execution steps (default: 1)
     /// - Returns: AsyncThrowingStream of `TextChunk` objects with tool call support
     func streamText(
         _ model: LanguageModel, 
         messages: [Message],
         tools: [Tool]? = nil,
         toolChoice: ToolChoice? = nil,
-        maxSteps: Int? = nil
+        toolExecutor: ToolExecutor? = nil,
+        maxSteps: Int = 1
     ) -> AsyncThrowingStream<TextChunk, Error> {
         
         return AsyncThrowingStream { continuation in
             Task {
                 do {
-                    // 1. Create provider request with tools
-                    let request = ProviderRequest(
-                        modelId: model.modelId,
-                        messages: messages,
-                        configuration: model.configuration,
-                        tools: tools,
-                        maxSteps: maxSteps,
-                        mode: .regular(tools: tools, toolChoice: toolChoice)
-                    )
+                    var currentMessages = messages
+                    var allAccumulatedText = ""
+                    var globalChunkIndex = 0
                     
-                    // 2. Apply request middleware
-                    let processedRequest = try await applyRequestMiddleware(request)
-                    
-                    // 3. Stream from provider and transform to TextChunk with tool support
-                    let providerStream = model.provider.streamTextRaw(processedRequest)
-                    var accumulatedText = ""
-                    
-                    for try await providerChunk in providerStream {
-                        accumulatedText += providerChunk.delta
-                        
-                        // Transform ProviderChunk to TextChunk with full tool call support
-                        let textChunk = TextChunk(
-                            delta: providerChunk.delta,
-                            snapshot: accumulatedText,
-                            finishReason: providerChunk.finishReason,
-                            usage: providerChunk.usage,
-                            chunkId: UUID().uuidString,
-                            timestamp: Date(),
-                            stepId: providerChunk.stepId,
-                            toolCalls: providerChunk.toolCall != nil ? [providerChunk.toolCall!] : nil,
-                            toolCallStreamingStart: providerChunk.toolCallStreamingStart.map { start in
-                                ToolCallStreamingStart(
-                                    toolCallId: start.toolCallId,
-                                    toolName: start.toolName
-                                )
-                            },
-                            toolCallDelta: providerChunk.toolCallDelta.map { delta in
-                                ToolCallDelta(
-                                    toolCallId: delta.toolCallId,
-                                    toolName: delta.toolName,
-                                    argsTextDelta: delta.argsTextDelta
-                                )
-                            }
+                    // Execute steps up to maxSteps
+                    for stepIndex in 0..<maxSteps {
+                        // 1. Create provider request with tools
+                        let request = ProviderRequest(
+                            modelId: model.modelId,
+                            messages: currentMessages,
+                            configuration: model.configuration,
+                            tools: tools,
+                            mode: .regular(tools: tools, toolChoice: toolChoice)
                         )
                         
-                        // 4. Apply chunk middleware and yield
-                        let processedChunk = try await applyChunkMiddleware(textChunk)
-                        continuation.yield(processedChunk)
+                        // 2. Apply request middleware
+                        let processedRequest = try await applyRequestMiddleware(request)
+                        
+                        // 3. Stream from provider
+                        let providerStream = model.provider.streamTextRaw(processedRequest)
+                        var stepText = ""
+                        var toolCallsReceived: [ToolCall] = []
+                        var finishReason: FinishReason = .stop
+                        
+                        for try await providerChunk in providerStream {
+                            stepText += providerChunk.delta
+                            allAccumulatedText += providerChunk.delta
+                            
+                            // Collect tool calls from chunks
+                            if let toolCall = providerChunk.toolCall {
+                                toolCallsReceived.append(toolCall)
+                            }
+                            
+                            // Track finish reason
+                            if let reason = providerChunk.finishReason {
+                                finishReason = reason
+                            }
+                            
+                            // Transform ProviderChunk to TextChunk with full tool call support
+                            let textChunk = TextChunk(
+                                delta: providerChunk.delta,
+                                snapshot: allAccumulatedText,
+                                finishReason: providerChunk.finishReason,
+                                usage: providerChunk.usage,
+                                chunkId: UUID().uuidString,
+                                timestamp: Date(),
+                                stepId: String(stepIndex),
+                                toolCalls: providerChunk.toolCall != nil ? [providerChunk.toolCall!] : nil,
+                                toolCallStreamingStart: providerChunk.toolCallStreamingStart.map { start in
+                                    ToolCallStreamingStart(
+                                        toolCallId: start.toolCallId,
+                                        toolName: start.toolName
+                                    )
+                                },
+                                toolCallDelta: providerChunk.toolCallDelta.map { delta in
+                                    ToolCallDelta(
+                                        toolCallId: delta.toolCallId,
+                                        toolName: delta.toolName,
+                                        argsTextDelta: delta.argsTextDelta
+                                    )
+                                }
+                            )
+                            
+                            // 4. Apply chunk middleware and yield
+                            let processedChunk = try await applyChunkMiddleware(textChunk)
+                            continuation.yield(processedChunk)
+                            globalChunkIndex += 1
+                        }
+                        
+                        // Handle automatic tool execution if needed
+                        if !toolCallsReceived.isEmpty && finishReason == .toolCalls && stepIndex + 1 < maxSteps {
+                            // Add assistant message with tool calls
+                            let assistantMessage = Message(
+                                role: .assistant,
+                                content: stepText.isEmpty ? [] : [.text(stepText)],
+                                toolCalls: toolCallsReceived
+                            )
+                            currentMessages.append(assistantMessage)
+                            
+                            // Execute tools and add results
+                            for toolCall in toolCallsReceived {
+                                let result = try await executeToolCall(toolCall, toolExecutor: toolExecutor)
+                                currentMessages.append(.tool(result: result))
+                            }
+                            
+                            // Continue to next step for follow-up generation
+                            continue
+                        }
+                        
+                        // No more tool calls or reached max steps - finish streaming
+                        break
                     }
                     
                     continuation.finish()

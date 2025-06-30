@@ -391,6 +391,76 @@ public extension TextResponse {
     var summary: String {
         return "TextResponse(length: \(text.count), tokens: \(usage.totalTokens), reason: \(finishReason))"
     }
+    
+    /// Automatically formatted messages for conversation history.
+    ///
+    /// This property provides ready-to-use messages that can be directly appended
+    /// to your conversation history, following the same pattern as Vercel AI SDK's
+    /// `response.messages`. It handles the complex formatting of assistant messages
+    /// with tool calls and tool result messages automatically.
+    ///
+    /// ## Usage Example
+    /// ```swift
+    /// let response = try await client.generateText(model, messages: messages, tools: tools)
+    ///
+    /// // Automatically add formatted messages to conversation history
+    /// conversationHistory.append(contentsOf: response.responseMessages)
+    /// ```
+    ///
+    /// This eliminates the need to manually format assistant messages with tool calls,
+    /// preventing common errors like missing tool call information in conversation history.
+    var responseMessages: [Message] {
+        var resultMessages: [Message] = []
+        
+        // If we have steps (multi-step generation), build from steps
+        if let steps = steps, !steps.isEmpty {
+            // Collect all tool calls from steps
+            var allToolCalls: [ToolCall] = []
+            
+            for step in steps {
+                if let toolCalls = step.toolCalls {
+                    allToolCalls.append(contentsOf: toolCalls)
+                }
+            }
+            
+            // First, add assistant message with all tool calls if any
+            if !allToolCalls.isEmpty || !text.isEmpty {
+                let assistantMessage = Message(
+                    role: .assistant,
+                    content: text.isEmpty ? [] : [.text(text)],
+                    toolCalls: allToolCalls.isEmpty ? nil : allToolCalls
+                )
+                resultMessages.append(assistantMessage)
+            }
+            
+            // Then add tool result messages
+            for step in steps {
+                if let toolResults = step.toolResults {
+                    for toolResult in toolResults {
+                        resultMessages.append(.tool(result: toolResult))
+                    }
+                }
+            }
+        } else {
+            // Simple case - just add assistant message
+            if hasToolCalls {
+                // Assistant message with tool calls
+                let assistantMessage = Message(
+                    role: .assistant,
+                    content: text.isEmpty ? [] : [.text(text)],
+                    toolCalls: toolCalls
+                )
+                resultMessages.append(assistantMessage)
+            } else {
+                // Simple assistant message
+                if !text.isEmpty {
+                    resultMessages.append(.assistant(text))
+                }
+            }
+        }
+        
+        return resultMessages
+    }
 }
 
 public extension ObjectResponse {
