@@ -1,5 +1,18 @@
 import Foundation
 
+/// Helper struct to accumulate tool call data across streaming chunks for Anthropic
+private struct AnthropicStreamingToolCall {
+    let toolCallId: String
+    let toolName: String
+    var jsonText: String
+    
+    init(toolCallId: String, toolName: String) {
+        self.toolCallId = toolCallId
+        self.toolName = toolName
+        self.jsonText = ""
+    }
+}
+
 // MARK: - Anthropic Provider Implementation
 
 /// Anthropic provider for the Swift AI SDK.
@@ -232,6 +245,7 @@ public struct AnthropicProvider: AIProvider {
                     // Process Server-Sent Events
                     var chunkIndex = 0
                     var currentContent = ""
+                    var toolCallsState: [Int: AnthropicStreamingToolCall] = [:] // Track tool calls by content block index
                     
                     for try await line in asyncBytes.lines {
                         // Process SSE event lines
@@ -252,11 +266,19 @@ public struct AnthropicProvider: AIProvider {
                             do {
                                 let event = try JSONDecoder().decode(AnthropicStreamEvent.self, from: eventData)
                                 
-                                // Process the event
-                                if let providerChunk = try processStreamEvent(event, chunkIndex: chunkIndex, currentContent: &currentContent) {
+                                // Process the event - now returns array of chunks
+                                let providerChunks = try processStreamEvent(
+                                    event, 
+                                    chunkIndex: chunkIndex, 
+                                    currentContent: &currentContent,
+                                    toolCallsState: &toolCallsState
+                                )
+                                
+                                for providerChunk in providerChunks {
                                     continuation.yield(providerChunk)
-                                    chunkIndex += 1
                                 }
+                                
+                                chunkIndex += providerChunks.count
                                 
                                 // Check for stream end
                                 if case .messageStop = event.type {
@@ -572,13 +594,20 @@ private extension AnthropicProvider {
     }
     
     /// Process a streaming event from Anthropic.
-    func processStreamEvent(_ event: AnthropicStreamEvent, chunkIndex: Int, currentContent: inout String) throws -> ProviderChunk? {
+    func processStreamEvent(
+        _ event: AnthropicStreamEvent, 
+        chunkIndex: Int, 
+        currentContent: inout String,
+        toolCallsState: inout [Int: AnthropicStreamingToolCall]
+    ) throws -> [ProviderChunk] {
+        var chunks: [ProviderChunk] = []
+        
         switch event.type {
         case .messageStart:
             // Initialize with usage if present
             if let message = event.message,
                let usage = message.usage {
-                return ProviderChunk(
+                let chunk = ProviderChunk(
                     delta: "",
                     usage: Usage(
                         promptTokens: usage.inputTokens,
@@ -590,31 +619,99 @@ private extension AnthropicProvider {
                     finishReason: nil,
                     chunkIndex: chunkIndex
                 )
+                chunks.append(chunk)
             }
-            return nil
             
         case .contentBlockStart:
-            // Start of content block - no delta yet
-            return nil
+            // Start of content block - check for tool_use
+            if let contentBlock = event.contentBlock, 
+               let index = event.index {
+                
+                if contentBlock.type == "tool_use",
+                   let toolCallId = contentBlock.id,
+                   let toolName = contentBlock.name {
+                    
+                    // Initialize tool call tracking
+                    toolCallsState[index] = AnthropicStreamingToolCall(
+                        toolCallId: toolCallId, 
+                        toolName: toolName
+                    )
+                    
+                    // Emit tool call streaming start event
+                    let startChunk = ProviderChunk(
+                        delta: "",
+                        chunkIndex: chunkIndex,
+                        toolCallStreamingStart: ProviderChunk.ToolCallStreamingStart(
+                            toolCallId: toolCallId,
+                            toolName: toolName
+                        )
+                    )
+                    chunks.append(startChunk)
+                }
+            }
             
         case .contentBlockDelta:
-            // Content delta
-            if let delta = event.delta {
+            // Content delta - handle both text and tool input
+            if let delta = event.delta,
+               let index = event.index {
+                
                 if delta.type == "text_delta", let text = delta.text {
+                    // Text content delta
                     currentContent += text
-                    return ProviderChunk(
+                    let textChunk = ProviderChunk(
                         delta: text,
                         usage: nil,
                         finishReason: nil,
                         chunkIndex: chunkIndex
                     )
+                    chunks.append(textChunk)
+                    
+                } else if delta.type == "input_json_delta", 
+                          let partialJson = delta.partialJson,
+                          var toolCall = toolCallsState[index] {
+                    
+                    // Tool call argument delta
+                    toolCall.jsonText += partialJson
+                    toolCallsState[index] = toolCall
+                    
+                    // Emit tool call delta event
+                    let deltaChunk = ProviderChunk(
+                        delta: "",
+                        chunkIndex: chunkIndex,
+                        toolCallDelta: ProviderChunk.ToolCallDelta(
+                            toolCallId: toolCall.toolCallId,
+                            toolName: toolCall.toolName,
+                            argsTextDelta: partialJson
+                        )
+                    )
+                    chunks.append(deltaChunk)
                 }
             }
-            return nil
             
         case .contentBlockStop:
-            // End of content block
-            return nil
+            // End of content block - emit completed tool call if applicable
+            if let index = event.index,
+               let toolCall = toolCallsState[index] {
+                
+                // Create completed tool call
+                let completedToolCall = ToolCall(
+                    id: toolCall.toolCallId,
+                    function: ToolCallFunction(
+                        name: toolCall.toolName,
+                        arguments: toolCall.jsonText
+                    )
+                )
+                
+                let toolCallChunk = ProviderChunk(
+                    delta: "",
+                    toolCall: completedToolCall,
+                    chunkIndex: chunkIndex
+                )
+                chunks.append(toolCallChunk)
+                
+                // Remove from state
+                toolCallsState.removeValue(forKey: index)
+            }
             
         case .messageDelta:
             // Message delta with updated usage and stop reason
@@ -649,19 +746,21 @@ private extension AnthropicProvider {
             }
             
             if usage != nil || finishReason != nil {
-                return ProviderChunk(
+                let deltaChunk = ProviderChunk(
                     delta: "",
                     usage: usage,
                     finishReason: finishReason,
                     chunkIndex: chunkIndex
                 )
+                chunks.append(deltaChunk)
             }
-            return nil
             
         case .messageStop:
-            // End of stream
-            return nil
+            // End of stream - no additional chunks needed
+            break
         }
+        
+        return chunks
     }
     
     /// Convert JSONSchema to dictionary format for Anthropic API.
@@ -979,6 +1078,41 @@ private struct AnthropicStreamMessage: Codable {
 private struct AnthropicStreamContentBlock: Codable {
     let type: String
     let text: String?
+    // Tool use fields for content_block_start
+    let id: String?
+    let name: String?
+    let input: [String: Any]?
+    
+    enum CodingKeys: String, CodingKey {
+        case type, text, id, name, input
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        
+        // Handle input as dynamic JSON
+        if let inputData = try? container.decode(AnyCodable.self, forKey: .input) {
+            input = inputData.value as? [String: Any]
+        } else {
+            input = nil
+        }
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(text, forKey: .text)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encodeIfPresent(name, forKey: .name)
+        
+        if let input = input {
+            try container.encode(AnyCodable(input), forKey: .input)
+        }
+    }
 }
 
 /// Anthropic stream delta structure.
@@ -987,11 +1121,14 @@ private struct AnthropicStreamDelta: Codable {
     let text: String?
     let stopReason: String?
     let usage: AnthropicUsage?
+    // Tool use delta fields
+    let partialJson: String?
     
     enum CodingKeys: String, CodingKey {
         case type, text
         case stopReason = "stop_reason"
         case usage
+        case partialJson = "partial_json"
     }
 }
 

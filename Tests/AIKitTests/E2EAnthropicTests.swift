@@ -423,4 +423,128 @@ struct E2EAnthropicTests {
         #expect(!response.text.isEmpty, "Should have response")
         #expect(response.usage.totalTokens > 0, "Should have token usage")
     }
+    
+    @Test("Real Anthropic Streaming Tool Calling")
+    func testRealAnthropicStreamingToolCalling() async throws {
+        print("🧪 Testing streaming tool calling with real Anthropic API...")
+        
+        let provider = try createAnthropicProvider()
+        
+        let client = AIClient(toolExecutor: { toolCall in
+            switch toolCall.function.name {
+            case "search_notes":
+                // Parse arguments
+                let arguments = toolCall.function.parsedArguments ?? [:]
+                let query = arguments["query"] as? String ?? "unknown"
+                
+                let searchResults = """
+                Found 2 notes matching '\(query)':
+                1. Advanced Salsa Spins - Multiple rotation techniques with cross-body leads
+                2. Bachata Turn Patterns - Close-connection spinning sequences
+                """
+                
+                return ToolResult(
+                    toolCallId: toolCall.id,
+                    result: .text(searchResults),
+                    executionTime: 0.3
+                )
+            default:
+                throw AIGenerationError.toolExecutionFailed(
+                    toolName: toolCall.function.name,
+                    error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"])
+                )
+            }
+        })
+        
+        let model = provider.languageModel(Self.TEST_MODEL)
+            .temperature(0.7)
+            .maxTokens(600)
+        
+        // Define a search tool similar to OpenAI test
+        let searchTool = Tool(
+            function: ToolFunction(
+                name: "search_notes",
+                description: "Search through the user's dance notes by content, title, instructor, dance style, or tags",
+                parameters: JSONSchema.object(properties: [
+                    "query": .string()
+                ], required: ["query"])
+            )
+        )
+        
+        // Test streaming with tool calls
+        var accumulatedText = ""
+        var toolCallsReceived: [ToolCall] = []
+        var toolCallStreamingEvents: [ToolCallStreamingStart] = []
+        var toolCallDeltas: [ToolCallDelta] = []
+        var chunkCount = 0
+        var hasToolCallFinishReason = false
+        
+        print("🌊 Starting Anthropic streaming with tool calls...")
+        
+        let stream = await client.streamText(
+            model,
+            messages: [Message.user("Search through my notes for types of spins")],
+            tools: [searchTool],
+            toolChoice: .auto
+        )
+        
+        for try await chunk in stream {
+            chunkCount += 1
+            print("📦 Chunk \(chunkCount): delta='\(chunk.delta)', toolCalls=\(chunk.toolCalls?.count ?? 0)")
+            
+            // Accumulate text
+            accumulatedText += chunk.delta
+            
+            // Collect tool calls
+            if let toolCalls = chunk.toolCalls {
+                toolCallsReceived.append(contentsOf: toolCalls)
+                print("🔧 Received \(toolCalls.count) tool call(s)")
+                for toolCall in toolCalls {
+                    print("   - \(toolCall.function.name): \(toolCall.function.arguments)")
+                }
+            }
+            
+            // Collect streaming events
+            if let streamingStart = chunk.toolCallStreamingStart {
+                toolCallStreamingEvents.append(streamingStart)
+                print("🌊 Tool call streaming started: \(streamingStart.toolName) (ID: \(streamingStart.toolCallId))")
+            }
+            
+            if let delta = chunk.toolCallDelta {
+                toolCallDeltas.append(delta)
+                print("🔄 Tool call delta: \(delta.toolName) - '\(delta.argsTextDelta)'")
+            }
+            
+            // Check finish reason
+            if let finishReason = chunk.finishReason {
+                print("🏁 Stream finished with reason: \(finishReason)")
+                if finishReason == .toolCalls {
+                    hasToolCallFinishReason = true
+                }
+            }
+        }
+        
+        print("✅ Anthropic streaming completed")
+        print("📊 Chunks received: \(chunkCount)")
+        print("📝 Accumulated text: '\(accumulatedText)'")
+        print("🔧 Tool calls: \(toolCallsReceived.count)")
+        print("🌊 Streaming start events: \(toolCallStreamingEvents.count)")  
+        print("🔄 Tool call deltas: \(toolCallDeltas.count)")
+        
+        // Verify streaming tool call behavior
+        #expect(hasToolCallFinishReason, "Should have toolCalls finish reason")
+        #expect(!toolCallsReceived.isEmpty, "Should receive tool calls in streaming")
+        #expect(toolCallsReceived.first?.function.name == "search_notes", "Should call search_notes tool")
+        #expect(!toolCallStreamingEvents.isEmpty, "Should receive tool call streaming start events")
+        #expect(!toolCallDeltas.isEmpty, "Should receive tool call delta events")
+        
+        // Verify tool call arguments are properly accumulated
+        if let firstToolCall = toolCallsReceived.first {
+            #expect(!firstToolCall.function.arguments.isEmpty, "Tool call arguments should not be empty")
+            #expect(firstToolCall.function.parsedArguments != nil, "Should be able to parse tool arguments")
+            print("🔍 Tool arguments: \(firstToolCall.function.arguments)")
+        }
+        
+        print("✅ Anthropic streaming tool calling fix verified!")
+    }
 }
