@@ -120,9 +120,9 @@ final class ImageSupportTests: XCTestCase {
         
         var fullText = ""
         var chunkCount = 0
-        let stream = await client.streamText(model, messages: messages)
+        let result = await client.streamText(model, messages: messages)
         
-        for try await chunk in stream {
+        for try await chunk in result.textStream {
             fullText += chunk.delta
             chunkCount += 1
         }

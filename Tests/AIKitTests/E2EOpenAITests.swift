@@ -171,7 +171,7 @@ struct E2EOpenAITests {
         var fullContent = ""
         var finalUsage: TokenUsage?
         
-        for try await chunk in stream {
+        for try await chunk in stream.textStream {
             chunks.append(chunk)
             fullContent += chunk.delta
             
@@ -513,7 +513,7 @@ struct E2EOpenAITests {
             toolChoice: ToolChoice.auto
         )
         
-        for try await chunk in stream {
+        for try await chunk in stream.textStream {
             chunkCount += 1
             print("📦 Chunk \(chunkCount): delta='\(chunk.delta)', toolCalls=\(chunk.toolCalls?.count ?? 0)")
             
@@ -633,7 +633,7 @@ struct E2EOpenAITests {
             toolChoice: ToolChoice.auto
         )
         
-        for try await chunk in initialStream {
+        for try await chunk in initialStream.textStream {
             accumulatedText += chunk.delta
             if let toolCalls = chunk.toolCalls {
                 toolCallsReceived.append(contentsOf: toolCalls)
@@ -697,7 +697,7 @@ struct E2EOpenAITests {
         var followUpChunks = 0
         
         let followUpStream = await client.streamText(model, messages: messages) // No tools in follow-up
-        for try await chunk in followUpStream {
+        for try await chunk in followUpStream.textStream {
             followUpChunks += 1
             followUpText += chunk.delta
             

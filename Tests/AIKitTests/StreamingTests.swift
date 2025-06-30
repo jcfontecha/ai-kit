@@ -92,12 +92,12 @@ import Foundation
     let model = provider.languageModel("mock-gpt-4")
     
     // This will fail until we implement AIClient.streamText
-    let stream = await client.streamText(model, prompt: "Count to 5")
+    let result = await client.streamText(model, prompt: "Count to 5")
     
     var chunks: [TextChunk] = []
     var fullContent = ""
     
-    for try await chunk in stream {
+    for try await chunk in result.textStream {
         chunks.append(chunk)
         fullContent += chunk.delta
     }
@@ -124,7 +124,7 @@ import Foundation
         .temperature(0.0)
     
     // Test with simple prompt (Vercel pattern: streamText({ model, prompt }))
-    let stream = await client.streamText(model, prompt: "Count from 1 to 5")
+    let result = await client.streamText(model, prompt: "Count from 1 to 5")
     
     var chunks: [TextChunk] = []
     var fullText = ""
@@ -132,7 +132,7 @@ import Foundation
     var finalFinishReason: FinishReason? = nil
     
     // Collect all chunks (Vercel pattern: for await (const textPart of result.textStream))
-    for try await chunk in stream {
+    for try await chunk in result.textStream {
         chunks.append(chunk)
         fullText += chunk.delta
         
@@ -178,12 +178,12 @@ import Foundation
         Message.user("Now count from 4 to 6")
     ]
     
-    let stream = await client.streamText(model, messages: messages)
+    let result = await client.streamText(model, messages: messages)
     
     var chunks: [TextChunk] = []
     var hasContent = false
     
-    for try await chunk in stream {
+    for try await chunk in result.textStream {
         chunks.append(chunk)
         if !chunk.delta.isEmpty {
             hasContent = true
@@ -216,7 +216,7 @@ import Foundation
         )
     )
     
-    let stream = await client.streamText(
+    let result = await client.streamText(
         model, 
         messages: [Message.user("What's the weather in San Francisco?")],
         tools: [weatherTool]
@@ -228,7 +228,7 @@ import Foundation
     var completedToolCalls: [ToolCall] = []
     
     // Process stream and collect tool call events
-    for try await chunk in stream {
+    for try await chunk in result.textStream {
         chunks.append(chunk)
         
         if let toolCallStart = chunk.toolCallStreamingStart {
@@ -257,10 +257,10 @@ import Foundation
     let model = provider.languageModel("gpt-4.1-nano")
     let client = AIClient()
     
-    let stream = await client.streamText(model, prompt: "This should fail")
+    let result = await client.streamText(model, prompt: "This should fail")
     
     do {
-        for try await _ in stream {
+        for try await _ in result.textStream {
             #expect(Bool(false), "Should not receive chunks when error rate is 100%")
         }
         #expect(Bool(false), "Should have thrown an error")
@@ -275,13 +275,13 @@ import Foundation
     let provider = MockProvider()
     let model = provider.languageModel("gpt-4.1-nano")
     
-    let stream = await client.streamText(model, prompt: "Generate a long response")
+    let result = await client.streamText(model, prompt: "Generate a long response")
     
     var chunkCount = 0
     let maxChunks = 5
     
     // Only consume first few chunks to test backpressure
-    for try await _ in stream {
+    for try await _ in result.textStream {
         chunkCount += 1
         if chunkCount >= maxChunks {
             break

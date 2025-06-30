@@ -171,7 +171,7 @@ struct E2EGoogleTests {
         var fullContent = ""
         var finalUsage: TokenUsage?
         
-        for try await chunk in stream {
+        for try await chunk in stream.textStream {
             chunks.append(chunk)
             fullContent += chunk.delta
             

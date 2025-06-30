@@ -190,10 +190,10 @@ import Foundation
     
     let client = AIClient(middleware: [ChunkModifyingMiddleware()])
     
-    let stream = await client.streamText(model, prompt: "Count to 3")
+    let result = await client.streamText(model, prompt: "Count to 3")
     var chunks: [TextChunk] = []
     
-    for try await chunk in stream {
+    for try await chunk in result.textStream {
         chunks.append(chunk)
     }
     

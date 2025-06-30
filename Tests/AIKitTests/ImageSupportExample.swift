@@ -42,13 +42,13 @@ struct ImageSupportExample {
         print("Response: \(response3.text)")
         
         // Example 4: Streaming with images
-        let stream = await client.streamText(
+        let result = await client.streamText(
             model,
             messages: [CoreMessage.user("Describe this image in detail", image: imageContent2)]
         )
         
         print("Streaming response: ", terminator: "")
-        for try await chunk in stream {
+        for try await chunk in result.textStream {
             print(chunk.delta, terminator: "")
         }
         print() // New line

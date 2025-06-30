@@ -37,10 +37,10 @@ struct StreamingAutoToolTests {
         // Mock provider streams based on generateTextRaw behavior
         // For this test, it will generate a simple text response
         
-        let stream = await client.streamText(model, messages: [Message.user("Hi")])
+        let result = await client.streamText(model, messages: [Message.user("Hi")])
         
         var accumulated = ""
-        for try await chunk in stream {
+        for try await chunk in result.textStream {
             accumulated += chunk.delta
         }
         
@@ -68,14 +68,14 @@ struct StreamingAutoToolTests {
         
         // MockProvider will generate regular text response since prompt doesn't suggest tool usage
         
-        let stream = await client.streamText(
+        let result = await client.streamText(
             model,
             messages: [Message.user("How are you?")],
             tools: [weatherTool]
         )
         
         var accumulated = ""
-        for try await chunk in stream {
+        for try await chunk in result.textStream {
             accumulated += chunk.delta
         }
         
@@ -104,7 +104,7 @@ struct StreamingAutoToolTests {
         
         // MockProvider will automatically detect weather-related query and generate tool call
         
-        let stream = await client.streamText(
+        let result = await client.streamText(
             model,
             messages: [Message.user("What's the weather in San Francisco?")],
             tools: [weatherTool],
@@ -117,7 +117,7 @@ struct StreamingAutoToolTests {
         var stepCount = 0
         var lastStepId: String? = nil
         
-        for try await chunk in stream {
+        for try await chunk in result.textStream {
             accumulated += chunk.delta
             
             if chunk.toolCallStreamingStart != nil {
@@ -186,7 +186,7 @@ struct StreamingAutoToolTests {
             // Mock provider will generate tool calls
         }
         
-        let stream = await client.streamText(
+        let result = await client.streamText(
             model,
             messages: [Message.user("Test")],
             tools: [tool],
@@ -196,7 +196,7 @@ struct StreamingAutoToolTests {
         var stepCount = 0
         var lastStepId: String? = nil
         
-        for try await chunk in stream {
+        for try await chunk in result.textStream {
             if chunk.stepId != lastStepId {
                 lastStepId = chunk.stepId
                 stepCount += 1
@@ -234,11 +234,11 @@ struct StreamingAutoToolTests {
         let manualClient = AIClient()
         // MockProvider will generate tool call response
         
-        let manualStream = await manualClient.streamText(model, messages: [.user("Weather?")])
+        let manualResult = await manualClient.streamText(model, messages: [.user("Weather?")])
         var manualText = ""
         var manualToolCalls: [ToolCall] = []
         
-        for try await chunk in manualStream {
+        for try await chunk in manualResult.textStream {
             manualText += chunk.delta
             if let calls = chunk.toolCalls {
                 manualToolCalls.append(contentsOf: calls)
@@ -266,7 +266,7 @@ struct StreamingAutoToolTests {
         // MockProvider will generate tool call response
         // MockProvider generates follow-up response
         
-        let autoStream = await autoClient.streamText(
+        let autoResult = await autoClient.streamText(
             model,
             messages: [Message.user("Weather?")],
             tools: [tool],
@@ -274,7 +274,7 @@ struct StreamingAutoToolTests {
         )
         
         var autoText = ""
-        for try await chunk in autoStream {
+        for try await chunk in autoResult.textStream {
             autoText += chunk.delta
         }
         

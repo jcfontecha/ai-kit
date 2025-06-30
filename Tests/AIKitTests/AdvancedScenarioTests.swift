@@ -16,7 +16,7 @@ import Foundation
     let maxChunks = 3
     
     // Early termination to test interruption
-    for try await _ in stream {
+    for try await _ in stream.textStream {
         chunkCount += 1
         if chunkCount >= maxChunks {
             break // Interrupt the stream
@@ -40,7 +40,7 @@ import Foundation
     
     // Attempt to handle errors during streaming
     do {
-        for try await chunk in stream {
+        for try await chunk in stream.textStream {
             successfulChunks += 1
             #expect(!chunk.delta.isEmpty || chunk.finishReason != nil, "Chunk should have content or finish reason")
         }
@@ -65,7 +65,7 @@ import Foundation
     var chunkCount = 0
     
     // Transform stream data (e.g., uppercase transformation)
-    for try await chunk in stream {
+    for try await chunk in stream.textStream {
         let transformedDelta = chunk.delta.uppercased()
         transformedContent += transformedDelta
         chunkCount += 1
@@ -86,7 +86,7 @@ import Foundation
     var assembledMessage = ""
     var previousSnapshot = ""
     
-    for try await chunk in stream {
+    for try await chunk in stream.textStream {
         assembledMessage += chunk.delta
         
         // Verify that snapshot contains accumulated content

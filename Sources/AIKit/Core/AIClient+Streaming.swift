@@ -21,16 +21,18 @@ public extension AIClient {
     /// 2. Creates streaming connection to provider
     /// 3. Applies chunk middleware to each received chunk
     /// 4. Handles tool calls within the stream
-    /// 5. Returns an AsyncThrowingStream of text chunks
+    /// 5. Returns a StreamTextResult with both stream and accumulated data
     ///
     /// - Parameters:
     ///   - model: The configured language model to use
     ///   - messages: Array of messages forming the conversation context
-    /// - Returns: AsyncThrowingStream of `TextChunk` objects
-    func streamText(_ model: LanguageModel, messages: [Message]) -> AsyncThrowingStream<TextChunk, Error> {
-        // Minimal implementation to make tests pass - apply middleware, call provider, transform chunks
+    /// - Returns: StreamTextResult containing the stream and accumulated data
+    func streamText(_ model: LanguageModel, messages: [Message]) -> StreamTextResult {
+        // Create message tracker
+        let messageTracker = StreamingMessageTracker()
         
-        return AsyncThrowingStream { continuation in
+        // Create the base stream
+        let baseStream = AsyncThrowingStream<TextChunk, Error> { continuation in
             let task = Task {
                 do {
                     // 1. Create provider request
@@ -98,6 +100,13 @@ public extension AIClient {
                 }
             }
         }
+        
+        // Return wrapped result
+        return StreamTextResult(
+            stream: baseStream,
+            messageTracker: messageTracker,
+            tools: nil
+        )
     }
     
     /// Stream text from a simple string prompt.
@@ -108,8 +117,8 @@ public extension AIClient {
     /// - Parameters:
     ///   - model: The configured language model to use
     ///   - prompt: The text prompt to send to the model
-    /// - Returns: AsyncThrowingStream of `TextChunk` objects
-    func streamText(_ model: LanguageModel, prompt: String) -> AsyncThrowingStream<TextChunk, Error> {
+    /// - Returns: StreamTextResult containing the stream and accumulated data
+    func streamText(_ model: LanguageModel, prompt: String) -> StreamTextResult {
         let messages = [Message.user(prompt)]
         return streamText(model, messages: messages)
     }
@@ -121,10 +130,25 @@ public extension AIClient {
     /// 2. Automatically executes tools when tool calls are received (if tool has execute function)
     /// 3. Continues streaming with tool results
     /// 4. Supports multi-step tool execution
+    /// 5. Provides access to properly formatted response messages
     ///
     /// Tool execution is automatic when tools have an execute function defined.
     /// The stream seamlessly includes chunks from both the initial generation
     /// and follow-up responses after tool execution.
+    ///
+    /// ## Usage Example:
+    /// ```swift
+    /// let result = client.streamText(model, messages: messages, tools: tools)
+    /// 
+    /// // Stream chunks
+    /// for try await chunk in result.textStream {
+    ///     print(chunk.delta)
+    /// }
+    /// 
+    /// // Get formatted messages
+    /// let responseMessages = await result.messages
+    /// conversation.append(contentsOf: responseMessages)
+    /// ```
     ///
     /// - Parameters:
     ///   - model: The configured language model to use
@@ -132,16 +156,19 @@ public extension AIClient {
     ///   - tools: Optional array of tools available for the model to call
     ///   - toolChoice: Optional tool choice configuration
     ///   - maxSteps: Maximum number of tool execution steps (default: 1)
-    /// - Returns: AsyncThrowingStream of `TextChunk` objects with tool call support
+    /// - Returns: StreamTextResult containing the stream and accumulated data
     func streamText(
         _ model: LanguageModel, 
         messages: [Message],
         tools: [Tool]? = nil,
         toolChoice: ToolChoice? = nil,
         maxSteps: Int = 1
-    ) -> AsyncThrowingStream<TextChunk, Error> {
+    ) -> StreamTextResult {
+        // Create message tracker
+        let messageTracker = StreamingMessageTracker()
         
-        return AsyncThrowingStream { continuation in
+        // Create the base stream
+        let baseStream = AsyncThrowingStream<TextChunk, Error> { continuation in
             Task {
                 do {
                     var currentMessages = messages
@@ -213,6 +240,15 @@ public extension AIClient {
                             globalChunkIndex += 1
                         }
                         
+                        // Track accumulated content in message tracker
+                        if !stepText.isEmpty {
+                            await messageTracker.appendText(stepText)
+                        }
+                        
+                        for toolCall in toolCallsReceived {
+                            await messageTracker.addToolCall(toolCall)
+                        }
+                        
                         // Handle automatic tool execution if needed
                         if !toolCallsReceived.isEmpty && finishReason == .toolCalls && stepIndex + 1 < maxSteps {
                             // Add assistant message with tool calls
@@ -227,6 +263,8 @@ public extension AIClient {
                             for toolCall in toolCallsReceived {
                                 let result = try await executeToolCall(toolCall, tools: tools)
                                 currentMessages.append(.tool(result: result))
+                                // Track tool results in message tracker
+                                await messageTracker.addToolResult(result)
                             }
                             
                             // Continue to next step for follow-up generation
@@ -237,12 +275,21 @@ public extension AIClient {
                         break
                     }
                     
+                    // Finalize message tracking
+                    await messageTracker.finalize()
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
         }
+        
+        // Return wrapped result
+        return StreamTextResult(
+            stream: baseStream,
+            messageTracker: messageTracker,
+            tools: tools
+        )
     }
     
     /// Stream structured object generation from the given model, messages, and schema.
@@ -252,15 +299,15 @@ public extension AIClient {
     /// 2. Validates the provided schema
     /// 3. Creates streaming connection with partial object parsing
     /// 4. Validates partial objects during generation
-    /// 5. Returns an AsyncThrowingStream of object chunks
+    /// 5. Returns a StreamObjectResult with both stream and final object
     ///
     /// - Parameters:
     ///   - model: The configured language model to use
     ///   - messages: Array of messages forming the conversation context
     ///   - schema: The schema defining the structure of the expected object
-    /// - Returns: AsyncThrowingStream of `ObjectChunk<T>` objects
-    func streamObject<T: Codable>(_ model: LanguageModel, messages: [Message], schema: ObjectSchema<T>) -> AsyncThrowingStream<ObjectChunk<T>, Error> {
-        return AsyncThrowingStream { continuation in
+    /// - Returns: StreamObjectResult containing the stream and final object
+    func streamObject<T: Codable>(_ model: LanguageModel, messages: [Message], schema: ObjectSchema<T>) -> StreamObjectResult<T> {
+        let baseStream = AsyncThrowingStream<ObjectChunk<T>, Error> { continuation in
             Task {
                 do {
                     // 1. Create provider request with object schema
@@ -374,6 +421,9 @@ public extension AIClient {
                 }
             }
         }
+        
+        // Return wrapped result
+        return StreamObjectResult(stream: baseStream)
     }
     
     // MARK: - JSON Parsing Utilities

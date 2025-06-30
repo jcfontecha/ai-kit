@@ -520,6 +520,9 @@ public struct MockProvider: AIProvider {
         // Stream tool calls first if present
         if let toolCalls = response.toolCalls, !toolCalls.isEmpty {
             for toolCall in toolCalls {
+                // Check for cancellation
+                try Task.checkCancellation()
+                
                 // Send tool call streaming start
                 let startChunk = ProviderChunk(
                     delta: "",
@@ -542,7 +545,9 @@ public struct MockProvider: AIProvider {
                 let argsString = toolCall.function.arguments
                 let argChunks = argsString.chunked(into: 20) // Chunk arguments
                 
-                for (index, argChunk) in argChunks.enumerated() {
+                for (_, argChunk) in argChunks.enumerated() {
+                    // Check for cancellation before each arg chunk
+                    try Task.checkCancellation()
                     let deltaChunk = ProviderChunk(
                         delta: "",
                         usage: nil,
@@ -580,6 +585,9 @@ public struct MockProvider: AIProvider {
             let words = response.content.split(separator: " ")
             
             for (index, word) in words.enumerated() {
+                // Check for cancellation before each chunk
+                try Task.checkCancellation()
+                
                 let delta = (index == 0 ? "" : " ") + String(word)
                 let isLast = index == words.count - 1
                 

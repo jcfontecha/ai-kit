@@ -151,7 +151,7 @@ struct E2EAnthropicTests {
         var fullContent = ""
         
         let startTime = Date()
-        for try await chunk in stream {
+        for try await chunk in stream.textStream {
             chunks.append(chunk)
             fullContent += chunk.delta
             
@@ -464,7 +464,7 @@ struct E2EAnthropicTests {
             toolChoice: ToolChoice.auto
         )
         
-        for try await chunk in stream {
+        for try await chunk in stream.textStream {
             chunkCount += 1
             print("📦 Chunk \(chunkCount): delta='\(chunk.delta)', toolCalls=\(chunk.toolCalls?.count ?? 0)")
             

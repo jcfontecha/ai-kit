@@ -605,6 +605,32 @@ public enum ToolResultContent: Codable, Sendable {
     }
 }
 
+// MARK: - Tool Call Extensions
+
+public extension ToolCall {
+    /// Convenience initializer for creating a tool call with string arguments.
+    ///
+    /// - Parameters:
+    ///   - id: Unique identifier
+    ///   - name: Function name
+    ///   - arguments: Arguments as a dictionary
+    init(id: String = UUID().uuidString, name: String, arguments: [String: Any]) {
+        let argumentsString: String
+        if let data = try? JSONSerialization.data(withJSONObject: arguments),
+           let string = String(data: data, encoding: .utf8) {
+            argumentsString = string
+        } else {
+            argumentsString = "{}"
+        }
+        
+        self.init(
+            id: id,
+            type: .function,
+            function: ToolCallFunction(name: name, arguments: argumentsString)
+        )
+    }
+}
+
 // MARK: - Tool Builder Extensions
 
 public extension Tool {
