@@ -54,6 +54,14 @@ import Foundation
 ///     print(chunk.delta, terminator: "")
 /// }
 /// ```
+/// Helper struct to accumulate tool call data across streaming chunks
+private struct AccumulatingToolCall {
+    let id: String
+    let name: String
+    var arguments: String
+    var isFinished: Bool = false
+}
+
 @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
 public struct OpenAIProvider: AIProvider {
     
@@ -249,6 +257,7 @@ public struct OpenAIProvider: AIProvider {
                     // Process Server-Sent Events
                     var chunkIndex = 0
                     var accumulatedUsage: Usage?
+                    var toolCallsState: [Int: AccumulatingToolCall] = [:] // Track accumulating tool calls
                     
                     for try await line in asyncBytes.lines {
                         // Process SSE data lines
@@ -276,16 +285,19 @@ public struct OpenAIProvider: AIProvider {
                             do {
                                 let chunk = try JSONDecoder().decode(OpenAIChatChunk.self, from: chunkData)
                                 
-                                // Process the chunk
-                                if let providerChunk = try processStreamChunk(chunk, chunkIndex: chunkIndex) {
+                                // Process the chunk - now returns array of chunks
+                                let providerChunks = try processStreamChunk(chunk, chunkIndex: chunkIndex, toolCallsState: &toolCallsState)
+                                
+                                for providerChunk in providerChunks {
                                     // Update accumulated usage if present
                                     if let usage = providerChunk.usage {
                                         accumulatedUsage = usage
                                     }
                                     
                                     continuation.yield(providerChunk)
-                                    chunkIndex += 1
                                 }
+                                
+                                chunkIndex += providerChunks.count
                             } catch {
                                 // Skip malformed chunks but continue processing
                                 continue
@@ -713,12 +725,12 @@ private extension OpenAIProvider {
         let content = choice.message.content ?? ""
         
         // Convert tool calls
-        let toolCalls = try choice.message.toolCalls?.map { openAIToolCall in
-            try ToolCall(
+        let toolCalls = choice.message.toolCalls?.map { openAIToolCall in
+            return ToolCall(
                 id: openAIToolCall.id,
                 function: ToolCallFunction(
                     name: openAIToolCall.function.name,
-                    arguments: parseToolArguments(openAIToolCall.function.arguments)
+                    arguments: openAIToolCall.function.arguments
                 )
             )
         }
@@ -761,11 +773,17 @@ private extension OpenAIProvider {
     }
     
     /// Process a streaming chunk from OpenAI.
-    func processStreamChunk(_ chunk: OpenAIChatChunk, chunkIndex: Int) throws -> ProviderChunk? {
+    /// This method needs to handle tool call accumulation across multiple chunks following Vercel AI SDK patterns.
+    func processStreamChunk(
+        _ chunk: OpenAIChatChunk, 
+        chunkIndex: Int,
+        toolCallsState: inout [Int: AccumulatingToolCall]
+    ) throws -> [ProviderChunk] {
         guard let choice = chunk.choices.first else {
-            return nil
+            return []
         }
         
+        var chunks: [ProviderChunk] = []
         let delta = choice.delta.content ?? ""
         
         // Convert finish reason
@@ -801,12 +819,116 @@ private extension OpenAIProvider {
             usage = nil
         }
         
-        return ProviderChunk(
+        // Process tool calls if present - following Vercel AI SDK index-based accumulation
+        var completedToolCalls: [ToolCall] = []
+        
+        if let toolCallDeltas = choice.delta.toolCalls {
+            for toolCallDelta in toolCallDeltas {
+                let index = toolCallDelta.index
+                
+                // First chunk for this tool call - initialize
+                if toolCallsState[index] == nil {
+                    guard let id = toolCallDelta.id,
+                          let functionName = toolCallDelta.function.name else {
+                        throw OpenAIError.invalidResponse("Tool call missing required id or function name")
+                    }
+                    
+                    toolCallsState[index] = AccumulatingToolCall(
+                        id: id,
+                        name: functionName,
+                        arguments: toolCallDelta.function.arguments ?? ""
+                    )
+                    
+                    // Emit tool call streaming start event
+                    let startChunk = ProviderChunk(
+                        delta: "",
+                        chunkIndex: chunkIndex,
+                        toolCallStreamingStart: ProviderChunk.ToolCallStreamingStart(
+                            toolCallId: id,
+                            toolName: functionName
+                        )
+                    )
+                    chunks.append(startChunk)
+                    
+                } else {
+                    // Subsequent chunks - accumulate arguments
+                    guard var accumulatingCall = toolCallsState[index] else { continue }
+                    
+                    if let argumentDelta = toolCallDelta.function.arguments, !argumentDelta.isEmpty {
+                        accumulatingCall.arguments += argumentDelta
+                        toolCallsState[index] = accumulatingCall
+                        
+                        // Emit tool call delta event
+                        let deltaChunk = ProviderChunk(
+                            delta: "",
+                            chunkIndex: chunkIndex,
+                            toolCallDelta: ProviderChunk.ToolCallDelta(
+                                toolCallId: accumulatingCall.id,
+                                toolName: accumulatingCall.name,
+                                argsTextDelta: argumentDelta
+                            )
+                        )
+                        chunks.append(deltaChunk)
+                    }
+                }
+                
+                // Check if tool call is complete (valid JSON)
+                if let accumulatingCall = toolCallsState[index],
+                   isValidJSON(accumulatingCall.arguments) {
+                    
+                    let completedToolCall = ToolCall(
+                        id: accumulatingCall.id,
+                        function: ToolCallFunction(
+                            name: accumulatingCall.name,
+                            arguments: accumulatingCall.arguments
+                        )
+                    )
+                    
+                    completedToolCalls.append(completedToolCall)
+                    
+                    // Mark as finished to prevent further updates
+                    toolCallsState[index]?.isFinished = true
+                }
+            }
+        }
+        
+        // Create main content chunk with text delta and completed tool calls
+        let mainChunk = ProviderChunk(
             delta: delta,
+            toolCall: completedToolCalls.first, // For backwards compatibility, include first completed tool call
             usage: usage,
             finishReason: finishReason,
             chunkIndex: chunkIndex
         )
+        chunks.append(mainChunk)
+        
+        // If we have multiple completed tool calls, emit them as separate chunks
+        for (index, toolCall) in completedToolCalls.dropFirst().enumerated() {
+            let toolCallChunk = ProviderChunk(
+                delta: "",
+                toolCall: toolCall,
+                chunkIndex: chunkIndex + index + 1
+            )
+            chunks.append(toolCallChunk)
+        }
+        
+        return chunks
+    }
+    
+    
+    /// Check if a string is valid JSON
+    private func isValidJSON(_ string: String) -> Bool {
+        guard !string.isEmpty,
+              let data = string.data(using: .utf8) else {
+            return false
+        }
+        
+        do {
+            _ = try JSONSerialization.jsonObject(with: data, options: [])
+            return true
+        } catch {
+            return false
+        }
     }
     
     /// Parse tool arguments from JSON string.
@@ -1278,17 +1400,35 @@ private struct OpenAIFunction: Codable {
     }
 }
 
-/// OpenAI tool call structure.
+/// OpenAI tool call structure for regular (non-streaming) responses.
 private struct OpenAIToolCall: Codable {
     let id: String
     let type: String
     let function: OpenAIFunctionCall
 }
 
-/// OpenAI function call structure.
+/// OpenAI tool call structure for streaming responses.
+private struct OpenAIStreamingToolCall: Codable {
+    let id: String?
+    let type: String?
+    let function: OpenAIStreamingFunctionCall
+    let index: Int // Maps chunks to specific tool calls
+    
+    enum CodingKeys: String, CodingKey {
+        case id, type, function, index
+    }
+}
+
+/// OpenAI function call structure for regular responses.
 private struct OpenAIFunctionCall: Codable {
     let name: String
     let arguments: String
+}
+
+/// OpenAI function call structure for streaming responses.
+private struct OpenAIStreamingFunctionCall: Codable {
+    let name: String?
+    let arguments: String?
 }
 
 /// OpenAI streaming options.
@@ -1409,7 +1549,7 @@ private struct OpenAIChunkChoice: Codable {
 private struct OpenAIChunkDelta: Codable {
     let role: String?
     let content: String?
-    let toolCalls: [OpenAIToolCall]?
+    let toolCalls: [OpenAIStreamingToolCall]?
     
     enum CodingKeys: String, CodingKey {
         case role, content

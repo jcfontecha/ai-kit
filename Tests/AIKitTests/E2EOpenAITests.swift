@@ -458,6 +458,135 @@ struct E2EOpenAITests {
         print("📝 Final response: \(response.text)")
     }
     
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealOpenAIStreamingToolCalling() async throws {
+        let provider: OpenAIProvider
+        do {
+            provider = try Self.createOpenAIProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient(toolExecutor: { toolCall in
+            switch toolCall.function.name {
+            case "search_notes":
+                // Parse arguments
+                let arguments = toolCall.function.parsedArguments ?? [:]
+                let query = arguments["query"] as? String ?? "unknown"
+                
+                let searchResults = """
+                Found 3 notes matching '\(query)':
+                1. Bachata Spins Fundamentals - Cross-body lead with right hand connection
+                2. Salsa Turn Patterns - Multiple spin sequences from basic position  
+                3. Kizomba Rotation Techniques - Close-hold spinning variations
+                """
+                
+                return ToolResult(
+                    toolCallId: toolCall.id,
+                    result: .text(searchResults),
+                    executionTime: 0.2
+                )
+            default:
+                throw AIGenerationError.toolExecutionFailed(
+                    toolName: toolCall.function.name,
+                    error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"])
+                )
+            }
+        })
+        
+        let model = provider.languageModel("gpt-4.1-nano")
+            .temperature(0.7)
+            .maxTokens(500)
+        
+        print("🧪 Testing streaming tool calling with real OpenAI API...")
+        
+        // Define a search tool similar to the user's use case
+        let searchTool = Tool(
+            function: ToolFunction(
+                name: "search_notes",
+                description: "Search through the user's dance notes by content, title, instructor, dance style, or tags",
+                parameters: JSONSchema.object(properties: [
+                    "query": .string()
+                ], required: ["query"])
+            )
+        )
+        
+        // Test streaming with tool calls
+        var accumulatedText = ""
+        var toolCallsReceived: [ToolCall] = []
+        var toolCallStreamingEvents: [ToolCallStreamingStart] = []
+        var toolCallDeltas: [ToolCallDelta] = []
+        var chunkCount = 0
+        var hasToolCallFinishReason = false
+        
+        let stream = await client.streamText(
+            model,
+            messages: [Message.user("Search through my notes for types of spins")],
+            tools: [searchTool],
+            toolChoice: .auto
+        )
+        
+        for try await chunk in stream {
+            chunkCount += 1
+            print("📦 Chunk \(chunkCount): delta='\(chunk.delta)', toolCalls=\(chunk.toolCalls?.count ?? 0)")
+            
+            // Accumulate text
+            accumulatedText += chunk.delta
+            
+            // Collect tool calls
+            if let toolCalls = chunk.toolCalls {
+                toolCallsReceived.append(contentsOf: toolCalls)
+                print("🔧 Received \(toolCalls.count) tool call(s)")
+                for toolCall in toolCalls {
+                    print("   - \(toolCall.function.name): \(toolCall.function.arguments)")
+                }
+            }
+            
+            // Collect streaming events
+            if let streamingStart = chunk.toolCallStreamingStart {
+                toolCallStreamingEvents.append(streamingStart)
+                print("🌊 Tool call streaming started: \(streamingStart.toolName) (ID: \(streamingStart.toolCallId))")
+            }
+            
+            if let delta = chunk.toolCallDelta {
+                toolCallDeltas.append(delta)
+                print("🔄 Tool call delta: \(delta.toolName) - '\(delta.argsTextDelta)'")
+            }
+            
+            // Check finish reason
+            if let finishReason = chunk.finishReason {
+                print("🏁 Stream finished with reason: \(finishReason)")
+                if finishReason == .toolCalls {
+                    hasToolCallFinishReason = true
+                }
+            }
+        }
+        
+        print("✅ Streaming completed")
+        print("📊 Chunks received: \(chunkCount)")
+        print("📝 Accumulated text: '\(accumulatedText)'")
+        print("🔧 Tool calls: \(toolCallsReceived.count)")
+        print("🌊 Streaming start events: \(toolCallStreamingEvents.count)")  
+        print("🔄 Tool call deltas: \(toolCallDeltas.count)")
+        
+        // Verify streaming tool call behavior
+        #expect(hasToolCallFinishReason, "Should have toolCalls finish reason")
+        #expect(!toolCallsReceived.isEmpty, "Should receive tool calls in streaming")
+        #expect(toolCallsReceived.first?.function.name == "search_notes", "Should call search_notes tool")
+        #expect(!toolCallStreamingEvents.isEmpty, "Should receive tool call streaming start events")
+        #expect(!toolCallDeltas.isEmpty, "Should receive tool call delta events")
+        
+        // Verify tool call arguments are properly accumulated
+        if let firstToolCall = toolCallsReceived.first {
+            #expect(!firstToolCall.function.arguments.isEmpty, "Tool call arguments should not be empty")
+            #expect(firstToolCall.function.parsedArguments != nil, "Should be able to parse tool arguments")
+            print("🔍 Tool arguments: \(firstToolCall.function.arguments)")
+        }
+        
+        print("✅ Streaming tool calling fix verified!")
+    }
+    
     // MARK: - Error Handling Tests
     
     @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
