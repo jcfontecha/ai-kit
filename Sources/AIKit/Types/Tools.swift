@@ -67,7 +67,7 @@ public typealias ToolExecutor = (ToolCall) async throws -> ToolResult
 ///     ])
 /// )
 /// ```
-public struct Tool: Codable, Sendable {
+public struct Tool: Sendable {
     
     // MARK: - Properties
     
@@ -86,6 +86,10 @@ public struct Tool: Codable, Sendable {
     /// Additional metadata for this tool.
     public let metadata: [String: String]?
     
+    /// Optional execution function for this tool.
+    /// When provided, the tool will be automatically executed during generation.
+    public let execute: (@Sendable (ToolCall) async throws -> ToolResult)?
+    
     // MARK: - Initialization
     
     /// Creates a new tool with the specified function definition.
@@ -101,13 +105,43 @@ public struct Tool: Codable, Sendable {
         function: ToolFunction,
         id: String = UUID().uuidString,
         enabled: Bool = true,
-        metadata: [String: String]? = nil
+        metadata: [String: String]? = nil,
+        execute: (@Sendable (ToolCall) async throws -> ToolResult)? = nil
     ) {
         self.type = type
         self.function = function
         self.id = id
         self.enabled = enabled
         self.metadata = metadata
+        self.execute = execute
+    }
+}
+
+// MARK: - Tool Codable Conformance
+
+extension Tool: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case type, function, id, enabled, metadata
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = try container.decode(ToolType.self, forKey: .type)
+        self.function = try container.decode(ToolFunction.self, forKey: .function)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        self.metadata = try container.decodeIfPresent([String: String].self, forKey: .metadata)
+        self.execute = nil // Execute functions cannot be decoded
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encode(function, forKey: .function)
+        try container.encode(id, forKey: .id)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encodeIfPresent(metadata, forKey: .metadata)
+        // Execute function is not encoded
     }
 }
 

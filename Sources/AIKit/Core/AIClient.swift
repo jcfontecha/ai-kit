@@ -48,20 +48,14 @@ public actor AIClient {
     /// The middleware chain applied to all requests and responses
     internal let middleware: [any AIMiddleware]
     
-    /// Optional tool executor provided by the caller for custom tool execution
-    internal let toolExecutor: ((ToolCall) async throws -> ToolResult)?
-    
     // MARK: - Initialization
     
-    /// Creates a new AIClient with optional middleware chain and tool executor.
+    /// Creates a new AIClient with optional middleware chain.
     ///
     /// - Parameters:
     ///   - middleware: Array of middleware to apply to requests and responses.
     ///     Middleware is applied in order for requests and reverse order for responses.
-    ///   - toolExecutor: Optional custom tool executor provided by the caller.
-    ///     If provided, this will be used instead of the default hardcoded tool execution.
-    public init(middleware: [any AIMiddleware] = [], toolExecutor: ((ToolCall) async throws -> ToolResult)? = nil) {
+    public init(middleware: [any AIMiddleware] = []) {
         self.middleware = middleware
-        self.toolExecutor = toolExecutor
     }
 }

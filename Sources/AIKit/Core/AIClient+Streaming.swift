@@ -118,20 +118,19 @@ public extension AIClient {
     ///
     /// Following Vercel AI SDK's approach, this method automatically handles tool execution:
     /// 1. Streams text chunks with tool call information
-    /// 2. Automatically executes tools when tool calls are received
+    /// 2. Automatically executes tools when tool calls are received (if tool has execute function)
     /// 3. Continues streaming with tool results
     /// 4. Supports multi-step tool execution
     ///
-    /// Tool execution is automatic when tools are provided. The stream seamlessly
-    /// includes chunks from both the initial generation and follow-up responses
-    /// after tool execution.
+    /// Tool execution is automatic when tools have an execute function defined.
+    /// The stream seamlessly includes chunks from both the initial generation
+    /// and follow-up responses after tool execution.
     ///
     /// - Parameters:
     ///   - model: The configured language model to use
     ///   - messages: Array of messages forming the conversation context
     ///   - tools: Optional array of tools available for the model to call
     ///   - toolChoice: Optional tool choice configuration
-    ///   - toolExecutor: Custom tool executor function (uses default if not provided)
     ///   - maxSteps: Maximum number of tool execution steps (default: 1)
     /// - Returns: AsyncThrowingStream of `TextChunk` objects with tool call support
     func streamText(
@@ -139,7 +138,6 @@ public extension AIClient {
         messages: [Message],
         tools: [Tool]? = nil,
         toolChoice: ToolChoice? = nil,
-        toolExecutor: ToolExecutor? = nil,
         maxSteps: Int = 1
     ) -> AsyncThrowingStream<TextChunk, Error> {
         
@@ -227,7 +225,7 @@ public extension AIClient {
                             
                             // Execute tools and add results
                             for toolCall in toolCallsReceived {
-                                let result = try await executeToolCall(toolCall, toolExecutor: toolExecutor)
+                                let result = try await executeToolCall(toolCall, tools: tools)
                                 currentMessages.append(.tool(result: result))
                             }
                             

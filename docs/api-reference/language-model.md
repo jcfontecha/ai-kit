@@ -177,16 +177,27 @@ func tools(_ tools: [Tool]) -> LanguageModel
 ```
 
 **Parameters:**
-- `tools`: Array of available tools
+- `tools`: Array of available tools with execute functions
 
 **Example:**
 ```swift
-let weatherTool = Tool.function(
-    name: "get_weather",
-    description: "Get current weather",
-    parameters: .object(properties: [
-        "location": .string(description: "City name")
-    ])
+let weatherTool = Tool(
+    function: ToolFunction(
+        name: "get_weather",
+        description: "Get current weather",
+        parameters: JSONSchema.object(properties: [
+            "location": .string(description: "City name")
+        ], required: ["location"])
+    ),
+    execute: { toolCall in
+        let args = toolCall.function.parsedArguments ?? [:]
+        let location = args["location"] as? String ?? "Unknown"
+        
+        return ToolResult(
+            toolCallId: toolCall.id,
+            result: .text("Weather in \(location): 72°F, sunny")
+        )
+    }
 )
 
 let modelWithTools = model.tools([weatherTool])

@@ -17,7 +17,15 @@ import Foundation
                 "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
                 "unit": .string(enum: ["celsius", "fahrenheit"])
             ], required: ["location"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            let args = toolCall.function.parsedArguments ?? [:]
+            let location = args["location"] as? String ?? "Unknown"
+            return ToolResult(
+                toolCallId: toolCall.id,
+                result: .text("Weather in \(location): 72°F, Sunny")
+            )
+        }
     )
     
     let messages = [
@@ -50,7 +58,15 @@ import Foundation
                 "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
                 "unit": .string(enum: ["celsius", "fahrenheit"])
             ], required: ["location"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            let args = toolCall.function.parsedArguments ?? [:]
+            let location = args["location"] as? String ?? "Unknown"
+            return ToolResult(
+                toolCallId: toolCall.id,
+                result: .text("Weather in \(location): 72°F, Sunny")
+            )
+        }
     )
     
     let messages = [
@@ -99,7 +115,15 @@ import Foundation
                 "location": .string(enum: ["San Francisco, CA", "New York, NY"]),
                 "unit": .string(enum: ["celsius", "fahrenheit"])
             ], required: ["location"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            let args = toolCall.function.parsedArguments ?? [:]
+            let location = args["location"] as? String ?? "Unknown"
+            return ToolResult(
+                toolCallId: toolCall.id,
+                result: .text("Weather in \(location): 72°F, Sunny")
+            )
+        }
     )
     
     // Test Case 1: No Such Tool Error

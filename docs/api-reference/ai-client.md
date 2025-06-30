@@ -254,40 +254,98 @@ public struct StreamChunk {
 
 ## Tool Execution Methods
 
-### executeTools(model:messages:tools:)
+### generateText with Tools
 
-Executes function calls with automatic tool handling.
+When tools are provided, AIClient automatically handles tool execution:
 
 ```swift
-func executeTools(
+func generateText(
     _ model: LanguageModel,
     messages: [Message],
-    tools: [Tool]
-) async throws -> ToolExecutionResponse
+    tools: [Tool],
+    toolChoice: ToolChoice? = nil,
+    maxSteps: Int = 1
+) async throws -> TextResponse
 ```
 
 **Parameters:**
 - `model`: The configured language model to use
 - `messages`: Conversation messages
-- `tools`: Available tools for execution
+- `tools`: Available tools with execute functions
+- `toolChoice`: How the model should use tools (.auto, .required, .none, .tool(name:))
+- `maxSteps`: Maximum number of tool execution steps (default: 1)
 
-**Returns:** `ToolExecutionResponse` with results
+**Returns:** `TextResponse` with final result after tool execution
 
 **Example:**
 ```swift
-let weatherTool = Tool.function(
-    name: "get_weather",
-    description: "Get current weather",
-    parameters: .object(properties: [
-        "location": .string(description: "City name")
-    ], required: ["location"])
+// Define a tool with its execute function
+let weatherTool = Tool(
+    function: ToolFunction(
+        name: "get_weather",
+        description: "Get current weather",
+        parameters: JSONSchema.object(properties: [
+            "location": .string(description: "City name")
+        ], required: ["location"])
+    ),
+    execute: { toolCall in
+        let args = toolCall.function.parsedArguments ?? [:]
+        let location = args["location"] as? String ?? "Unknown"
+        
+        // Simulate weather API call
+        return ToolResult(
+            toolCallId: toolCall.id,
+            result: .text("Weather in \(location): 72°F, sunny")
+        )
+    }
 )
 
-let response = try await client.executeTools(
+// Tools execute automatically
+let response = try await client.generateText(
     model,
-    messages: messages,
+    messages: [Message.user("What's the weather in Paris?")],
     tools: [weatherTool]
 )
+
+print(response.text) // "The weather in Paris is 72°F and sunny."
+```
+
+### streamText with Tools
+
+Streaming also supports automatic tool execution:
+
+```swift
+func streamText(
+    _ model: LanguageModel,
+    messages: [Message],
+    tools: [Tool]? = nil,
+    toolChoice: ToolChoice? = nil,
+    maxSteps: Int = 1
+) -> TextStream
+```
+
+**Parameters:**
+- Same as generateText
+
+**Returns:** `TextStream` that yields chunks including tool execution events
+
+**Example:**
+```swift
+let stream = client.streamText(
+    model,
+    messages: [Message.user("Search for Swift tutorials")],
+    tools: [searchTool],
+    maxSteps: 3
+)
+
+for try await chunk in stream {
+    // Handle different chunk types
+    if let toolCall = chunk.toolCallStreamingStart {
+        print("Calling tool: \(toolCall.toolName)")
+    }
+    
+    print(chunk.delta, terminator: "")
+}
 ```
 
 ## Error Handling

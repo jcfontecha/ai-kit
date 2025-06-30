@@ -430,31 +430,7 @@ struct E2EAnthropicTests {
         
         let provider = try createAnthropicProvider()
         
-        let client = AIClient(toolExecutor: { toolCall in
-            switch toolCall.function.name {
-            case "search_notes":
-                // Parse arguments
-                let arguments = toolCall.function.parsedArguments ?? [:]
-                let query = arguments["query"] as? String ?? "unknown"
-                
-                let searchResults = """
-                Found 2 notes matching '\(query)':
-                1. Advanced Salsa Spins - Multiple rotation techniques with cross-body leads
-                2. Bachata Turn Patterns - Close-connection spinning sequences
-                """
-                
-                return ToolResult(
-                    toolCallId: toolCall.id,
-                    result: .text(searchResults),
-                    executionTime: 0.3
-                )
-            default:
-                throw AIGenerationError.toolExecutionFailed(
-                    toolName: toolCall.function.name,
-                    error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"])
-                )
-            }
-        })
+        let client = AIClient()
         
         let model = provider.languageModel(Self.TEST_MODEL)
             .temperature(0.7)
@@ -485,7 +461,7 @@ struct E2EAnthropicTests {
             model,
             messages: [Message.user("Search through my notes for types of spins")],
             tools: [searchTool],
-            toolChoice: .auto
+            toolChoice: ToolChoice.auto
         )
         
         for try await chunk in stream {

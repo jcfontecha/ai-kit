@@ -6,29 +6,34 @@ internal extension AIClient {
     
     /// Execute a tool call and return the result.
     ///
-    /// This method handles the execution of individual tool calls. It uses the provided
-    /// tool executor (parameter), falls back to the instance's tool executor, or throws
-    /// an error if no executor is available.
+    /// This method handles the execution of individual tool calls. It looks for
+    /// the matching tool in the provided tools array and calls its execute function.
+    /// This follows Vercel AI SDK's pattern where tools have their own execute functions.
     ///
     /// - Parameters:
     ///   - toolCall: The tool call to execute
-    ///   - toolExecutor: Optional tool executor to use for this specific call
+    ///   - tools: Array of available tools
     /// - Returns: The result of the tool execution
     /// - Throws: Any errors from tool execution
-    func executeToolCall(_ toolCall: ToolCall, toolExecutor: ToolExecutor? = nil) async throws -> ToolResult {
-        // Use provided tool executor first, then instance executor
-        let executor = toolExecutor ?? self.toolExecutor
-        
-        if let executor = executor {
-            return try await executor(toolCall)
+    func executeToolCall(_ toolCall: ToolCall, tools: [Tool]?) async throws -> ToolResult {
+        // Find the matching tool
+        guard let tool = tools?.first(where: { $0.function.name == toolCall.function.name }) else {
+            throw AIGenerationError.noSuchTool(
+                toolName: toolCall.function.name,
+                availableTools: tools?.map { $0.function.name } ?? []
+            )
         }
         
-        // No tool executor provided - this is an error in production
-        throw AIGenerationError.toolExecutionFailed(
-            toolName: toolCall.function.name,
-            error: NSError(domain: "AIClient", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "No tool executor provided. Tool execution requires a custom toolExecutor to be provided either during AIClient initialization or as a parameter to generateText."
-            ])
-        )
+        // Check if the tool has an execute function
+        guard let execute = tool.execute else {
+            // Tool doesn't have an execute function - return error result
+            return ToolResult.error(
+                toolCallId: toolCall.id,
+                error: "Tool '\(toolCall.function.name)' does not have an execute function"
+            )
+        }
+        
+        // Execute the tool
+        return try await execute(toolCall)
     }
 }

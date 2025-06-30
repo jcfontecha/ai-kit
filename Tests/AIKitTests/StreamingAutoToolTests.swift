@@ -7,29 +7,23 @@ import Foundation
 @Suite("Automatic Streaming Tool Execution Tests")
 struct StreamingAutoToolTests {
     
-    // Mock tool executor for testing
-    static let mockToolExecutor: @Sendable (ToolCall) async throws -> ToolResult = { toolCall in
-        switch toolCall.function.name {
-        case "get_weather":
-            let args = toolCall.function.parsedArguments ?? [:]
-            let location = args["location"] as? String ?? "Unknown"
-            return ToolResult(
-                toolCallId: toolCall.id,
-                result: .text("Weather in \(location): 72°F, Sunny")
-            )
-        case "search_notes":
-            let args = toolCall.function.parsedArguments ?? [:]
-            let query = args["query"] as? String ?? ""
-            return ToolResult(
-                toolCallId: toolCall.id,
-                result: .text("Found 3 notes about '\(query)'")
-            )
-        default:
-            throw AIGenerationError.toolExecutionFailed(
-                toolName: toolCall.function.name,
-                error: NSError(domain: "Test", code: 1)
-            )
-        }
+    // Mock tool execute functions for testing
+    static let mockWeatherExecute: @Sendable (ToolCall) async throws -> ToolResult = { toolCall in
+        let args = toolCall.function.parsedArguments ?? [:]
+        let location = args["location"] as? String ?? "Unknown"
+        return ToolResult(
+            toolCallId: toolCall.id,
+            result: .text("Weather in \(location): 72°F, Sunny")
+        )
+    }
+    
+    static let mockSearchExecute: @Sendable (ToolCall) async throws -> ToolResult = { toolCall in
+        let args = toolCall.function.parsedArguments ?? [:]
+        let query = args["query"] as? String ?? ""
+        return ToolResult(
+            toolCallId: toolCall.id,
+            result: .text("Found 3 notes about '\(query)'")
+        )
     }
     
     // MARK: - Basic Streaming Tests
@@ -59,7 +53,7 @@ struct StreamingAutoToolTests {
     func testStreamingWithToolsNoToolCalls() async throws {
         let mockProvider = MockProvider()
         let model = mockProvider.languageModel("test-model")
-        let client = AIClient(toolExecutor: Self.mockToolExecutor)
+        let client = AIClient()
         
         let weatherTool = Tool(
             function: ToolFunction(
@@ -68,7 +62,8 @@ struct StreamingAutoToolTests {
                 parameters: JSONSchema.object(properties: [
                     "location": .string()
                 ], required: ["location"])
-            )
+            ),
+            execute: Self.mockWeatherExecute
         )
         
         // MockProvider will generate regular text response since prompt doesn't suggest tool usage
@@ -94,7 +89,7 @@ struct StreamingAutoToolTests {
     func testStreamingWithAutomaticToolExecution() async throws {
         let mockProvider = MockProvider()
         let model = mockProvider.languageModel("test-model")
-        let client = AIClient(toolExecutor: Self.mockToolExecutor)
+        let client = AIClient()
         
         let weatherTool = Tool(
             function: ToolFunction(
@@ -103,7 +98,8 @@ struct StreamingAutoToolTests {
                 parameters: JSONSchema.object(properties: [
                     "location": .string()
                 ], required: ["location"])
-            )
+            ),
+            execute: Self.mockWeatherExecute
         )
         
         // MockProvider will automatically detect weather-related query and generate tool call
@@ -167,7 +163,7 @@ struct StreamingAutoToolTests {
     func testMaxStepsLimit() async throws {
         let mockProvider = MockProvider()
         let model = mockProvider.languageModel("test-model")
-        let client = AIClient(toolExecutor: Self.mockToolExecutor)
+        let client = AIClient()
         
         let tool = Tool(
             function: ToolFunction(
@@ -216,7 +212,7 @@ struct StreamingAutoToolTests {
     func testAutomaticVsManualComparison() async throws {
         let mockProvider = MockProvider()
         let model = mockProvider.languageModel("test-model")
-        let executor = Self.mockToolExecutor
+        // Tools now have their own execute functions
         
         let tool = Tool(
             function: ToolFunction(
@@ -258,12 +254,13 @@ struct StreamingAutoToolTests {
         ))
         
         for call in manualToolCalls {
-            let result = try await executor(call)
+            // In real usage, tools would have execute functions
+            let result = ToolResult.success(toolCallId: call.id, text: "Manual execution result")
             manualMessages.append(.tool(result: result))
         }
         
         // Test 2: Automatic approach (new way)
-        let autoClient = AIClient(toolExecutor: executor)
+        let autoClient = AIClient()
         
         // Reset mock responses
         // MockProvider will generate tool call response

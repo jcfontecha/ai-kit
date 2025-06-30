@@ -401,63 +401,7 @@ struct E2EGoogleTests {
             return
         }
         
-        let client = AIClient(toolExecutor: { toolCall in
-            switch toolCall.function.name {
-            case "get_weather":
-                // Parse arguments
-                let arguments = toolCall.function.parsedArguments ?? [:]
-                let location = arguments["location"] as? String ?? "Unknown"
-                let unit = arguments["unit"] as? String ?? "celsius"
-                
-                let temperature = unit == "celsius" ? "22°C" : "72°F"
-                
-                let weatherData = """
-                {
-                    "location": "\(location)",
-                    "temperature": "\(temperature)",
-                    "condition": "Sunny",
-                    "humidity": "60%"
-                }
-                """
-                
-                return ToolResult(
-                    toolCallId: toolCall.id,
-                    result: .text(weatherData),
-                    executionTime: 0.1
-                )
-            case "calculate":
-                // Parse arguments
-                let arguments = toolCall.function.parsedArguments ?? [:]
-                let operation = arguments["operation"] as? String ?? "add"
-                let a = arguments["a"] as? Double ?? 0
-                let b = arguments["b"] as? Double ?? 0
-                
-                let result: Double
-                switch operation {
-                case "add":
-                    result = a + b
-                case "subtract":
-                    result = a - b
-                case "multiply":
-                    result = a * b
-                case "divide":
-                    result = b != 0 ? a / b : 0
-                default:
-                    result = 0
-                }
-                
-                return ToolResult(
-                    toolCallId: toolCall.id,
-                    result: .text("The result of \(operation)ing \(a) and \(b) is \(result)"),
-                    executionTime: 0.05
-                )
-            default:
-                throw AIGenerationError.toolExecutionFailed(
-                    toolName: toolCall.function.name,
-                    error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"])
-                )
-            }
-        })
+        let client = AIClient()
         
         let model = provider.languageModel("gemini-2.0-flash-exp")
             .temperature(0.2)
@@ -522,48 +466,7 @@ struct E2EGoogleTests {
             return
         }
         
-        let client = AIClient(toolExecutor: { toolCall in
-            switch toolCall.function.name {
-            case "get_weather":
-                let arguments = toolCall.function.parsedArguments ?? [:]
-                let location = arguments["location"] as? String ?? "Unknown"
-                let unit = arguments["unit"] as? String ?? "celsius"
-                
-                let temperature = unit == "celsius" ? "22°C" : "72°F"
-                
-                return ToolResult(
-                    toolCallId: toolCall.id,
-                    result: .text("Weather in \(location): \(temperature), Sunny"),
-                    executionTime: 0.1
-                )
-            case "calculate":
-                let arguments = toolCall.function.parsedArguments ?? [:]
-                let operation = arguments["operation"] as? String ?? "add"
-                let a = arguments["a"] as? Double ?? 0
-                let b = arguments["b"] as? Double ?? 0
-                
-                let result: Double
-                switch operation {
-                case "add":
-                    result = a + b
-                case "multiply":
-                    result = a * b
-                default:
-                    result = 0
-                }
-                
-                return ToolResult(
-                    toolCallId: toolCall.id,
-                    result: .text("Result: \(result)"),
-                    executionTime: 0.05
-                )
-            default:
-                throw AIGenerationError.toolExecutionFailed(
-                    toolName: toolCall.function.name,
-                    error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"])
-                )
-            }
-        })
+        let client = AIClient()
         
         let model = provider.languageModel("gemini-2.0-flash-exp")
             .temperature(0.3)

@@ -18,11 +18,10 @@ public extension AIClient {
     ///   - messages: Array of messages forming the conversation context
     ///   - tools: Optional array of tools available for the model to call
     ///   - toolChoice: Strategy for tool selection (auto, required, none, or specific tool)
-    ///   - toolExecutor: Custom tool executor function for handling tool calls
     ///   - maxSteps: Maximum number of tool execution steps (default: 1 for single call)
     /// - Returns: A `TextResponse` containing the generated text and metadata
     /// - Throws: `AIError` for various failure conditions
-    func generateText(_ model: LanguageModel, messages: [Message], tools: [Tool]? = nil, toolChoice: ToolChoice? = nil, toolExecutor: ToolExecutor? = nil, maxSteps: Int = 1) async throws -> TextResponse {
+    func generateText(_ model: LanguageModel, messages: [Message], tools: [Tool]? = nil, toolChoice: ToolChoice? = nil, maxSteps: Int = 1) async throws -> TextResponse {
         // Multi-step execution implementation following Vercel AI SDK pattern
         var currentMessages = messages
         var allSteps: [GenerationStep] = []
@@ -86,7 +85,7 @@ public extension AIClient {
                     // Step 2: Execute tools and create tool result messages
                     var toolResults: [ToolResult] = []
                     for toolCall in toolCalls {
-                        let result = try await executeToolCall(toolCall, toolExecutor: toolExecutor)
+                        let result = try await executeToolCall(toolCall, tools: tools)
                         toolResults.append(result)
                     }
                     
@@ -229,13 +228,12 @@ public extension AIClient {
     ///   - prompt: The text prompt to send to the model
     ///   - tools: Optional array of tools available for the model to call
     ///   - toolChoice: Strategy for tool selection (auto, required, none, or specific tool)
-    ///   - toolExecutor: Custom tool executor function for handling tool calls
     ///   - maxSteps: Maximum number of tool execution steps (default: 1 for single call)
     /// - Returns: A `TextResponse` containing the generated text and metadata
     /// - Throws: `AIError` for various failure conditions
-    func generateText(_ model: LanguageModel, prompt: String, tools: [Tool], toolChoice: ToolChoice? = nil, toolExecutor: ToolExecutor? = nil, maxSteps: Int = 1) async throws -> TextResponse {
+    func generateText(_ model: LanguageModel, prompt: String, tools: [Tool], toolChoice: ToolChoice? = nil, maxSteps: Int = 1) async throws -> TextResponse {
         let messages = [Message.user(prompt)]
-        return try await generateText(model, messages: messages, tools: tools, toolChoice: toolChoice, toolExecutor: toolExecutor, maxSteps: maxSteps)
+        return try await generateText(model, messages: messages, tools: tools, toolChoice: toolChoice, maxSteps: maxSteps)
     }
     
     /// Generate text with explicit JSON mode.

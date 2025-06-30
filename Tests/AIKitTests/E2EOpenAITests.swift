@@ -387,9 +387,25 @@ struct E2EOpenAITests {
             return
         }
         
-        let client = AIClient(toolExecutor: { toolCall in
-            switch toolCall.function.name {
-            case "get_weather":
+        let client = AIClient()
+        
+        let model = provider.languageModel("gpt-4.1-nano")
+            .temperature(0.2)
+            .maxTokens(300)
+        
+        print("🧪 Testing tool calling with real OpenAI API...")
+        
+        // Define a weather tool
+        let weatherTool = Tool(
+            function: ToolFunction(
+                name: "get_weather",
+                description: "Get current weather for a location",
+                parameters: JSONSchema.object(properties: [
+                    "location": .string(enum: ["San Francisco, CA", "New York, NY", "London, UK"]),
+                    "unit": .string(enum: ["celsius", "fahrenheit"])
+                ], required: ["location", "unit"])
+            ),
+            execute: { @Sendable toolCall in
                 // Parse arguments
                 let arguments = toolCall.function.parsedArguments ?? [:]
                 let location = arguments["location"] as? String ?? "Unknown"
@@ -411,30 +427,7 @@ struct E2EOpenAITests {
                     result: .text(weatherData),
                     executionTime: 0.1
                 )
-            default:
-                throw AIGenerationError.toolExecutionFailed(
-                    toolName: toolCall.function.name,
-                    error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"])
-                )
             }
-        })
-        
-        let model = provider.languageModel("gpt-4.1-nano")
-            .temperature(0.2)
-            .maxTokens(300)
-        
-        print("🧪 Testing tool calling with real OpenAI API...")
-        
-        // Define a weather tool
-        let weatherTool = Tool(
-            function: ToolFunction(
-                name: "get_weather",
-                description: "Get current weather for a location",
-                parameters: JSONSchema.object(properties: [
-                    "location": .string(enum: ["San Francisco, CA", "New York, NY", "London, UK"]),
-                    "unit": .string(enum: ["celsius", "fahrenheit"])
-                ], required: ["location", "unit"])
-            )
         )
         
         let response = try await client.generateText(
@@ -468,9 +461,24 @@ struct E2EOpenAITests {
             return
         }
         
-        let client = AIClient(toolExecutor: { toolCall in
-            switch toolCall.function.name {
-            case "search_notes":
+        let client = AIClient()
+        
+        let model = provider.languageModel("gpt-4.1-nano")
+            .temperature(0.7)
+            .maxTokens(500)
+        
+        print("🧪 Testing streaming tool calling with real OpenAI API...")
+        
+        // Define a search tool similar to the user's use case
+        let searchTool = Tool(
+            function: ToolFunction(
+                name: "search_notes",
+                description: "Search through the user's dance notes by content, title, instructor, dance style, or tags",
+                parameters: JSONSchema.object(properties: [
+                    "query": .string()
+                ], required: ["query"])
+            ),
+            execute: { @Sendable toolCall in
                 // Parse arguments
                 let arguments = toolCall.function.parsedArguments ?? [:]
                 let query = arguments["query"] as? String ?? "unknown"
@@ -487,29 +495,7 @@ struct E2EOpenAITests {
                     result: .text(searchResults),
                     executionTime: 0.2
                 )
-            default:
-                throw AIGenerationError.toolExecutionFailed(
-                    toolName: toolCall.function.name,
-                    error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"])
-                )
             }
-        })
-        
-        let model = provider.languageModel("gpt-4.1-nano")
-            .temperature(0.7)
-            .maxTokens(500)
-        
-        print("🧪 Testing streaming tool calling with real OpenAI API...")
-        
-        // Define a search tool similar to the user's use case
-        let searchTool = Tool(
-            function: ToolFunction(
-                name: "search_notes",
-                description: "Search through the user's dance notes by content, title, instructor, dance style, or tags",
-                parameters: JSONSchema.object(properties: [
-                    "query": .string()
-                ], required: ["query"])
-            )
         )
         
         // Test streaming with tool calls
@@ -524,7 +510,7 @@ struct E2EOpenAITests {
             model,
             messages: [Message.user("Search through my notes for types of spins")],
             tools: [searchTool],
-            toolChoice: .auto
+            toolChoice: ToolChoice.auto
         )
         
         for try await chunk in stream {
@@ -597,31 +583,7 @@ struct E2EOpenAITests {
             return
         }
         
-        let client = AIClient(toolExecutor: { toolCall in
-            switch toolCall.function.name {
-            case "search_notes":
-                let arguments = toolCall.function.parsedArguments ?? [:]
-                let query = arguments["query"] as? String ?? "unknown"
-                
-                let searchResults = """
-                Found 3 notes matching '\(query)':
-                1. Bachata Basic Turns - Right and left basic turns from cross-body position
-                2. Salsa Multiple Turns - Continuous turn sequences with proper timing
-                3. Partner Connection During Turns - Maintaining frame while spinning
-                """
-                
-                return ToolResult(
-                    toolCallId: toolCall.id,
-                    result: .text(searchResults),
-                    executionTime: 0.2
-                )
-            default:
-                throw AIGenerationError.toolExecutionFailed(
-                    toolName: toolCall.function.name,
-                    error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"])
-                )
-            }
-        })
+        let client = AIClient()
         
         let model = provider.languageModel("gpt-4.1-nano")
             .temperature(0.7)
@@ -636,7 +598,25 @@ struct E2EOpenAITests {
                 parameters: JSONSchema.object(properties: [
                     "query": .string()
                 ], required: ["query"])
-            )
+            ),
+            execute: { @Sendable toolCall in
+                // Parse arguments
+                let arguments = toolCall.function.parsedArguments ?? [:]
+                let query = arguments["query"] as? String ?? "unknown"
+                
+                let searchResults = """
+                Found 3 notes matching '\(query)':
+                1. Bachata Spins Fundamentals - Cross-body lead with right hand connection
+                2. Salsa Turn Patterns - Multiple spin sequences from basic position  
+                3. Kizomba Rotation Techniques - Close-hold spinning variations
+                """
+                
+                return ToolResult(
+                    toolCallId: toolCall.id,
+                    result: .text(searchResults),
+                    executionTime: 0.2
+                )
+            }
         )
         
         // Step 1: Initial streaming request with tools
@@ -650,7 +630,7 @@ struct E2EOpenAITests {
             model,
             messages: messages,
             tools: [searchTool],
-            toolChoice: .auto
+            toolChoice: ToolChoice.auto
         )
         
         for try await chunk in initialStream {

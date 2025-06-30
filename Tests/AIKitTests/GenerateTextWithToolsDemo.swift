@@ -15,7 +15,13 @@ import Foundation
             parameters: JSONSchema.object(properties: [
                 "location": .string()
             ], required: ["location"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            return ToolResult.success(
+                toolCallId: toolCall.id,
+                text: "Weather: 72°F, Sunny"
+            )
+        }
     )
     
     // Test the basic generateText with tools
@@ -45,7 +51,14 @@ import Foundation
             parameters: JSONSchema.object(properties: [
                 "expression": .string()
             ], required: ["expression"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            // Simple calculator mock
+            return ToolResult.success(
+                toolCallId: toolCall.id,
+                text: "Result: 42"
+            )
+        }
     )
     
     // Test with required tool choice
@@ -73,7 +86,13 @@ import Foundation
             parameters: JSONSchema.object(properties: [
                 "location": .string()
             ], required: ["location"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            return ToolResult.success(
+                toolCallId: toolCall.id,
+                text: "Weather: 72°F, Sunny"
+            )
+        }
     )
     
     // Custom executor that provides specific responses
@@ -89,13 +108,12 @@ import Foundation
         model,
         messages: [Message.user("What's the weather in San Francisco?")],
         tools: [weatherTool],
-        toolExecutor: customExecutor,
         maxSteps: 2 // Allow tool execution
     )
     
     // Should either complete after tool execution OR finish with tool calls if no steps remaining
-    let isComplete = response.finishReason == .stop
-    let hasToolCalls = response.finishReason == .toolCalls
+    let isComplete = response.finishReason == FinishReason.stop
+    let hasToolCalls = response.finishReason == FinishReason.toolCalls
     
     #expect(isComplete || hasToolCalls, "Should either complete or have tool calls")
     #expect(response.messages.count >= 1, "Should have at least the original message")
@@ -119,7 +137,14 @@ import Foundation
             parameters: JSONSchema.object(properties: [
                 "expression": .string()
             ], required: ["expression"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            // Simple calculator mock
+            return ToolResult.success(
+                toolCallId: toolCall.id,
+                text: "Result: 42"
+            )
+        }
     )
     
     // Test the convenience method
@@ -147,7 +172,13 @@ import Foundation
             parameters: JSONSchema.object(properties: [
                 "location": .string()
             ], required: ["location"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            return ToolResult.success(
+                toolCallId: toolCall.id,
+                text: "Weather: 72°F, Sunny"
+            )
+        }
     )
     
     let response = try await client.generateText(

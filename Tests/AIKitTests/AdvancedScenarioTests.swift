@@ -237,7 +237,16 @@ import Foundation
             parameters: JSONSchema.object(properties: [
                 "expression": .string()
             ], required: ["expression"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            // Simple calculator implementation
+            let args = toolCall.function.parsedArguments ?? [:]
+            let expression = args["expression"] as? String ?? "0"
+            return ToolResult(
+                toolCallId: toolCall.id,
+                result: .text("Result: 10") // Simplified for testing
+            )
+        }
     )
     
     // Test auto choice (default behavior)
@@ -287,18 +296,16 @@ import Foundation
             parameters: JSONSchema.object(properties: [
                 "input": .string()
             ], required: ["input"])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            throw AIGenerationError.toolExecutionError(
+                toolName: toolCall.function.name,
+                toolArgs: toolCall.function.arguments,
+                toolCallId: toolCall.id,
+                cause: NSError(domain: "TestError", code: 500, userInfo: [NSLocalizedDescriptionKey: "Simulated tool failure"])
+            )
+        }
     )
-    
-    // Custom tool executor that simulates failures
-    let failingExecutor: ToolExecutor = { toolCall in
-        throw AIGenerationError.toolExecutionError(
-            toolName: toolCall.function.name,
-            toolArgs: toolCall.function.arguments,
-            toolCallId: toolCall.id,
-            cause: NSError(domain: "TestError", code: 500, userInfo: [NSLocalizedDescriptionKey: "Simulated tool failure"])
-        )
-    }
     
     do {
         _ = try await client.generateText(
@@ -306,7 +313,6 @@ import Foundation
             prompt: "Use the faulty operation",
             tools: [faultyTool],
             toolChoice: .required, // Force tool usage
-            toolExecutor: failingExecutor,
             maxSteps: 2 // Allow tool execution
         )
         #expect(Bool(false), "Should have thrown tool execution error")
@@ -331,7 +337,15 @@ import Foundation
             name: "get_data_1",
             description: "Get data from source 1",
             parameters: JSONSchema.object(properties: [:])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            // Simulate async execution with delay
+            try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            return ToolResult(
+                toolCallId: toolCall.id,
+                result: .text("Result from \(toolCall.function.name)")
+            )
+        }
     )
     
     let tool2 = Tool(
@@ -339,25 +353,23 @@ import Foundation
             name: "get_data_2", 
             description: "Get data from source 2",
             parameters: JSONSchema.object(properties: [:])
-        )
+        ),
+        execute: { @Sendable toolCall in
+            // Simulate async execution with delay
+            try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+            return ToolResult(
+                toolCallId: toolCall.id,
+                result: .text("Result from \(toolCall.function.name)")
+            )
+        }
     )
-    
-    let parallelExecutor: ToolExecutor = { toolCall in
-        // Simulate async execution with delay
-        try await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-        return ToolResult(
-            toolCallId: toolCall.id,
-            result: .text("Result from \(toolCall.function.name)")
-        )
-    }
     
     let startTime = Date()
     
     let response = try await client.generateText(
         model,
         prompt: "Get data from both sources simultaneously",
-        tools: [tool1, tool2],
-        toolExecutor: parallelExecutor
+        tools: [tool1, tool2]
     )
     
     let executionTime = Date().timeIntervalSince(startTime)

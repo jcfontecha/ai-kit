@@ -236,29 +236,94 @@ let recipes = try await client.generateArray(
 
 ### Tool Calling
 
+AIKit provides automatic tool execution during text generation and streaming, following the same pattern as Vercel AI SDK:
+
 ```swift
-// Define a tool using SchemaProviding
-struct WeatherQuery: SchemaProviding {
-    let location: String
-    let units: String
+// Define tools with their execute functions
+let weatherTool = Tool(
+    function: ToolFunction(
+        name: "get_weather",
+        description: "Get current weather for a location",
+        parameters: JSONSchema.object(properties: [
+            "location": .string(description: "City and state, e.g. San Francisco, CA"),
+            "units": .string(enum: ["celsius", "fahrenheit"])
+        ], required: ["location"])
+    ),
+    execute: { toolCall in
+        // Extract parameters
+        let args = toolCall.function.parsedArguments ?? [:]
+        let location = args["location"] as? String ?? "Unknown"
+        let units = args["units"] as? String ?? "celsius"
+        
+        // Simulate weather API call
+        let temperature = units == "celsius" ? "22°C" : "72°F"
+        return ToolResult(
+            toolCallId: toolCall.id,
+            result: .text("The weather in \(location) is \(temperature) and sunny")
+        )
+    }
+)
+
+// Tools execute automatically during generation
+let response = try await client.generateText(
+    model,
+    messages: [Message.user("What's the weather in Tokyo?")],
+    tools: [weatherTool]
+)
+
+print(response.text) // "The weather in Tokyo is 22°C and sunny"
+```
+
+#### Tool Definition with SchemaProviding
+
+```swift
+struct SearchQuery: SchemaProviding {
+    let query: String
+    let maxResults: Int
     
-    static var schema: ObjectSchema<WeatherQuery> {
-        .define(description: "Weather query parameters") {
-            Schema.string("location", description: "City and state, e.g. San Francisco, CA")
-            Schema.string("units", enum: ["celsius", "fahrenheit"], description: "Temperature units")
+    static var schema: ObjectSchema<SearchQuery> {
+        .define(description: "Search parameters") {
+            Schema.string("query", description: "Search terms")
+            Schema.integer("maxResults", minimum: 1, maximum: 100)
         }
     }
 }
 
-let weatherTool = Tool.function(
-    name: "get_weather",
-    description: "Get current weather for a location",
-    parameters: WeatherQuery.schema.jsonSchema
+let searchTool = Tool(
+    function: ToolFunction(
+        name: "search_notes",
+        description: "Search through notes",
+        parameters: SearchQuery.schema.jsonSchema
+    ),
+    execute: { toolCall in
+        let args = toolCall.function.parsedArguments ?? [:]
+        let query = args["query"] as? String ?? ""
+        let maxResults = args["maxResults"] as? Int ?? 10
+        
+        // Perform search
+        let results = performSearch(query: query, limit: maxResults)
+        return ToolResult(
+            toolCallId: toolCall.id,
+            result: .text("Found \(results.count) notes matching '\(query)'")
+        )
+    }
+)
+```
+
+#### Streaming with Automatic Tool Execution
+
+```swift
+// Tools execute automatically during streaming too
+let stream = client.streamText(
+    model,
+    messages: [Message.user("Search for Swift tutorials and tell me about them")],
+    tools: [searchTool],
+    maxSteps: 3  // Allow up to 3 tool executions
 )
 
-// Use with model (future implementation)
-let modelWithTools = model.tools([weatherTool])
-let response = try await client.generateText(modelWithTools, prompt: "What's the weather in Tokyo?")
+for try await chunk in stream {
+    print(chunk.delta, terminator: "")
+}
 ```
 
 ## File Structure
