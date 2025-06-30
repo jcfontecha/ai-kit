@@ -587,6 +587,158 @@ struct E2EOpenAITests {
         print("✅ Streaming tool calling fix verified!")
     }
     
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealOpenAIStreamingToolCallExecution() async throws {
+        let provider: OpenAIProvider
+        do {
+            provider = try Self.createOpenAIProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient(toolExecutor: { toolCall in
+            switch toolCall.function.name {
+            case "search_notes":
+                let arguments = toolCall.function.parsedArguments ?? [:]
+                let query = arguments["query"] as? String ?? "unknown"
+                
+                let searchResults = """
+                Found 3 notes matching '\(query)':
+                1. Bachata Basic Turns - Right and left basic turns from cross-body position
+                2. Salsa Multiple Turns - Continuous turn sequences with proper timing
+                3. Partner Connection During Turns - Maintaining frame while spinning
+                """
+                
+                return ToolResult(
+                    toolCallId: toolCall.id,
+                    result: .text(searchResults),
+                    executionTime: 0.2
+                )
+            default:
+                throw AIGenerationError.toolExecutionFailed(
+                    toolName: toolCall.function.name,
+                    error: NSError(domain: "TestError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown tool"])
+                )
+            }
+        })
+        
+        let model = provider.languageModel("gpt-4.1-nano")
+            .temperature(0.7)
+            .maxTokens(500)
+        
+        print("🧪 Testing full streaming tool call execution flow...")
+        
+        let searchTool = Tool(
+            function: ToolFunction(
+                name: "search_notes",
+                description: "Search through the user's dance notes by content, title, instructor, dance style, or tags",
+                parameters: JSONSchema.object(properties: [
+                    "query": .string()
+                ], required: ["query"])
+            )
+        )
+        
+        // Step 1: Initial streaming request with tools
+        var messages: [Message] = [Message.user("Can you search my notes and tell me which types of turns I should practice?")]
+        var accumulatedText = ""
+        var toolCallsReceived: [ToolCall] = []
+        var hasToolCallFinishReason = false
+        
+        print("🌊 Step 1: Initial streaming request...")
+        let initialStream = await client.streamText(
+            model,
+            messages: messages,
+            tools: [searchTool],
+            toolChoice: .auto
+        )
+        
+        for try await chunk in initialStream {
+            accumulatedText += chunk.delta
+            if let toolCalls = chunk.toolCalls {
+                toolCallsReceived.append(contentsOf: toolCalls)
+            }
+            if let finishReason = chunk.finishReason, finishReason == .toolCalls {
+                hasToolCallFinishReason = true
+            }
+        }
+        
+        print("✅ Initial stream completed")
+        print("🔧 Tool calls received: \(toolCallsReceived.count)")
+        
+        #expect(!toolCallsReceived.isEmpty, "Should receive tool calls")
+        #expect(hasToolCallFinishReason, "Should have toolCalls finish reason")
+        
+        // Step 2: Execute tools and add results to conversation
+        print("🔧 Step 2: Executing tools...")
+        
+        // Add assistant message with tool calls
+        if accumulatedText.isEmpty {
+            messages.append(.assistant(toolCalls: toolCallsReceived))
+        } else {
+            let assistantMessage = Message(
+                role: .assistant,
+                content: [.text(accumulatedText)],
+                toolCalls: toolCallsReceived
+            )
+            messages.append(assistantMessage)
+        }
+        
+        // Execute tools and add results
+        for toolCall in toolCallsReceived {
+            print("🔧 Executing tool: \(toolCall.function.name)")
+            // Manually execute the tool since we can't access the client's executor directly
+            let toolResult = try await executeSearchNotesTool(toolCall)
+            messages.append(.tool(result: toolResult))
+        }
+        
+        // Helper function to execute the search tool
+        func executeSearchNotesTool(_ toolCall: ToolCall) async throws -> ToolResult {
+            let arguments = toolCall.function.parsedArguments ?? [:]
+            let query = arguments["query"] as? String ?? "unknown"
+            
+            let searchResults = """
+            Found 3 notes matching '\(query)':
+            1. Bachata Basic Turns - Right and left basic turns from cross-body position
+            2. Salsa Multiple Turns - Continuous turn sequences with proper timing
+            3. Partner Connection During Turns - Maintaining frame while spinning
+            """
+            
+            return ToolResult(
+                toolCallId: toolCall.id,
+                result: .text(searchResults),
+                executionTime: 0.2
+            )
+        }
+        
+        // Step 3: Get follow-up response with tool results
+        print("🔄 Step 3: Getting follow-up response...")
+        var followUpText = ""
+        var followUpChunks = 0
+        
+        let followUpStream = await client.streamText(model, messages: messages) // No tools in follow-up
+        for try await chunk in followUpStream {
+            followUpChunks += 1
+            followUpText += chunk.delta
+            
+            if let finishReason = chunk.finishReason {
+                print("🏁 Follow-up finished with reason: \(finishReason)")
+            }
+        }
+        
+        print("✅ Follow-up stream completed")
+        print("📊 Follow-up chunks: \(followUpChunks)")
+        print("📝 Follow-up text length: \(followUpText.count)")
+        print("📝 Follow-up response: \(followUpText)")
+        
+        // Verify the complete flow worked
+        #expect(!followUpText.isEmpty, "Should have follow-up response text")
+        #expect(followUpText.contains("turn") || followUpText.contains("practice") || followUpText.contains("notes"), 
+               "Response should reference the search results")
+        
+        print("✅ Complete streaming tool execution flow verified!")
+    }
+    
     // MARK: - Error Handling Tests
     
     @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
