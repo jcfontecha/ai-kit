@@ -32,6 +32,61 @@ conversationHistory.append(contentsOf: response.responseMessages)
 
 This eliminates common errors like forgetting to include tool calls in assistant messages.
 
+## 🎵 NEW: Audio File Support
+
+AIKit now supports sending audio files to AI models, following Vercel AI SDK patterns:
+
+### Supported Models
+- ✅ **`gpt-4o-audio-preview`** - Full audio transcription and analysis support
+- ❌ **`gpt-4o-mini-audio-preview`** - Model exists but doesn't process audio content
+
+### Sending Audio Files
+```swift
+// Load audio data
+let audioData = try Data(contentsOf: audioURL)
+
+// Create audio content using convenience methods
+let mp3Audio = FileContent.mp3(audioData, filename: "audio.mp3")
+let wavAudio = FileContent.wav(audioData, filename: "audio.wav")
+
+// Send audio in messages - use gpt-4o-audio-preview!
+let message = CoreMessage.user("What's in this audio?", audio: mp3Audio)
+
+// Or combine with text
+let message = CoreMessage(
+    role: .user,
+    content: [
+        .text("Please transcribe this audio:"),
+        .file(wavAudio)
+    ]
+)
+
+let response = try await client.generateText(model, messages: [message])
+```
+
+### Provider Support
+- **OpenAI**: Converts audio to `input_audio` format with `modalities: ["text"]`
+  - Supports MP3 and WAV formats
+  - Only `gpt-4o-audio-preview` actually processes audio
+- **Google**: Supports audio via `inlineData` 
+  - Works with Gemini models
+  - Supports various audio formats (MP3, WAV, M4A, etc.)
+- **Anthropic**: Currently supports only PDF files, not audio
+
+### Audio Convenience Methods
+```swift
+// From Data
+FileContent.mp3(data)          // audio/mpeg
+FileContent.wav(data)          // audio/wav
+
+// From URLs
+FileContent.mp3URL(url)        // audio/mpeg URL
+FileContent.wavURL(url)        // audio/wav URL
+
+// Generic file support
+FileContent.data(data, mimeType: "audio/flac", filename: "audio.flac")
+```
+
 ## ⚠️ CRITICAL: Vercel AI SDK Reference Requirement
 
 **IMPERATIVE**: Before implementing ANY feature, you MUST research how Vercel AI SDK implements it:

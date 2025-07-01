@@ -1138,4 +1138,228 @@ struct E2EOpenAITests {
         print("📝 Response: \(response.text)")
         print("🔢 Token usage: \(response.usage.totalTokens)")
     }
+    
+    // MARK: - Audio Support Tests
+    
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealOpenAIAudioFileSupport() async throws {
+        let provider: OpenAIProvider
+        do {
+            provider = try Self.createOpenAIProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient()
+        
+        // Use gpt-4o-audio-preview as it actually works with audio
+        let model = provider.languageModel("gpt-4o-audio-preview")
+            .temperature(0.7)
+            .maxTokens(200)
+        
+        print("🧪 Testing audio file support with real OpenAI API...")
+        
+        // Load sample audio file
+        let testBundle = Bundle.module
+        guard let audioPath = testBundle.path(forResource: "sample_audio", ofType: "mp3") else {
+            print("⚠️ Could not find sample MP3 file, skipping test")
+            return
+        }
+        
+        let audioURL = URL(fileURLWithPath: audioPath)
+        let audioData = try Data(contentsOf: audioURL)
+        
+        print("🎵 Loaded MP3 file: \(audioData.count) bytes")
+        
+        // Create audio content using the MP3 convenience method
+        let audioContent = FileContent.mp3(audioData, filename: "sample_audio.mp3")
+        
+        // Create message with audio - use direct transcription prompt that works
+        let message = CoreMessage(
+            role: .user,
+            content: [
+                .text("If there is any speech in this audio, please transcribe it. If not, describe what you hear."),
+                .file(audioContent)
+            ]
+        )
+        
+        do {
+            let response = try await client.generateText(model, messages: [message])
+            
+            // The model should transcribe the audio content
+            #expect(!response.text.isEmpty, "Should have a response")
+            #expect(response.finishReason == FinishReason.stop, "Should finish normally")
+            #expect(response.usage.totalTokens > 0, "Should track token usage")
+            
+            // The sample audio says "This is a sample audio file"
+            let responseLower = response.text.lowercased()
+            #expect(responseLower.contains("sample") && responseLower.contains("audio"), 
+                   "Response should contain transcribed content: '\(response.text)'")
+            
+            print("✅ Audio file test successful")
+            print("📝 Response: \(response.text)")
+            print("🔢 Token usage: \(response.usage.totalTokens)")
+        } catch {
+            // This should work with audio-capable models
+            print("❌ Audio test failed with error: \(error)")
+            throw error
+        }
+    }
+    
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealOpenAIAudioWithVisualContext() async throws {
+        let provider: OpenAIProvider
+        do {
+            provider = try Self.createOpenAIProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient()
+        
+        // Use gpt-4o-mini-audio-preview as it works with visual context
+        let model = provider.languageModel("gpt-4o-mini-audio-preview")
+            .temperature(0.7)
+            .maxTokens(200)
+        
+        print("🧪 Testing audio with visual context (matching working example)...")
+        
+        // Load sample audio file
+        let testBundle = Bundle.module
+        guard let audioPath = testBundle.path(forResource: "sample_audio", ofType: "mp3") else {
+            print("⚠️ Could not find sample MP3 file, skipping test")
+            return
+        }
+        
+        let audioURL = URL(fileURLWithPath: audioPath)
+        let audioData = try Data(contentsOf: audioURL)
+        
+        print("🎵 Loaded MP3 file: \(audioData.count) bytes")
+        
+        // Create audio content using the MP3 convenience method
+        let audioContent = FileContent.mp3(audioData, filename: "sample_audio.mp3")
+        
+        // Test 1: Direct transcription (this works!)
+        print("\n📍 Test 1: Direct transcription request...")
+        let message1 = CoreMessage(
+            role: .user,
+            content: [
+                .text("If there is any speech in this audio, please transcribe it. If not, describe what you hear."),
+                .file(audioContent)
+            ]
+        )
+        
+        do {
+            let response1 = try await client.generateText(model, messages: [message1])
+            
+            #expect(!response1.text.isEmpty, "Should have a response")
+            #expect(response1.finishReason == FinishReason.stop, "Should finish normally")
+            #expect(response1.usage.totalTokens > 0, "Should track token usage")
+            
+            // Should transcribe "This is a sample audio file"
+            let responseLower = response1.text.lowercased()
+            #expect(responseLower.contains("sample") && responseLower.contains("audio"), 
+                   "Should transcribe the audio content: '\(response1.text)'")
+            
+            print("✅ Direct transcription: \(response1.text)")
+            
+            // Test 2: With visual context (model says it can't analyze)
+            print("\n📍 Test 2: With visual context (for comparison)...")
+            let contextText = """
+            Please analyze this audio and determine if it contains speech that should be transcribed.
+            
+            Visual context of the video:
+            - Description: A person speaking directly to the camera in what appears to be a tutorial or presentation setting
+            - Main subject: A person presenting information
+            - Visual style: Talking head style video shot
+            """
+            
+            let message2 = CoreMessage(
+                role: .user,
+                content: [
+                    .text(contextText),
+                    .file(audioContent)
+                ]
+            )
+            
+            let response2 = try await client.generateText(model, messages: [message2])
+            print("📝 With context response: \(response2.text)")
+            
+            print("\n✅ Both audio tests completed successfully")
+            print("🔢 Total token usage: \(response1.usage.totalTokens + response2.usage.totalTokens)")
+        } catch {
+            print("❌ Audio with context test failed with error: \(error)")
+            throw error
+        }
+    }
+    
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealOpenAIWavAudioSupport() async throws {
+        let provider: OpenAIProvider
+        do {
+            provider = try Self.createOpenAIProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient()
+        let model = provider.languageModel("gpt-4o-mini-audio-preview-2024-12-17")
+            .temperature(0.7)
+            .maxTokens(200)
+        
+        print("🧪 Testing WAV audio support with real OpenAI API...")
+        
+        // Create a simple WAV file data (44 bytes WAV header + minimal audio data)
+        // This is a valid but tiny WAV file for testing
+        let wavHeader: [UInt8] = [
+            // RIFF header
+            0x52, 0x49, 0x46, 0x46, // "RIFF"
+            0x24, 0x00, 0x00, 0x00, // File size - 8
+            0x57, 0x41, 0x56, 0x45, // "WAVE"
+            // fmt chunk
+            0x66, 0x6D, 0x74, 0x20, // "fmt "
+            0x10, 0x00, 0x00, 0x00, // Chunk size = 16
+            0x01, 0x00,             // Audio format = 1 (PCM)
+            0x01, 0x00,             // Number of channels = 1
+            0x44, 0xAC, 0x00, 0x00, // Sample rate = 44100
+            0x88, 0x58, 0x01, 0x00, // Byte rate = 88200
+            0x02, 0x00,             // Block align = 2
+            0x10, 0x00,             // Bits per sample = 16
+            // data chunk
+            0x64, 0x61, 0x74, 0x61, // "data"
+            0x00, 0x00, 0x00, 0x00  // Data size = 0
+        ]
+        let wavData = Data(wavHeader)
+        
+        // Create WAV audio content
+        let audioContent = FileContent.wav(wavData, filename: "test.wav")
+        
+        // Create message with audio and text
+        let message = CoreMessage(
+            role: .user,
+            content: [
+                .text("This is a test WAV audio file. Please acknowledge that you received it."),
+                .file(audioContent)
+            ]
+        )
+        
+        do {
+            let response = try await client.generateText(model, messages: [message])
+            
+            #expect(!response.text.isEmpty, "Should have a response")
+            #expect(response.finishReason == FinishReason.stop, "Should finish normally")
+            #expect(response.usage.totalTokens > 0, "Should track token usage")
+            
+            print("✅ WAV audio test successful")
+            print("📝 Response: \(response.text)")
+            print("🔢 Token usage: \(response.usage.totalTokens)")
+        } catch {
+            // This should work with audio-capable models
+            print("❌ WAV audio test failed with error: \(error)")
+            throw error
+        }
+    }
 }

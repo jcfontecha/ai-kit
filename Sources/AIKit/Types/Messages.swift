@@ -182,6 +182,11 @@ public extension CoreMessage {
         CoreMessage(role: .user, content: [.text(text), .file(file)], id: id)
     }
     
+    /// Create a user message with audio file
+    static func user(_ text: String, audio: FileContent, id: String = UUID().uuidString) -> CoreMessage {
+        CoreMessage(role: .user, content: [.text(text), .file(audio)], id: id)
+    }
+    
     /// Create an assistant message with tool calls
     static func assistant(toolCalls: [ToolCall], id: String = UUID().uuidString) -> CoreMessage {
         CoreMessage(
@@ -224,5 +229,25 @@ public extension FileContent {
     /// Create file content from URL
     static func url(_ url: URL, mimeType: String, filename: String? = nil) -> FileContent {
         FileContent(url: url, mimeType: mimeType, filename: filename)
+    }
+    
+    /// Create audio content from MP3 data
+    static func mp3(_ data: Data, filename: String? = nil) -> FileContent {
+        FileContent(data: data, mimeType: "audio/mpeg", filename: filename)
+    }
+    
+    /// Create audio content from WAV data
+    static func wav(_ data: Data, filename: String? = nil) -> FileContent {
+        FileContent(data: data, mimeType: "audio/wav", filename: filename)
+    }
+    
+    /// Create audio content from MP3 URL
+    static func mp3URL(_ url: URL, filename: String? = nil) -> FileContent {
+        FileContent(url: url, mimeType: "audio/mpeg", filename: filename)
+    }
+    
+    /// Create audio content from WAV URL
+    static func wavURL(_ url: URL, filename: String? = nil) -> FileContent {
+        FileContent(url: url, mimeType: "audio/wav", filename: filename)
     }
 }

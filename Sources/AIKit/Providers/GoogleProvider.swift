@@ -480,6 +480,19 @@ private extension GoogleProvider {
                         } else {
                             return GooglePart.text("Image content (URL: \(imageContent.url?.absoluteString ?? "unknown"))")
                         }
+                    case .file(let fileContent):
+                        if let data = fileContent.data {
+                            return GooglePart.inlineData(GoogleInlineData(
+                                mimeType: fileContent.mimeType,
+                                data: data.base64EncodedString()
+                            ))
+                        } else if let url = fileContent.url {
+                            // For file URLs, we could potentially use fileData instead
+                            // For now, we'll indicate it's a file URL
+                            return GooglePart.text("File content (\(fileContent.filename ?? "file"), URL: \(url.absoluteString))")
+                        } else {
+                            return GooglePart.text("File content (\(fileContent.filename ?? "file"))")
+                        }
                     default:
                         return GooglePart.text(content.textValue ?? "")
                     }

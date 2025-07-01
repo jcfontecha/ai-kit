@@ -678,4 +678,58 @@ struct E2EGoogleTests {
         
         print("✅ Multiple model test successful")
     }
+    
+    // MARK: - Audio Support Tests
+    
+    @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+    @Test func testRealGoogleAudioFileSupport() async throws {
+        let provider: GoogleProvider
+        do {
+            provider = try Self.createGoogleProviderOrSkip()
+        } catch E2ETestError.testSkipped(let message) {
+            print("⚠️ \(message)")
+            return
+        }
+        
+        let client = AIClient()
+        let model = provider.languageModel("gemini-2.0-flash-exp")
+            .temperature(0.7)
+            .maxTokens(200)
+        
+        print("🧪 Testing audio file support with real Google API...")
+        
+        // Load sample audio file
+        let testBundle = Bundle.module
+        guard let audioPath = testBundle.path(forResource: "sample_audio", ofType: "m4a") else {
+            print("⚠️ Could not find sample audio file, skipping test")
+            return
+        }
+        
+        let audioURL = URL(fileURLWithPath: audioPath)
+        let audioData = try Data(contentsOf: audioURL)
+        
+        print("🎵 Loaded audio file: \(audioData.count) bytes")
+        
+        // Create audio content - Google supports various audio formats via inlineData
+        let audioContent = FileContent.data(audioData, mimeType: "audio/mp4", filename: "sample_audio.m4a")
+        
+        // Create message with audio and text
+        let message = CoreMessage(
+            role: .user,
+            content: [
+                .text("This is an audio file. Can you acknowledge that you received it?"),
+                .file(audioContent)
+            ]
+        )
+        
+        let response = try await client.generateText(model, messages: [message])
+        
+        #expect(!response.text.isEmpty, "Should have a response")
+        #expect(response.finishReason == FinishReason.stop, "Should finish normally")
+        #expect(response.usage.totalTokens > 0, "Should track token usage")
+        
+        print("✅ Audio file test successful")
+        print("📝 Response: \(response.text)")
+        print("🔢 Token usage: \(response.usage.totalTokens)")
+    }
 }

@@ -589,6 +589,9 @@ private extension OpenAIProvider {
             toolChoice = "required"
         }
         
+        // For audio models, default to text-only responses
+        let modalities: [String]? = isAudioModel(modelId: request.modelId) ? ["text"] : nil
+        
         return OpenAIChatRequest(
             model: request.modelId,
             messages: allMessages,
@@ -603,7 +606,8 @@ private extension OpenAIProvider {
             responseFormat: responseFormat,
             seed: request.configuration.seed,
             stream: false,
-            streamOptions: nil
+            streamOptions: nil,
+            modalities: modalities
         )
     }
     
@@ -617,24 +621,26 @@ private extension OpenAIProvider {
                     content: .text(message.content.first?.textValue ?? "")
                 )
             case .user:
-                // Check if we have image content
+                // Check if we have image or file content
                 let hasImages = message.content.contains { $0.imageValue != nil }
+                let hasFiles = message.content.contains { $0.fileValue != nil }
                 
-                if hasImages {
+                if hasImages || hasFiles {
                     // Multi-part content with images
                     var parts: [OpenAIContentPart] = []
                     
                     for content in message.content {
                         switch content {
                         case .text(let text):
-                            parts.append(OpenAIContentPart(type: "text", text: text, imageUrl: nil))
+                            parts.append(OpenAIContentPart(type: "text", text: text, imageUrl: nil, inputAudio: nil))
                         case .image(let imageContent):
                             if let imageUrl = imageContent.url {
                                 // URL-based image
                                 parts.append(OpenAIContentPart(
                                     type: "image_url",
                                     text: nil,
-                                    imageUrl: OpenAIImageURL(url: imageUrl.absoluteString, detail: nil)
+                                    imageUrl: OpenAIImageURL(url: imageUrl.absoluteString, detail: nil),
+                                    inputAudio: nil
                                 ))
                             } else if let imageData = imageContent.data {
                                 // Data-based image - convert to base64 data URL
@@ -643,9 +649,30 @@ private extension OpenAIProvider {
                                 parts.append(OpenAIContentPart(
                                     type: "image_url",
                                     text: nil,
-                                    imageUrl: OpenAIImageURL(url: dataUrl, detail: nil)
+                                    imageUrl: OpenAIImageURL(url: dataUrl, detail: nil),
+                                    inputAudio: nil
                                 ))
                             }
+                        case .file(let fileContent):
+                            // Handle audio files for models that support them
+                            if fileContent.mimeType == "audio/mpeg" || fileContent.mimeType == "audio/mp3" || fileContent.mimeType == "audio/wav" {
+                                if let audioData = fileContent.data {
+                                    // Convert audio to input_audio format for models like gpt-4o-audio-preview
+                                    let base64String = audioData.base64EncodedString()
+                                    let format = (fileContent.mimeType == "audio/wav") ? "wav" : "mp3"
+                                    parts.append(OpenAIContentPart(
+                                        type: "input_audio",
+                                        text: nil,
+                                        imageUrl: nil,
+                                        inputAudio: OpenAIInputAudio(data: base64String, format: format)
+                                    ))
+                                } else if fileContent.url != nil {
+                                    // For URL-based audio, we'd need to download it first
+                                    // For now, we'll skip URL-based audio
+                                    // TODO: Add support for downloading audio URLs
+                                }
+                            }
+                            // Skip non-audio files for now
                         default:
                             // Skip other content types for user messages
                             break
@@ -1272,6 +1299,7 @@ private struct OpenAIChatRequest: Codable {
     let seed: Int?
     var stream: Bool
     var streamOptions: OpenAIStreamOptions?
+    let modalities: [String]?
     
     enum CodingKeys: String, CodingKey {
         case model, messages, temperature
@@ -1284,6 +1312,7 @@ private struct OpenAIChatRequest: Codable {
         case responseFormat = "response_format"
         case seed, stream
         case streamOptions = "stream_options"
+        case modalities
     }
 }
 
@@ -1342,11 +1371,13 @@ private struct OpenAIContentPart: Codable {
     let type: String
     let text: String?
     let imageUrl: OpenAIImageURL?
+    let inputAudio: OpenAIInputAudio?
     
     enum CodingKeys: String, CodingKey {
         case type
         case text
         case imageUrl = "image_url"
+        case inputAudio = "input_audio"
     }
 }
 
@@ -1354,6 +1385,12 @@ private struct OpenAIContentPart: Codable {
 private struct OpenAIImageURL: Codable {
     let url: String
     let detail: String?
+}
+
+/// OpenAI input audio structure for audio content.
+private struct OpenAIInputAudio: Codable {
+    let data: String  // base64 encoded audio data
+    let format: String  // "mp3" or "wav"
 }
 
 /// OpenAI tool definition.
