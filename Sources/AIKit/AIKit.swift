@@ -75,6 +75,25 @@ public enum AIKit {
         }
     }
     
+    // MARK: - Chat Factory
+    
+    /// Create an AIChat instance for conversational interfaces
+    @available(iOS 16.0, macOS 13.0, *)
+    @MainActor
+    public static func chat(
+        model: LanguageModel,
+        client: AIClient? = nil,
+        tools: [Tool] = [],
+        maxSteps: Int = 5
+    ) -> AIChat {
+        AIChat(
+            client: client ?? AIClient(),
+            model: model,
+            tools: tools,
+            maxSteps: maxSteps
+        )
+    }
+    
     // MARK: - Configuration
     
     /// Default model configuration
