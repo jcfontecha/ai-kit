@@ -506,7 +506,7 @@ private extension OpenAIProvider {
     /// Convert ProviderRequest to OpenAI API format following Vercel AI SDK patterns.
     func convertToOpenAIRequest(_ request: ProviderRequest) throws -> OpenAIChatRequest {
         // Convert messages
-        let messages = convertMessages(request.messages)
+        let messages = try convertMessages(request.messages)
         
         // Handle system message
         var allMessages = messages
@@ -589,8 +589,8 @@ private extension OpenAIProvider {
             toolChoice = "required"
         }
         
-        // For audio models, default to text-only responses
-        let modalities: [String]? = isAudioModel(modelId: request.modelId) ? ["text"] : nil
+        // Don't set modalities - let OpenAI use defaults
+        let modalities: [String]? = nil
         
         return OpenAIChatRequest(
             model: request.modelId,
@@ -612,8 +612,8 @@ private extension OpenAIProvider {
     }
     
     /// Convert SDK messages to OpenAI format.
-    func convertMessages(_ messages: [Message]) -> [OpenAIMessage] {
-        return messages.map { message in
+    func convertMessages(_ messages: [Message]) throws -> [OpenAIMessage] {
+        return try messages.map { message in
             switch message.role {
             case .system:
                 return OpenAIMessage(
@@ -654,22 +654,28 @@ private extension OpenAIProvider {
                                 ))
                             }
                         case .file(let fileContent):
-                            // Handle audio files for models that support them
-                            if fileContent.mimeType == "audio/mpeg" || fileContent.mimeType == "audio/mp3" || fileContent.mimeType == "audio/wav" {
-                                if let audioData = fileContent.data {
-                                    // Convert audio to input_audio format for models like gpt-4o-audio-preview
-                                    let base64String = audioData.base64EncodedString()
-                                    let format = (fileContent.mimeType == "audio/wav") ? "wav" : "mp3"
-                                    parts.append(OpenAIContentPart(
-                                        type: "input_audio",
-                                        text: nil,
-                                        imageUrl: nil,
-                                        inputAudio: OpenAIInputAudio(data: base64String, format: format)
-                                    ))
-                                } else if fileContent.url != nil {
-                                    // For URL-based audio, we'd need to download it first
-                                    // For now, we'll skip URL-based audio
-                                    // TODO: Add support for downloading audio URLs
+                            // Check if this looks like an audio file
+                            let audioMimeTypes = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/m4a", "audio/mp4", "audio/aac", "audio/ogg", "audio/flac"]
+                            if audioMimeTypes.contains(fileContent.mimeType) {
+                                // Only MP3 and WAV are supported by OpenAI
+                                if fileContent.mimeType == "audio/mpeg" || fileContent.mimeType == "audio/mp3" || fileContent.mimeType == "audio/wav" {
+                                    if let audioData = fileContent.data {
+                                        // Convert audio to input_audio format for models like gpt-4o-audio-preview
+                                        let base64String = audioData.base64EncodedString()
+                                        let format = (fileContent.mimeType == "audio/wav") ? "wav" : "mp3"
+                                        parts.append(OpenAIContentPart(
+                                            type: "input_audio",
+                                            text: nil,
+                                            imageUrl: nil,
+                                            inputAudio: OpenAIInputAudio(data: base64String, format: format)
+                                        ))
+                                    } else if fileContent.url != nil {
+                                        // For URL-based audio, we'd need to download it first
+                                        throw AIProviderError.unsupportedParameter("audio URL", "URL-based audio files are not yet supported. Please provide audio data directly.")
+                                    }
+                                } else {
+                                    // Unsupported audio format
+                                    throw AIProviderError.unsupportedParameter("audio format", "OpenAI only supports MP3 and WAV audio formats. Received: \(fileContent.mimeType). Please convert your audio to MP3 or WAV format.")
                                 }
                             }
                             // Skip non-audio files for now

@@ -65,9 +65,11 @@ let response = try await client.generateText(model, messages: [message])
 ```
 
 ### Provider Support
-- **OpenAI**: Converts audio to `input_audio` format with `modalities: ["text"]`
-  - Supports MP3 and WAV formats
+- **OpenAI**: Converts audio to `input_audio` format
+  - **Supported formats**: MP3 (`audio/mpeg`, `audio/mp3`) and WAV (`audio/wav`) only
+  - **Unsupported formats**: M4A, AAC, OGG, FLAC will throw an error
   - Only `gpt-4o-audio-preview` actually processes audio
+  - Other formats must be converted to MP3 or WAV before sending
 - **Google**: Supports audio via `inlineData` 
   - Works with Gemini models
   - Supports various audio formats (MP3, WAV, M4A, etc.)
