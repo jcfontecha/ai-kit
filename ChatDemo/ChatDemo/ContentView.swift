@@ -16,6 +16,7 @@ struct ContentView: View {
                     NavigationLink("Chat with Tools", destination: ToolChatDemoView())
                     NavigationLink("File Attachments", destination: AttachmentChatDemoView())
                     NavigationLink("Persistent Chat", destination: PersistentChatDemoView())
+                    NavigationLink("Advanced Persistence", destination: AdvancedPersistentChatDemoView())
                     NavigationLink("Custom Styled Chat", destination: CustomStyledChatView())
                 }
                 

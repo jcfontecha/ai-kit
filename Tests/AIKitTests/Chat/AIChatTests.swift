@@ -315,9 +315,13 @@ final class AIChatTests: XCTestCase {
     
     // MARK: - Persistence Tests
     
-    func testSaveAndLoad() async {
+    func testSaveAndLoad() async throws {
         let saveChat = AIChat(client: client, model: model)
         let loadChat = AIChat(client: client, model: model)
+        
+        // Use memory persistence for testing
+        let persistence = MemoryChatPersistence()
+        let chatId = "test-chat"
         
         // Add messages to save chat
         saveChat.setMessages([
@@ -326,40 +330,42 @@ final class AIChatTests: XCTestCase {
         ])
         
         // Save
-        saveChat.save(to: "test-chat")
+        try await saveChat.save(using: persistence, chatId: chatId)
         
         // Load
-        loadChat.load(from: "test-chat")
+        try await loadChat.load(using: persistence, chatId: chatId)
         
         XCTAssertEqual(loadChat.messages.count, 2)
         XCTAssertEqual(loadChat.messages[0].content, "Test message")
         XCTAssertEqual(loadChat.messages[1].content, "Test response")
-        
-        // Clean up
-        UserDefaults.standard.removeObject(forKey: "test-chat")
     }
     
     func testFileBasedPersistence() async throws {
         let chat = AIChat(client: client, model: model)
+        
+        // Create file persistence
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("TestChats")
+        let persistence = try FileChatPersistence(directory: tempDir)
+        let chatId = "test-file-chat"
         
         // Add messages
         chat.setMessages([
             ChatMessage(role: .user, content: "File test")
         ])
         
-        // Save to file
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("test-chat.json")
-        try chat.save(to: url)
+        // Save using file persistence
+        try await chat.save(using: persistence, chatId: chatId)
         
         // Load from file
         let newChat = AIChat(client: client, model: model)
-        try newChat.load(from: url)
+        try await newChat.load(using: persistence, chatId: chatId)
         
         XCTAssertEqual(newChat.messages.count, 1)
         XCTAssertEqual(newChat.messages[0].content, "File test")
         
         // Clean up
-        try? FileManager.default.removeItem(at: url)
+        try? await persistence.delete(for: chatId)
+        try? FileManager.default.removeItem(at: tempDir)
     }
     
     // MARK: - Callback Tests
@@ -721,21 +727,28 @@ final class AIChatTests: XCTestCase {
         XCTAssertEqual(errorChat.messages.count, 3) // Original + retry user + assistant
     }
     
-    func testPersistenceWithCorruptedData() throws {
+    func testPersistenceWithCorruptedData() async throws {
         let chat = AIChat(client: client, model: model)
         let testKey = "corrupted-data-test"
         
-        // Save corrupted data
-        UserDefaults.standard.set("not json data", forKey: testKey)
+        // Save corrupted data as actual Data that can't be decoded as ChatMessage array
+        let corruptedData = "not json data".data(using: .utf8)!
+        UserDefaults.standard.set(corruptedData, forKey: "AIChat." + testKey)
         
-        // Try to load - should handle gracefully
-        chat.load(from: testKey)
+        // Use UserDefaults persistence
+        let persistence = UserDefaultsChatPersistence()
         
-        // Should still be empty
-        XCTAssertTrue(chat.messages.isEmpty)
+        // Try to load - should throw error because the data isn't valid JSON for ChatMessage array
+        do {
+            try await chat.load(using: persistence, chatId: testKey)
+            XCTFail("Should have thrown an error")
+        } catch {
+            // Expected error - decoding should fail
+            XCTAssertTrue(chat.messages.isEmpty)
+        }
         
         // Clean up
-        UserDefaults.standard.removeObject(forKey: testKey)
+        UserDefaults.standard.removeObject(forKey: "AIChat." + testKey)
     }
     
     func testLargeMessageHandling() async {
@@ -834,23 +847,24 @@ final class SwiftUIIntegrationTests: XCTestCase {
     }
     
     @MainActor
-    func testChatAutosaveModifier() {
+    func testChatAutosaveModifier() async throws {
         let client = AIClient()
         let model = SimpleMockProvider().languageModel("test")
         let chat = AIChat(client: client, model: model)
-        let testKey = "test-autosave-key"
+        let chatId = "test-autosave"
         
-        // Clear any existing data
-        UserDefaults.standard.removeObject(forKey: testKey)
+        // Use memory persistence for testing
+        let persistence = MemoryChatPersistence()
         
         // Create a view with autosave
         struct AutosaveTestView: View {
             let chat: AIChat
-            let saveKey: String
+            let persistence: ChatPersistence
+            let chatId: String
             
             var body: some View {
                 Text("Test")
-                    .chatAutosave(chat, key: saveKey)
+                    .chatAutosave(chat, using: persistence, chatId: chatId)
             }
         }
         
@@ -861,39 +875,37 @@ final class SwiftUIIntegrationTests: XCTestCase {
         ])
         
         // Simulate view lifecycle
-        let _ = AutosaveTestView(chat: chat, saveKey: testKey)
+        let _ = AutosaveTestView(chat: chat, persistence: persistence, chatId: chatId)
         
         // Manually trigger save (simulating onDisappear)
-        chat.save(to: testKey)
+        try await chat.save(using: persistence, chatId: chatId)
         
         // Create new chat and load
         let newChat = AIChat(client: client, model: model)
-        newChat.load(from: testKey)
+        try await newChat.load(using: persistence, chatId: chatId)
         
         // Verify messages were restored
         XCTAssertEqual(newChat.messages.count, 2)
         XCTAssertEqual(newChat.messages[0].content, "Hello")
         XCTAssertEqual(newChat.messages[1].content, "Hi there!")
-        
-        // Clean up
-        UserDefaults.standard.removeObject(forKey: testKey)
     }
     
     @MainActor
-    func testChatAutosaveWithDefaultKey() {
+    func testChatAutosaveWithDefaultKey() async throws {
         let client = AIClient()
         let model = SimpleMockProvider().languageModel("test")
         let chat = AIChat(client: client, model: model)
         
-        // Clear default key
-        UserDefaults.standard.removeObject(forKey: "AIChat.messages")
+        // Use default persistence implementation
+        let persistence = UserDefaultsChatPersistence()
+        let defaultChatId = "messages"  // Default suffix after "AIChat."
         
         struct DefaultKeyTestView: View {
             let chat: AIChat
             
             var body: some View {
                 Text("Test")
-                    .chatAutosave(chat) // Uses default key
+                    .chatAutosave(chat) // Uses deprecated method with UserDefaults
             }
         }
         
@@ -903,19 +915,19 @@ final class SwiftUIIntegrationTests: XCTestCase {
             ChatMessage(role: .user, content: "User message")
         ])
         
-        // Save with default key
-        chat.save()
+        // Save with default persistence
+        try await chat.save(using: persistence, chatId: defaultChatId)
         
         // Load into new chat
         let newChat = AIChat(client: client, model: model)
-        newChat.load()
+        try await newChat.load(using: persistence, chatId: defaultChatId)
         
         XCTAssertEqual(newChat.messages.count, 2)
         XCTAssertEqual(newChat.messages[0].role, .system)
         XCTAssertEqual(newChat.messages[1].role, .user)
         
         // Clean up
-        UserDefaults.standard.removeObject(forKey: "AIChat.messages")
+        try await persistence.delete(for: defaultChatId)
     }
 }
 #endif

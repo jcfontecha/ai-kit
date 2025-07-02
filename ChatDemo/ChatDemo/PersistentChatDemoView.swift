@@ -114,7 +114,7 @@ struct PersistentChatDemoView: View {
             ChatInputView(chat: chat)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .chatAutosave(chat, key: "persistent-chat-demo")
+        .chatAutosave(chat, using: UserDefaultsChatPersistence(), chatId: "persistent-chat-demo")
         .sheet(isPresented: $showingExportSheet) {
             ExportView(markdownContent: exportedMarkdown)
         }
@@ -140,13 +140,29 @@ struct PersistentChatDemoView: View {
     }
     
     private func saveChat() {
-        chat.save(to: "persistent-chat-demo")
-        saveMessage = "Chat saved with \(chat.messages.count) messages"
-        showingSaveAlert = true
+        Task {
+            do {
+                let persistence = UserDefaultsChatPersistence()
+                try await chat.save(using: persistence, chatId: "persistent-chat-demo")
+                saveMessage = "Chat saved with \(chat.messages.count) messages"
+                showingSaveAlert = true
+            } catch {
+                saveMessage = "Failed to save: \(error.localizedDescription)"
+                showingSaveAlert = true
+            }
+        }
     }
     
     private func loadChat() {
-        chat.load(from: "persistent-chat-demo")
+        Task {
+            do {
+                let persistence = UserDefaultsChatPersistence()
+                try await chat.load(using: persistence, chatId: "persistent-chat-demo")
+            } catch {
+                // Silently fail on load errors (e.g., no existing data)
+                print("Load failed: \(error)")
+            }
+        }
     }
     
     private func exportChat() {

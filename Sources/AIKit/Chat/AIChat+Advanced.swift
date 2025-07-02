@@ -156,38 +156,56 @@ extension AIChat {
     
     // MARK: - Persistence
     
-    /// Save the current chat state to UserDefaults
-    /// - Parameter key: The key to save under
+    /// Save the current chat state using the provided persistence implementation
+    /// - Parameters:
+    ///   - persistence: The persistence provider to use
+    ///   - chatId: Unique identifier for this chat session
+    public func save(using persistence: ChatPersistence, chatId: String) async throws {
+        try await persistence.save(messages, for: chatId)
+    }
+    
+    /// Load chat state using the provided persistence implementation
+    /// - Parameters:
+    ///   - persistence: The persistence provider to use
+    ///   - chatId: Unique identifier for this chat session
+    public func load(using persistence: ChatPersistence, chatId: String) async throws {
+        let loadedMessages = try await persistence.load(for: chatId)
+        messages = loadedMessages
+        status = .ready
+    }
+    
+    // MARK: - Legacy Persistence Methods (Deprecated)
+    
+    @available(*, deprecated, message: "Use save(using:chatId:) with a ChatPersistence implementation instead")
     public func save(to key: String = "AIChat.messages") {
-        let encoder = JSONEncoder()
-        if let data = try? encoder.encode(messages) {
-            UserDefaults.standard.set(data, forKey: key)
+        Task {
+            let persistence = UserDefaultsChatPersistence()
+            try? await save(using: persistence, chatId: key)
         }
     }
     
-    /// Load chat state from UserDefaults
-    /// - Parameter key: The key to load from
+    @available(*, deprecated, message: "Use load(using:chatId:) with a ChatPersistence implementation instead")
     public func load(from key: String = "AIChat.messages") {
-        let decoder = JSONDecoder()
-        if let data = UserDefaults.standard.data(forKey: key),
-           let loadedMessages = try? decoder.decode([ChatMessage].self, from: data) {
-            messages = loadedMessages
-            status = .ready
+        Task {
+            let persistence = UserDefaultsChatPersistence()
+            try? await load(using: persistence, chatId: key)
         }
     }
     
-    /// Save chat state to a file URL
-    /// - Parameter url: The URL to save to
+    @available(*, deprecated, message: "Use save(using:chatId:) with FileChatPersistence instead")
     public func save(to url: URL) throws {
+        // This is a synchronous method, so we can't easily convert to async
+        // Just maintain the old implementation for backward compatibility
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
         let data = try encoder.encode(messages)
         try data.write(to: url)
     }
     
-    /// Load chat state from a file URL
-    /// - Parameter url: The URL to load from
+    @available(*, deprecated, message: "Use load(using:chatId:) with FileChatPersistence instead")
     public func load(from url: URL) throws {
+        // This is a synchronous method, so we can't easily convert to async
+        // Just maintain the old implementation for backward compatibility
         let data = try Data(contentsOf: url)
         let decoder = JSONDecoder()
         messages = try decoder.decode([ChatMessage].self, from: data)
@@ -309,15 +327,33 @@ import SwiftUI
 
 @available(iOS 16.0, macOS 13.0, *)
 public extension View {
-    /// Automatically save chat state when the view disappears
-    func chatAutosave(_ chat: AIChat, key: String = "AIChat.messages") -> some View {
+    /// Automatically save and load chat state using the provided persistence
+    /// - Parameters:
+    ///   - chat: The AIChat instance to persist
+    ///   - persistence: The persistence provider to use
+    ///   - chatId: Unique identifier for this chat session
+    func chatAutosave(
+        _ chat: AIChat,
+        using persistence: ChatPersistence,
+        chatId: String
+    ) -> some View {
         self
-            .onAppear {
-                chat.load(from: key)
+            .task {
+                // Load on appear
+                try? await chat.load(using: persistence, chatId: chatId)
             }
             .onDisappear {
-                chat.save(to: key)
+                // Save on disappear
+                Task {
+                    try? await chat.save(using: persistence, chatId: chatId)
+                }
             }
+    }
+    
+    /// Legacy autosave using UserDefaults (deprecated)
+    @available(*, deprecated, message: "Use chatAutosave(_:using:chatId:) with a ChatPersistence implementation instead")
+    func chatAutosave(_ chat: AIChat, key: String = "AIChat.messages") -> some View {
+        chatAutosave(chat, using: UserDefaultsChatPersistence(), chatId: key)
     }
 }
 #endif
