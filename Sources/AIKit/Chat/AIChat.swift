@@ -121,7 +121,7 @@ public class AIChat: ObservableObject {
     /// - Returns: Whether the message was sent successfully
     @discardableResult
     public func send(content: String) async -> Bool {
-        guard !content.isEmpty, status == .ready else { return false }
+        guard !content.isEmpty, (status == .ready || status == .error) else { return false }
         
         // Add user message
         let userMessage = ChatMessage(role: .user, content: content)
