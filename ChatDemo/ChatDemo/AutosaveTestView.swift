@@ -43,10 +43,6 @@ struct AutosaveTestView: View {
             // Input
             ChatInputView(chat: chat)
         }
-        .onChange(of: chat.messages) { messages in
-            let timestamp = Date().formatted(date: .omitted, time: .standard)
-            logMessages.append("\(timestamp): messages changed, count: \(messages.count)")
-        }
         .onChange(of: chat.messages.count) { count in
             let timestamp = Date().formatted(date: .omitted, time: .standard)
             logMessages.append("\(timestamp): message count changed to: \(count)")

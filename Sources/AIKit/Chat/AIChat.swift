@@ -198,8 +198,8 @@ public class AIChat: ObservableObject {
             do {
                 status = .streaming
                 
-                // Create assistant message
-                var assistantMessage = ChatMessage(role: .assistant, content: "")
+                // Create assistant message with ordered content
+                var assistantMessage = ChatMessage(role: .assistant, orderedContent: [])
                 let messageIndex = messages.count
                 messages.append(assistantMessage)
                 
@@ -214,26 +214,24 @@ public class AIChat: ObservableObject {
                     maxSteps: maxSteps
                 )
                 
-                var fullContent = ""
                 var finishReason: FinishReason?
                 var usage: TokenUsage?
                 
                 for try await chunk in streamResult.textStream {
                     if Task.isCancelled { break }
                     
-                    // Accumulate text
+                    // Add content in execution order, accumulating text deltas
                     if !chunk.delta.isEmpty {
-                        fullContent += chunk.delta
-                        assistantMessage.content = fullContent
+                        assistantMessage.appendTextDelta(chunk.delta)
                         if messageIndex < messages.count {
                             messages[messageIndex] = assistantMessage
                         }
                     }
                     
-                    // Handle tool calls
+                    // Handle tool calls in order
                     if let toolCalls = chunk.toolCalls {
                         for toolCall in toolCalls {
-                            assistantMessage.toolCalls.append(toolCall)
+                            assistantMessage.appendToolCall(toolCall)
                             if messageIndex < messages.count {
                                 messages[messageIndex] = assistantMessage
                             }
@@ -308,12 +306,58 @@ public struct ChatMessage: Identifiable, Sendable {
     public let id: String
     /// The role of the message sender
     public let role: MessageRole
-    /// The content of the message
-    public var content: String
-    /// Tool calls made in this message
-    public var toolCalls: [ToolCall] = []
+    /// The ordered content parts of the message (preserves execution order)
+    public var orderedContent: [MessageContent] = []
     /// Timestamp when the message was created
     public let timestamp: Date
+    
+    /// Backward compatibility: combined text content
+    public var content: String {
+        get {
+            return orderedContent.compactMap { content in
+                switch content {
+                case .text(let text): return text
+                default: return nil
+                }
+            }.joined(separator: " ")
+        }
+        set {
+            // Replace all existing text content with new value
+            orderedContent = orderedContent.compactMap { content in
+                switch content {
+                case .text(_): return nil  // Remove existing text
+                default: return content    // Keep non-text content
+                }
+            }
+            if !newValue.isEmpty {
+                orderedContent.insert(.text(newValue), at: 0)
+            }
+        }
+    }
+    
+    /// Backward compatibility: extracted tool calls
+    public var toolCalls: [ToolCall] {
+        get {
+            return orderedContent.compactMap { content in
+                switch content {
+                case .toolCall(let toolCall): return toolCall
+                default: return nil
+                }
+            }
+        }
+        set {
+            // Replace all existing tool calls with new values
+            orderedContent = orderedContent.compactMap { content in
+                switch content {
+                case .toolCall(_): return nil  // Remove existing tool calls
+                default: return content        // Keep non-tool-call content
+                }
+            }
+            for toolCall in newValue {
+                orderedContent.append(.toolCall(toolCall))
+            }
+        }
+    }
     
     public init(
         id: String = UUID().uuidString,
@@ -324,23 +368,79 @@ public struct ChatMessage: Identifiable, Sendable {
     ) {
         self.id = id
         self.role = role
-        self.content = content
-        self.toolCalls = toolCalls
+        self.timestamp = timestamp
+        
+        // Initialize ordered content
+        var orderedContent: [MessageContent] = []
+        if !content.isEmpty {
+            orderedContent.append(.text(content))
+        }
+        for toolCall in toolCalls {
+            orderedContent.append(.toolCall(toolCall))
+        }
+        self.orderedContent = orderedContent
+    }
+    
+    /// New initializer with ordered content
+    public init(
+        id: String = UUID().uuidString,
+        role: MessageRole,
+        orderedContent: [MessageContent],
+        timestamp: Date = Date()
+    ) {
+        self.id = id
+        self.role = role
+        self.orderedContent = orderedContent
         self.timestamp = timestamp
     }
     
     /// Convert to CoreMessage for AIClient
     func toCoreMessage() -> CoreMessage {
-        var messageContent: [MessageContent] = []
-        
-        if !content.isEmpty {
-            messageContent.append(.text(content))
+        return CoreMessage(role: role, content: orderedContent)
+    }
+    
+    /// Add content in execution order
+    public mutating func appendContent(_ content: MessageContent) {
+        orderedContent.append(content)
+    }
+    
+    /// Add text content
+    public mutating func appendText(_ text: String) {
+        if !text.isEmpty {
+            orderedContent.append(.text(text))
         }
-        
-        for toolCall in toolCalls {
-            messageContent.append(.toolCall(toolCall))
+    }
+    
+    /// Add text delta during streaming (accumulates into existing text content)
+    public mutating func appendTextDelta(_ delta: String) {
+        if !delta.isEmpty {
+            // Check if the last content item is text
+            if let lastIndex = orderedContent.indices.last,
+               case .text(let existingText) = orderedContent[lastIndex] {
+                // Append to existing text content
+                orderedContent[lastIndex] = .text(existingText + delta)
+                #if DEBUG
+                print("[AIChat] Appending text delta to existing content: '\(delta)' -> total: '\(existingText + delta)'")
+                #endif
+            } else {
+                // Create new text content
+                orderedContent.append(.text(delta))
+                #if DEBUG
+                print("[AIChat] Creating new text content with delta: '\(delta)'")
+                #endif
+            }
         }
-        
-        return CoreMessage(role: role, content: messageContent)
+    }
+    
+    /// Add tool call content (creates a boundary for text parts)
+    public mutating func appendToolCall(_ toolCall: ToolCall) {
+        // Tool calls create boundaries between text parts
+        orderedContent.append(.toolCall(toolCall))
+    }
+    
+    /// Finalize text content (used when transitioning from text to tool calls)
+    public mutating func finalizeCurrentTextIfNeeded() {
+        // This is implicitly handled by appendToolCall creating a boundary
+        // No explicit action needed as appendTextDelta handles accumulation
     }
 }

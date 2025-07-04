@@ -14,6 +14,7 @@ struct ContentView: View {
                 Section("AIChat Demo Features") {
                     NavigationLink("Basic Chat", destination: BasicChatDemoView())
                     NavigationLink("Chat with Tools", destination: ToolChatDemoView())
+                    NavigationLink("Inline Tool Rendering", destination: InlineToolChatDemoView())
                     NavigationLink("File Attachments", destination: AttachmentChatDemoView())
                     NavigationLink("Persistent Chat", destination: PersistentChatDemoView())
                     NavigationLink("Advanced Persistence", destination: AdvancedPersistentChatDemoView())

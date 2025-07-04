@@ -305,9 +305,20 @@ extension ChatMessage: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         role = try container.decode(MessageRole.self, forKey: .role)
-        content = try container.decode(String.self, forKey: .content)
-        toolCalls = try container.decodeIfPresent([ToolCall].self, forKey: .toolCalls) ?? []
         timestamp = try container.decode(Date.self, forKey: .timestamp)
+        
+        // Decode legacy format and convert to ordered content
+        let contentString = try container.decode(String.self, forKey: .content)
+        let toolCallsArray = try container.decodeIfPresent([ToolCall].self, forKey: .toolCalls) ?? []
+        
+        var orderedContent: [MessageContent] = []
+        if !contentString.isEmpty {
+            orderedContent.append(.text(contentString))
+        }
+        for toolCall in toolCallsArray {
+            orderedContent.append(.toolCall(toolCall))
+        }
+        self.orderedContent = orderedContent
     }
     
     public func encode(to encoder: Encoder) throws {
