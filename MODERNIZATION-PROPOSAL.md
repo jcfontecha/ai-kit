@@ -1,0 +1,956 @@
+# AIKit Modernization Proposal
+
+## Executive Summary
+
+This proposal outlines three key modernizations for AIKit inspired by Apple's Foundation Models SDK, while maintaining full compatibility with Vercel AI SDK patterns. The improvements focus on developer experience through Swift macros, enhanced streaming capabilities, and session-based conversation management.
+
+## Background & Research
+
+### Apple's Foundation Models Framework
+
+Apple introduced the Foundation Models framework at WWDC 2025, providing developers with direct access to the ~3B parameter language model that powers Apple Intelligence. Key innovations include:
+
+1. **@Generable Macro**: Enables guided generation with just 3 lines of code
+2. **@Guide Macro**: Property-level natural language descriptions
+3. **PartiallyGenerated Types**: Streaming responses with incomplete data
+4. **Zero-Configuration**: Works out of the box on Apple devices
+
+### Key Insights from Apple's Approach
+
+- **Compile-time Safety**: Schemas are generated at compile time using Swift macros
+- **Progressive Disclosure**: Partial objects stream in as properties complete
+- **Natural Language Guidance**: Descriptions are part of the property declaration
+- **Platform Integration**: Deep integration with Swift's type system
+
+### Technical Foundation
+
+**Swift Macros (SE-0389, SE-0402, SE-0407)**:
+- Compiler plugins that transform code during compilation
+- Can generate protocol conformances and type members
+- Operate on the Swift AST using SwiftSyntax
+
+**Relevant Documentation**:
+- [Apple Foundation Models Overview](https://developer.apple.com/documentation/foundationmodels)
+- [Swift Evolution - Expression Macros](https://github.com/apple/swift-evolution/blob/main/proposals/0382-expression-macros.md)
+- [Swift Evolution - Attached Macros](https://github.com/apple/swift-evolution/blob/main/proposals/0389-attached-macros.md)
+
+## 1. Swift Macros with Property-Level Annotations
+
+### Current State
+```swift
+struct Recipe: SchemaProviding {
+    let title: String
+    let ingredients: [String]
+    let servings: Int
+    
+    static var schema: ObjectSchema<Recipe> {
+        .define {
+            Schema.string("title", description: "Recipe name")
+            Schema.array("ingredients", elementSchema: .string())
+            Schema.integer("servings", minimum: 1, maximum: 10)
+        }
+    }
+}
+```
+
+### Proposed Enhancement
+```swift
+@AIModel
+struct Recipe {
+    @Field("Creative recipe name")
+    let title: String
+    
+    @Field("List of ingredients")
+    let ingredients: [String]
+    
+    @Field("Number of servings", range: 1...10)
+    let servings: Int
+}
+```
+
+### Implementation Details
+
+#### Macro Declaration
+```swift
+@attached(extension, conformances: SchemaProviding)
+@attached(member, names: named(schema))
+public macro AIModel() = #externalMacro(
+    module: "AIKitMacros",
+    type: "AIModelMacro"
+)
+```
+
+#### Property Wrapper
+```swift
+@propertyWrapper
+public struct Field<Value> {
+    public let wrappedValue: Value
+    public let metadata: FieldMetadata
+    
+    public init(
+        wrappedValue: Value,
+        _ description: String? = nil,
+        range: ClosedRange<Value>? = nil,
+        minLength: Int? = nil,
+        maxLength: Int? = nil,
+        pattern: String? = nil,
+        format: String? = nil,
+        enum values: [Value]? = nil,
+        optional: Bool = false
+    ) {
+        self.wrappedValue = wrappedValue
+        self.metadata = FieldMetadata(
+            description: description,
+            range: range,
+            minLength: minLength,
+            maxLength: maxLength,
+            pattern: pattern,
+            format: format,
+            enumValues: values,
+            optional: optional
+        )
+    }
+}
+```
+
+#### Macro Implementation Structure
+```swift
+import SwiftSyntax
+import SwiftSyntaxMacros
+
+public struct AIModelMacro: ExtensionMacro, MemberMacro {
+    // Extension macro adds SchemaProviding conformance
+    public static func expansion(
+        of node: AttributeSyntax,
+        attachedTo declaration: some DeclGroupSyntax,
+        providingExtensionsOf type: some TypeSyntaxProtocol,
+        conformingTo protocols: [TypeSyntax],
+        in context: some MacroExpansionContext
+    ) throws -> [ExtensionDeclSyntax] {
+        let extensionDecl = try ExtensionDeclSyntax(
+            "extension \(type.trimmed): SchemaProviding {}"
+        )
+        return [extensionDecl]
+    }
+    
+    // Member macro generates schema property
+    public static func expansion(
+        of node: AttributeSyntax,
+        providingMembersOf declaration: some DeclGroupSyntax,
+        conformingTo protocols: [TypeSyntax],
+        in context: some MacroExpansionContext
+    ) throws -> [DeclSyntax] {
+        // Extract @Field annotations and generate schema
+        let schema = generateSchema(from: declaration)
+        return [DeclSyntax(stringLiteral: schema)]
+    }
+}
+```
+
+#### Generated Code Example
+```swift
+// Automatically generated by @AIModel macro
+extension Recipe: SchemaProviding {
+    static var schema: ObjectSchema<Recipe> {
+        .define {
+            Schema.string("title", description: "Creative recipe name")
+            Schema.array("ingredients", elementSchema: .string(), description: "List of ingredients")
+            Schema.integer("servings", description: "Number of servings", minimum: 1, maximum: 10)
+        }
+    }
+}
+```
+
+### Advanced Field Types
+
+```swift
+@AIModel
+struct Product {
+    @Field("Product name", minLength: 1, maxLength: 100)
+    let name: String
+    
+    @Field("Price in USD", range: 0.01...99999.99)
+    let price: Double
+    
+    @Field("Category", enum: ["electronics", "books", "clothing"])
+    let category: String
+    
+    @Field("Tags", maxItems: 10)
+    let tags: [String]
+    
+    @Field("Launch date", format: "date")
+    let launchDate: Date
+    
+    @Field("Product page", format: "uri")
+    let url: URL
+    
+    @Field("Contact email", format: "email", optional: true)
+    let contactEmail: String?
+}
+```
+
+### Package Configuration
+
+```swift
+// Package.swift
+dependencies: [
+    .package(url: "https://github.com/apple/swift-syntax.git", from: "509.0.0")
+],
+targets: [
+    .macro(
+        name: "AIKitMacros",
+        dependencies: [
+            .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+            .product(name: "SwiftCompilerPlugin", package: "swift-syntax")
+        ]
+    ),
+    .target(
+        name: "AIKit",
+        dependencies: ["AIKitMacros"]
+    ),
+    .testTarget(
+        name: "AIKitMacroTests",
+        dependencies: [
+            "AIKitMacros",
+            .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax")
+        ]
+    )
+]
+```
+
+### Testing Macros
+
+```swift
+import SwiftSyntaxMacrosTestSupport
+import XCTest
+import AIKitMacros
+
+final class AIModelMacroTests: XCTestCase {
+    func testMacroExpansion() throws {
+        assertMacroExpansion(
+            """
+            @AIModel
+            struct User {
+                @Field("Full name")
+                let name: String
+                
+                @Field("Age", range: 0...150)
+                let age: Int
+            }
+            """,
+            expandedSource: """
+            struct User {
+                @Field("Full name")
+                let name: String
+                
+                @Field("Age", range: 0...150)
+                let age: Int
+            }
+            
+            extension User: SchemaProviding {
+                static var schema: ObjectSchema<User> {
+                    .define {
+                        Schema.string("name", description: "Full name")
+                        Schema.integer("age", description: "Age", minimum: 0, maximum: 150)
+                    }
+                }
+            }
+            """,
+            macros: ["AIModel": AIModelMacro.self]
+        )
+    }
+}
+```
+
+### Benefits
+- **50% Less Boilerplate**: Schema definition is automatic
+- **Inline Documentation**: Properties and constraints colocated
+- **Type Safety**: Compile-time validation of constraints
+- **Backward Compatible**: Still generates SchemaProviding conformance
+- **SwiftUI-like**: Familiar declarative syntax
+
+## 2. Enhanced Streaming with PartiallyGenerated
+
+### Inspiration from Apple
+
+Apple's Foundation Models framework provides `PartiallyGenerated<T>` types during streaming:
+- All properties become optional during generation
+- Snapshots provided as properties complete
+- Progress tracking built-in
+
+### Current State
+```swift
+// Only emits complete, valid objects
+for try await chunk in client.streamObject(model, messages: messages, schema: Recipe.schema) {
+    let recipe = chunk.object // Full Recipe object or nothing
+}
+```
+
+### Proposed Enhancement
+```swift
+// Emits partial objects as they're generated
+for await partial in client.streamObject(model, messages: messages, type: Recipe.self) {
+    // Access partial data immediately
+    if let title = partial.object.title {
+        updateUI(title: title)
+    }
+    
+    // Track progress
+    print("Progress: \(partial.progress.percentage)%")
+    print("Completed: \(partial.progress.completedFields)/\(partial.progress.totalFields)")
+    
+    // Check completion
+    if partial.isComplete {
+        let completeRecipe = try partial.object.complete() // Returns Recipe
+    }
+}
+```
+
+### Implementation Details
+
+#### Core Types
+```swift
+public struct PartiallyGenerated<T: SchemaProviding> {
+    public let object: T.Partial      // Auto-generated type with optional properties
+    public let snapshot: String       // Raw JSON snapshot
+    public let progress: Progress     // Generation progress
+    public let isComplete: Bool       // All required fields present
+    
+    public struct Progress {
+        public let completedFields: Int
+        public let totalFields: Int
+        public let percentage: Double
+        public let fieldStatus: [String: FieldStatus]
+        
+        public var description: String {
+            "\(completedFields)/\(totalFields) fields (\(Int(percentage * 100))%)"
+        }
+    }
+    
+    public enum FieldStatus {
+        case notStarted
+        case inProgress
+        case completed
+        
+        public var symbol: String {
+            switch self {
+            case .notStarted: return "⏳"
+            case .inProgress: return "⚡"
+            case .completed: return "✅"
+            }
+        }
+    }
+}
+```
+
+#### Macro-Generated Partial Type
+```swift
+// @AIModel macro also generates a Partial nested type
+extension Recipe {
+    public struct Partial {
+        public let title: String?
+        public let ingredients: [String]?
+        public let servings: Int?
+        
+        // Field tracking
+        private let _fieldStatus: [String: PartiallyGenerated<Recipe>.FieldStatus]
+        
+        // Convert to complete type when all fields present
+        public func complete() throws -> Recipe {
+            guard let title = title,
+                  let ingredients = ingredients,
+                  let servings = servings else {
+                let missing = [
+                    title == nil ? "title" : nil,
+                    ingredients == nil ? "ingredients" : nil,
+                    servings == nil ? "servings" : nil
+                ].compactMap { $0 }
+                
+                throw AIError.incompleteObject(
+                    missingFields: missing,
+                    presentFields: _fieldStatus.compactMapValues { $0 == .completed ? $0 : nil }.keys.sorted()
+                )
+            }
+            
+            return Recipe(title: title, ingredients: ingredients, servings: servings)
+        }
+        
+        // Check if specific field is complete
+        public func isFieldComplete(_ field: String) -> Bool {
+            _fieldStatus[field] == .completed
+        }
+    }
+}
+```
+
+#### Stream Implementation
+```swift
+public extension AIClient {
+    func streamObject<T: SchemaProviding>(
+        _ model: LanguageModel,
+        messages: [Message],
+        type: T.Type
+    ) -> AsyncStream<PartiallyGenerated<T>> {
+        AsyncStream { continuation in
+            Task {
+                do {
+                    // Create tracking structures
+                    var partialJSON = JSONPartialParser()
+                    var fieldTracker = FieldProgressTracker(schema: T.schema)
+                    
+                    // Stream raw chunks
+                    let request = createObjectRequest(model, messages, schema: T.schema)
+                    let stream = model.provider.streamTextRaw(request)
+                    
+                    for try await chunk in stream {
+                        // Accumulate JSON
+                        partialJSON.append(chunk.delta)
+                        
+                        // Try to parse current state
+                        if let partialObject = try? partialJSON.parse(as: T.Partial.self) {
+                            // Update field tracking
+                            let progress = fieldTracker.update(from: partialObject)
+                            
+                            // Emit partial state
+                            continuation.yield(PartiallyGenerated(
+                                object: partialObject,
+                                snapshot: partialJSON.accumulated,
+                                progress: progress,
+                                isComplete: progress.percentage >= 1.0
+                            ))
+                        }
+                    }
+                    
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+}
+```
+
+#### JSON Partial Parser
+```swift
+internal struct JSONPartialParser {
+    private var buffer = ""
+    var accumulated: String { buffer }
+    
+    mutating func append(_ delta: String) {
+        buffer += delta
+    }
+    
+    func parse<T: Decodable>(as type: T.Type) throws -> T {
+        // Try direct parsing first
+        if let data = buffer.data(using: .utf8),
+           let object = try? JSONDecoder().decode(type, from: data) {
+            return object
+        }
+        
+        // Try with JSON repair
+        let repaired = repairJSON(buffer)
+        let data = repaired.data(using: .utf8)!
+        return try JSONDecoder().decode(type, from: data)
+    }
+    
+    private func repairJSON(_ json: String) -> String {
+        // Smart JSON repair logic
+        // - Balance braces and brackets
+        // - Close unclosed strings
+        // - Add missing commas
+        // - Handle trailing commas
+        JSONRepairer.repair(json)
+    }
+}
+```
+
+### UI Integration Example
+
+```swift
+struct RecipeGeneratorView: View {
+    @State private var partial: PartiallyGenerated<Recipe>?
+    
+    var body: some View {
+        VStack {
+            if let partial = partial {
+                // Show title as soon as it's available
+                if let title = partial.object.title {
+                    Text(title)
+                        .font(.title)
+                        .transition(.opacity)
+                }
+                
+                // Show ingredients as they stream in
+                if let ingredients = partial.object.ingredients {
+                    ForEach(ingredients, id: \.self) { ingredient in
+                        Text("• \(ingredient)")
+                            .transition(.slide)
+                    }
+                }
+                
+                // Progress indicator
+                ProgressView(value: partial.progress.percentage)
+                    .progressViewStyle(.linear)
+                
+                Text(partial.progress.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .task {
+            for await update in client.streamObject(model, messages: messages, type: Recipe.self) {
+                withAnimation {
+                    partial = update
+                }
+            }
+        }
+    }
+}
+```
+
+### Benefits
+- **Immediate Feedback**: Show data as soon as it's available
+- **Better UX**: Progressive rendering keeps users engaged
+- **Type Safe**: Partial types maintain full type safety
+- **Progress Tracking**: Built-in progress monitoring
+- **Error Recovery**: Can show partial results even if generation fails
+
+## 3. Session-Based Conversation API
+
+### Current State
+```swift
+// Manual message management
+var messages: [Message] = []
+messages.append(.user("Create a recipe"))
+let response = try await client.generateObject(model, messages: messages, type: Recipe.self)
+messages.append(.assistant(response.rawJSON))
+messages.append(.user("Make it vegan"))
+let response2 = try await client.generateObject(model, messages: messages, type: Recipe.self)
+```
+
+### Proposed Enhancement
+```swift
+// Automatic conversation context
+let session = AISession()
+
+let recipe = try await session.generateObject(
+    model,
+    prompt: "Create a healthy breakfast recipe",
+    type: Recipe.self
+)
+
+// Follows up with context
+let veganRecipe = try await session.generateObject(
+    model,
+    prompt: "Make it vegan",
+    type: Recipe.self
+)
+```
+
+### Implementation Details
+
+#### Core Session Actor
+```swift
+/// Thread-safe conversation session with automatic message tracking
+public actor AISession {
+    private let client: AIClient
+    private var messages: [Message] = []
+    private let id = UUID()
+    private let createdAt = Date()
+    
+    // Configuration
+    public var maxMessages: Int? = nil
+    public var systemPrompt: String? = nil
+    
+    public init(
+        client: AIClient = .shared,
+        systemPrompt: String? = nil
+    ) {
+        self.client = client
+        self.systemPrompt = systemPrompt
+        
+        // Add system prompt if provided
+        if let systemPrompt = systemPrompt {
+            messages.append(.system(systemPrompt))
+        }
+    }
+    
+    // MARK: - Text Generation
+    
+    /// Generate text with automatic context management
+    public func generateText(
+        _ model: LanguageModel,
+        prompt: String
+    ) async throws -> TextResponse {
+        messages.append(.user(prompt))
+        enforceMessageLimit()
+        
+        let response = try await client.generateText(model, messages: messages)
+        messages.append(contentsOf: response.responseMessages)
+        
+        return response
+    }
+    
+    /// Generate text from existing messages (no new prompt)
+    public func generateText(
+        _ model: LanguageModel,
+        messages additionalMessages: [Message] = []
+    ) async throws -> TextResponse {
+        let allMessages = messages + additionalMessages
+        let response = try await client.generateText(model, messages: allMessages)
+        messages.append(contentsOf: additionalMessages + response.responseMessages)
+        enforceMessageLimit()
+        
+        return response
+    }
+    
+    // MARK: - Object Generation
+    
+    /// Generate structured object with context
+    public func generateObject<T: SchemaProviding>(
+        _ model: LanguageModel,
+        prompt: String,
+        type: T.Type
+    ) async throws -> ObjectResponse<T> {
+        messages.append(.user(prompt))
+        enforceMessageLimit()
+        
+        let response = try await client.generateObject(model, messages: messages, type: type)
+        
+        // Add assistant response with generated object
+        messages.append(.assistant(response.rawJSON))
+        
+        return response
+    }
+    
+    // MARK: - Streaming
+    
+    /// Stream text with context
+    public func streamText(
+        _ model: LanguageModel,
+        prompt: String
+    ) -> StreamTextResult {
+        messages.append(.user(prompt))
+        enforceMessageLimit()
+        
+        let result = client.streamText(model, messages: messages)
+        
+        // Track streamed messages
+        Task {
+            let finalMessages = await result.messages
+            await self.appendMessages(finalMessages)
+        }
+        
+        return result
+    }
+    
+    /// Stream object generation with context
+    public func streamObject<T: SchemaProviding>(
+        _ model: LanguageModel,
+        prompt: String,
+        type: T.Type
+    ) -> AsyncStream<PartiallyGenerated<T>> {
+        messages.append(.user(prompt))
+        enforceMessageLimit()
+        
+        let stream = client.streamObject(model, messages: messages, type: type)
+        
+        // Track final result
+        Task {
+            var lastSnapshot: String?
+            for await partial in stream {
+                lastSnapshot = partial.snapshot
+            }
+            if let json = lastSnapshot {
+                await self.appendMessages([.assistant(json)])
+            }
+        }
+        
+        return stream
+    }
+    
+    // MARK: - Tool Support
+    
+    /// Generate with tools and context
+    public func generateText(
+        _ model: LanguageModel,
+        prompt: String,
+        tools: [Tool]
+    ) async throws -> TextResponse {
+        messages.append(.user(prompt))
+        enforceMessageLimit()
+        
+        let response = try await client.generateText(
+            model,
+            messages: messages,
+            tools: tools
+        )
+        messages.append(contentsOf: response.responseMessages)
+        
+        return response
+    }
+    
+    // MARK: - Session Management
+    
+    /// Clear conversation history
+    public func reset() {
+        messages = systemPrompt != nil ? [.system(systemPrompt!)] : []
+    }
+    
+    /// Get conversation history
+    public func getHistory() -> [Message] {
+        messages
+    }
+    
+    /// Get session metadata
+    public func getMetadata() -> SessionMetadata {
+        SessionMetadata(
+            id: id,
+            createdAt: createdAt,
+            messageCount: messages.count,
+            lastMessageAt: messages.last?.timestamp
+        )
+    }
+    
+    /// Export session for persistence
+    public func export() -> ExportedSession {
+        ExportedSession(
+            id: id,
+            createdAt: createdAt,
+            messages: messages,
+            systemPrompt: systemPrompt
+        )
+    }
+    
+    /// Import session from export
+    public static func from(_ exported: ExportedSession) -> AISession {
+        let session = AISession(systemPrompt: exported.systemPrompt)
+        Task {
+            await session.importMessages(exported.messages)
+        }
+        return session
+    }
+    
+    // MARK: - Private Methods
+    
+    private func appendMessages(_ newMessages: [Message]) {
+        messages.append(contentsOf: newMessages)
+        enforceMessageLimit()
+    }
+    
+    private func importMessages(_ importedMessages: [Message]) {
+        messages = importedMessages
+    }
+    
+    private func enforceMessageLimit() {
+        if let limit = maxMessages, messages.count > limit {
+            // Keep system message if present
+            let systemMessage = messages.first { $0.role == .system }
+            let recentMessages = Array(messages.suffix(limit))
+            
+            if let system = systemMessage, !recentMessages.contains(where: { $0.role == .system }) {
+                messages = [system] + Array(recentMessages.suffix(limit - 1))
+            } else {
+                messages = recentMessages
+            }
+        }
+    }
+}
+```
+
+#### Supporting Types
+```swift
+public struct SessionMetadata {
+    public let id: UUID
+    public let createdAt: Date
+    public let messageCount: Int
+    public let lastMessageAt: Date?
+}
+
+public struct ExportedSession: Codable {
+    public let id: UUID
+    public let createdAt: Date
+    public let messages: [Message]
+    public let systemPrompt: String?
+}
+```
+
+#### Convenience Extensions
+```swift
+public extension AISession {
+    /// Default session for quick usage
+    static let `default` = AISession()
+    
+    /// Create session with system prompt
+    static func with(systemPrompt: String) -> AISession {
+        AISession(systemPrompt: systemPrompt)
+    }
+}
+
+// Usage Examples
+let recipe = try await AISession.default.generateObject(
+    .gpt4,
+    prompt: "Create a recipe",
+    type: Recipe.self
+)
+
+let codeSession = AISession.with(systemPrompt: "You are an expert Swift developer")
+let code = try await codeSession.generateText(
+    .claude3,
+    prompt: "Explain Swift macros"
+)
+```
+
+### Advanced Features
+
+#### Session Branching
+```swift
+public extension AISession {
+    /// Create a new session branching from current state
+    func branch() async -> AISession {
+        let newSession = AISession(client: client, systemPrompt: systemPrompt)
+        let currentMessages = await self.getHistory()
+        await newSession.importMessages(currentMessages)
+        return newSession
+    }
+}
+
+// Usage: Explore different conversation paths
+let mainSession = AISession()
+let recipe = try await mainSession.generateObject(model, prompt: "Create recipe", type: Recipe.self)
+
+let veganBranch = await mainSession.branch()
+let veganRecipe = try await veganBranch.generateObject(model, prompt: "Make it vegan", type: Recipe.self)
+
+let spicyBranch = await mainSession.branch()
+let spicyRecipe = try await spicyBranch.generateObject(model, prompt: "Make it spicy", type: Recipe.self)
+```
+
+#### Session Persistence
+```swift
+// Save session
+let exported = await session.export()
+let data = try JSONEncoder().encode(exported)
+try data.write(to: sessionURL)
+
+// Load session
+let data = try Data(contentsOf: sessionURL)
+let exported = try JSONDecoder().decode(ExportedSession.self, from: data)
+let session = AISession.from(exported)
+```
+
+### Benefits
+- **Automatic Context**: No manual message tracking
+- **Thread Safe**: Actor-based concurrency
+- **Flexible**: Multiple sessions for different conversations
+- **Maintainable**: Conversation logic centralized
+- **Testable**: Easy to mock and test conversation flows
+
+## Migration Strategy
+
+### Phase 1: Additive Changes (v2.x)
+- Add @AIModel macro alongside existing SchemaProviding
+- Introduce PartiallyGenerated streaming without removing current methods
+- Add AISession as optional convenience API
+- All existing code continues to work
+
+### Phase 2: Adoption (v2.x - v3.0)
+- Update documentation to prefer new APIs
+- Convert all examples to use modernized patterns
+- Add gentle deprecation notices
+- Provide automated migration tool
+
+### Phase 3: Cleanup (v3.0)
+- Remove deprecated APIs in major version
+- @AIModel becomes primary schema definition
+- Session-based API becomes recommended approach
+- Maintain escape hatches for advanced usage
+
+### Migration Tool
+```swift
+// Automated migration assistance
+public enum AIKitMigrator {
+    public static func migrate(file: URL) throws {
+        // 1. Convert SchemaProviding to @AIModel
+        // 2. Update streamObject calls
+        // 3. Suggest session API usage
+    }
+}
+```
+
+## Performance Considerations
+
+### Macro Compilation Impact
+- SwiftSyntax adds ~20 seconds to clean debug builds
+- Incremental builds unaffected
+- Release builds with WMO can take 4+ minutes
+- Consider using pre-built macro executables
+
+### Streaming Optimizations
+- Partial parsing uses incremental JSON parser
+- Field tracking uses efficient bit sets
+- Progress updates throttled to avoid UI overwhelm
+
+### Session Memory Management
+- Optional message limits prevent unbounded growth
+- Automatic pruning of old messages
+- Efficient message serialization for persistence
+
+## Testing Strategy
+
+### Macro Tests
+```swift
+// Test macro expansion
+assertMacroExpansion(input, expandedSource: expected, macros: ["AIModel": AIModelMacro.self])
+
+// Test generated schema
+let schema = GeneratedType.schema
+XCTAssertEqual(schema.properties.count, 3)
+```
+
+### Streaming Tests
+```swift
+// Test partial generation
+let partials = await stream.collect()
+XCTAssertFalse(partials[0].isComplete)
+XCTAssertTrue(partials.last?.isComplete ?? false)
+```
+
+### Session Tests
+```swift
+// Test context management
+let session = AISession()
+_ = try await session.generateText(model, prompt: "Hello")
+let history = await session.getHistory()
+XCTAssertEqual(history.count, 2) // User + Assistant
+```
+
+## Future Considerations
+
+### Phase 4: Advanced Features
+- **Constrained Generation**: Grammar-based output constraints
+- **Multi-Modal Sessions**: Image and audio in conversations
+- **Session Analytics**: Token usage, cost tracking
+- **Distributed Sessions**: Sync across devices
+
+### Integration Opportunities
+- **SwiftUI Property Wrappers**: `@AIGenerated`, `@AIStreamed`
+- **Combine Publishers**: For reactive architectures
+- **Swift Concurrency**: Deeper async/await integration
+
+## Conclusion
+
+These modernizations bring AIKit to parity with cutting-edge Swift frameworks while maintaining its core value proposition as a Vercel AI SDK equivalent. The improvements focus on developer experience without sacrificing flexibility or compatibility.
+
+## References
+
+1. [Apple Foundation Models Documentation](https://developer.apple.com/documentation/foundationmodels)
+2. [Swift Evolution - Expression Macros (SE-0382)](https://github.com/apple/swift-evolution/blob/main/proposals/0382-expression-macros.md)
+3. [Swift Evolution - Attached Macros (SE-0389)](https://github.com/apple/swift-evolution/blob/main/proposals/0389-attached-macros.md)
+4. [Swift Evolution - Macro Expansion Improvements (SE-0402)](https://github.com/apple/swift-evolution/blob/main/proposals/0402-extension-macros.md)
+5. [SwiftSyntax Documentation](https://github.com/apple/swift-syntax)
+6. [WWDC 2023 - Write Swift Macros](https://developer.apple.com/videos/play/wwdc2023/10166/)
+7. [WWDC 2023 - Expand on Swift Macros](https://developer.apple.com/videos/play/wwdc2023/10167/)
+8. [Vercel AI SDK Documentation](https://sdk.vercel.ai/docs)
+9. [Swift Forums - Macro Best Practices](https://forums.swift.org/t/swift-macros-best-practices/68386)
