@@ -224,22 +224,12 @@ final class MessageTrackingTests: XCTestCase {
 
 // MARK: - Test Helper Types
 
-struct SearchParams: Codable, SchemaProviding {
+@AIModel
+struct SearchParams: Codable, Sendable {
     let query: String
-    
-    static var schema: ObjectSchema<SearchParams> {
-        .define {
-            Schema.string("query", description: "Search query")
-        }
-    }
 }
 
-struct WeatherParams: Codable, SchemaProviding {
+@AIModel
+struct WeatherParams: Codable, Sendable {
     let location: String
-    
-    static var schema: ObjectSchema<WeatherParams> {
-        .define {
-            Schema.string("location", description: "City name")
-        }
-    }
 }

@@ -109,19 +109,18 @@ import Foundation
     let provider = MockProvider()
     let model = provider.languageModel("gpt-4.1-nano")
     
-    struct Item: Codable, Sendable, SchemaProviding {
+    struct Item: SchemaProviding {
         let id: Int
         let name: String
         
         static var schema: ObjectSchema<Item> {
-            return ObjectSchema.manual(
-                jsonSchema: .object(properties: [
-                    "id": .integer(minimum: 1),
-                    "name": .string(minLength: 1)
-                ], required: ["id", "name"]),
-                name: "Item"
-            )
+            .define {
+                Schema.integer("id")
+                Schema.string("name")
+            }
         }
+        
+        typealias Partial = Item
     }
     
     let response = try await client.generateArray(

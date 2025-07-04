@@ -4,46 +4,40 @@ import Foundation
 
 // MARK: - Test Types
 
-struct Person: Codable, Sendable, SchemaProviding {
+@AIModel
+struct Person: Codable, Sendable {
+    @Field("Full name", minLength: 1)
     let name: String
-    let age: Int
-    let email: String?
     
-    static var schema: ObjectSchema<Person> {
-        return ObjectSchema.manual(
-            jsonSchema: .object(properties: [
-                "name": .string(minLength: 1),
-                "age": .integer(minimum: 0, maximum: 150),
-                "email": .string()
-            ], required: ["name", "age"]),
-            name: "Person",
-            description: "A person with basic information"
-        )
-    }
+    @Field("Age in years", range: 0...150)
+    let age: Int
+    
+    @Field("Email address")
+    let email: String?
 }
 
+@AIModel
 struct Recipe: Codable, Sendable {
+    @Field("Recipe name")
     let name: String
+    
+    @Field("List of ingredients")
     let ingredients: [String]
+    
+    @Field("Cooking time in minutes")
     let cookingTime: Int
 }
 
-struct TodoItem: Codable, Sendable, SchemaProviding {
+@AIModel
+struct TodoItem: Codable, Sendable {
+    @Field("Unique identifier", range: 1...999999)
     let id: Int
-    let task: String
-    let completed: Bool
     
-    static var schema: ObjectSchema<TodoItem> {
-        return ObjectSchema.manual(
-            jsonSchema: .object(properties: [
-                "id": .integer(minimum: 1),
-                "task": .string(minLength: 1),
-                "completed": .boolean()
-            ], required: ["id", "task", "completed"]),
-            name: "TodoItem",
-            description: "A todo item with ID, task, and completion status"
-        )
-    }
+    @Field("Task description", minLength: 1)
+    let task: String
+    
+    @Field("Completion status")
+    let completed: Bool
 }
 
 enum Priority: String, Codable, CaseIterable, Sendable {
@@ -53,50 +47,47 @@ enum Priority: String, Codable, CaseIterable, Sendable {
     case urgent = "urgent"
 }
 
+@AIModel
 struct ProjectProjectTask: Codable, Sendable {
+    @Field("Task title")
     let title: String
+    
+    @Field("Task priority level")
     let priority: Priority
+    
+    @Field("Estimated hours to complete")
     let estimatedHours: Int
 }
 
 // SchemaProviding test types
-struct UserProfile: Codable, Sendable, SchemaProviding {
+@AIModel
+struct UserProfile: Codable, Sendable {
+    @Field("Unique username", minLength: 3, maxLength: 20)
     let username: String
-    let email: String
-    let age: Int
-    let isActive: Bool
     
-    static var schema: ObjectSchema<UserProfile> {
-        return ObjectSchema.define(
-            name: "UserProfile",
-            description: "User profile information"
-        ) {
-            Schema.string("username", description: "Unique username", minLength: 3, maxLength: 20)
-            Schema.string("email", description: "User email address", format: "email")
-            Schema.integer("age", description: "User age", minimum: 13, maximum: 120)
-            Schema.boolean("isActive", description: "Whether user account is active")
-        }
-    }
+    @Field("User email address", format: "email")
+    let email: String
+    
+    @Field("User age", range: 13...120)
+    let age: Int
+    
+    @Field("Whether user account is active")
+    let isActive: Bool
 }
 
-struct Product: Codable, Sendable, SchemaProviding {
+@AIModel
+struct Product: Codable, Sendable {
+    @Field("Product ID")
     let id: String
-    let name: String
-    let price: Double
-    let inStock: Bool
     
-    static var schema: ObjectSchema<Product> {
-        return ObjectSchema.manual(
-            jsonSchema: .object(properties: [
-                "id": .string(format: "uuid"),
-                "name": .string(minLength: 1, maxLength: 100),
-                "price": .number(minimum: 0.01, maximum: 999999.99),
-                "inStock": .boolean()
-            ], required: ["id", "name", "price", "inStock"]),
-            name: "Product",
-            description: "Product information"
-        )
-    }
+    @Field("Product name")
+    let name: String
+    
+    @Field("Price in USD", range: 0.01...999999.99)
+    let price: Double
+    
+    @Field("Stock availability")
+    let inStock: Bool
 }
 
 // MARK: - Basic ObjectSchema Tests
@@ -165,7 +156,7 @@ struct Product: Codable, Sendable, SchemaProviding {
     let userSchema = UserProfile.schema
     
     #expect(userSchema.name == "UserProfile")
-    #expect(userSchema.description == "User profile information")
+    #expect(userSchema.description == "UserProfile object")
     #expect(userSchema.jsonSchema.definition.type == JSONSchemaType.object)
     
     // Verify properties exist
@@ -182,7 +173,7 @@ struct Product: Codable, Sendable, SchemaProviding {
     let productSchema = ObjectSchema.from(Product.self)
     
     #expect(productSchema.name == "Product")
-    #expect(productSchema.description == "Product information")
+    #expect(productSchema.description == "Product object")
     
     // Test with custom name and description
     let customProductSchema = ObjectSchema.from(

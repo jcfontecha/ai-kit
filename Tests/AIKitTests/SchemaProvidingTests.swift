@@ -4,62 +4,28 @@ import Foundation
 
 // MARK: - Test Types for Schema DSL
 
-/// Test types that demonstrate the new SchemaProviding approach
-private struct User: SchemaProviding {
+/// Test types that demonstrate the new @AIModel approach
+@AIModel
+private struct User: Codable, Sendable {
     let id: UUID
     let username: String
     let email: String
     let age: Int?
-    
-    static var schema: ObjectSchema<User> {
-        .define(
-            name: "User",
-            description: "A user account"
-        ) {
-            Schema.uuid("id", description: "Unique user identifier")
-            Schema.string("username", 
-                         description: "Unique username",
-                         minLength: 3,
-                         maxLength: 20,
-                         pattern: "^[a-zA-Z0-9_]+$")
-            Schema.email("email", description: "User's email address")
-            Schema.integer("age", 
-                          description: "User's age",
-                          minimum: 0,
-                          maximum: 150,
-                          required: false)
-        }
-    }
 }
 
-private struct Address: SchemaProviding {
+@AIModel
+private struct Address: Codable, Sendable {
     let street: String
     let city: String
     let country: String
     let postalCode: String
-    
-    static var schema: ObjectSchema<Address> {
-        .define(description: "Physical address") {
-            Schema.string("street", minLength: 1)
-            Schema.string("city", minLength: 1)
-            Schema.string("country", minLength: 2, maxLength: 2)
-            Schema.string("postalCode", pattern: "^[0-9]{5}$")
-        }
-    }
 }
 
-private struct Company: SchemaProviding {
+@AIModel
+private struct Company: Codable, Sendable {
     let name: String
     let address: Address
     let employees: [User]
-    
-    static var schema: ObjectSchema<Company> {
-        .define(description: "Company information") {
-            Schema.string("name", minLength: 1, maxLength: 100)
-            Schema.object("address", of: Address.self)
-            Schema.array("employees", of: User.self, minItems: 1)
-        }
-    }
 }
 
 // MARK: - Schema DSL Core Tests
@@ -68,12 +34,12 @@ private struct Company: SchemaProviding {
     // Test that types can provide their own schemas
     let userSchema = User.schema
     #expect(userSchema.name == "User")
-    #expect(userSchema.description == "A user account")
+    #expect(userSchema.description == "User object")
     #expect(userSchema.jsonSchema.definition.type == .object)
     
     let addressSchema = Address.schema
     #expect(addressSchema.name == "Address")
-    #expect(addressSchema.description == "Physical address")
+    #expect(addressSchema.description == "Address object")
     #expect(addressSchema.jsonSchema.definition.type == .object)
 }
 
@@ -209,7 +175,7 @@ private struct Company: SchemaProviding {
     // Test that nested SchemaProviding types work correctly
     let companySchema = Company.schema
     #expect(companySchema.name == "Company")
-    #expect(companySchema.description == "Company information")
+    #expect(companySchema.description == "Company object")
     
     if let properties = companySchema.jsonSchema.definition.properties {
         #expect(properties.keys.contains("name"))
@@ -284,6 +250,8 @@ private struct Company: SchemaProviding {
                 )
             }
         }
+        
+        typealias Partial = Product // Temporary for testing
     }
     
     let schema = Product.schema
@@ -437,6 +405,10 @@ private struct Company: SchemaProviding {
 @Test func testSchemaBuilderMultipleProperties() {
     // Test that the schema builder supports multiple properties
     struct TestType: SchemaProviding {
+        let field1: String
+        let field2: Int
+        let field3: Bool
+        
         static var schema: ObjectSchema<TestType> {
             .define {
                 Schema.string("field1")
@@ -444,6 +416,8 @@ private struct Company: SchemaProviding {
                 Schema.boolean("field3")
             }
         }
+        
+        typealias Partial = TestType
     }
     
     let schema = TestType.schema
@@ -483,6 +457,8 @@ private struct Company: SchemaProviding {
                 Schema.date("updatedAt", description: "Last update timestamp")
             }
         }
+        
+        typealias Partial = Article
     }
     
     let schema = Article.schema

@@ -7,6 +7,9 @@ import Foundation
 public protocol SchemaProviding: Codable, Sendable {
     /// The schema definition for this type.
     static var schema: ObjectSchema<Self> { get }
+    
+    /// The partial type used for streaming incomplete objects
+    associatedtype Partial
 }
 
 // MARK: - Result Builder for Schema Definition
@@ -294,42 +297,56 @@ public extension ObjectSchema {
 // MARK: - Convenience Extensions for Common Types
 
 extension String: SchemaProviding {
+    public typealias Partial = String?
+    
     public static var schema: ObjectSchema<String> {
         ObjectSchema(jsonSchema: .string(), name: "String")
     }
 }
 
 extension Int: SchemaProviding {
+    public typealias Partial = Int?
+    
     public static var schema: ObjectSchema<Int> {
         ObjectSchema(jsonSchema: .integer(), name: "Int")
     }
 }
 
 extension Double: SchemaProviding {
+    public typealias Partial = Double?
+    
     public static var schema: ObjectSchema<Double> {
         ObjectSchema(jsonSchema: .number(), name: "Double")
     }
 }
 
 extension Bool: SchemaProviding {
+    public typealias Partial = Bool?
+    
     public static var schema: ObjectSchema<Bool> {
         ObjectSchema(jsonSchema: .boolean(), name: "Bool")
     }
 }
 
 extension Date: SchemaProviding {
+    public typealias Partial = Date?
+    
     public static var schema: ObjectSchema<Date> {
         ObjectSchema(jsonSchema: .string(format: "date-time"), name: "Date")
     }
 }
 
 extension URL: SchemaProviding {
+    public typealias Partial = URL?
+    
     public static var schema: ObjectSchema<URL> {
         ObjectSchema(jsonSchema: .string(format: "uri"), name: "URL")
     }
 }
 
 extension UUID: SchemaProviding {
+    public typealias Partial = UUID?
+    
     public static var schema: ObjectSchema<UUID> {
         ObjectSchema(jsonSchema: .string(format: "uuid"), name: "UUID")
     }
@@ -337,6 +354,8 @@ extension UUID: SchemaProviding {
 
 // Make Array conform when Element conforms
 extension Array: SchemaProviding where Element: SchemaProviding {
+    public typealias Partial = [Element]?
+    
     public static var schema: ObjectSchema<Array<Element>> {
         ObjectSchema(
             jsonSchema: .array(items: Element.schema.jsonSchema),
@@ -347,6 +366,8 @@ extension Array: SchemaProviding where Element: SchemaProviding {
 
 // Make Optional conform when Wrapped conforms
 extension Optional: SchemaProviding where Wrapped: SchemaProviding {
+    public typealias Partial = Optional<Wrapped>
+    
     public static var schema: ObjectSchema<Optional<Wrapped>> {
         // Create a schema that allows either the wrapped type or null
         let wrappedSchema = Wrapped.schema.jsonSchema
