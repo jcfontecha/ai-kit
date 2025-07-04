@@ -168,23 +168,6 @@ struct Product: Codable, Sendable {
     }
 }
 
-@Test func testSchemaProvidingFromFactory() {
-    // Test ObjectSchema.from() factory method with SchemaProviding types
-    let productSchema = ObjectSchema.from(Product.self)
-    
-    #expect(productSchema.name == "Product")
-    #expect(productSchema.description == "Product object")
-    
-    // Test with custom name and description
-    let customProductSchema = ObjectSchema.from(
-        Product.self,
-        name: "CustomProduct",
-        description: "Custom product schema"
-    )
-    
-    #expect(customProductSchema.name == "CustomProduct")
-    #expect(customProductSchema.description == "Custom product schema")
-}
 
 // MARK: - Schema DSL Tests
 

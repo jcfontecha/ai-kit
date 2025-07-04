@@ -24,14 +24,6 @@ public extension Message {
     }
 }
 
-// MARK: - ObjectSchema Convenience Extensions
-
-public extension ObjectSchema {
-    /// Create schema from a type that conforms to SchemaProviding
-    static func from<U: Codable & SchemaProviding>(_ type: U.Type) -> ObjectSchema<U> {
-        return ObjectSchema<U>.from(type)
-    }
-}
 
 // MARK: - Configuration Chaining
 

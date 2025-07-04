@@ -185,46 +185,46 @@ This ensures predictable costs and consistent test behavior across all E2E test 
 
 ## Schema Implementation Patterns
 
-### 🎯 Modern Approach: SchemaProviding Protocol
+### 🎯 Primary Approach: @AIModel Macro
 
 **The recommended pattern for AIKit schema definition:**
 
-1. **SchemaProviding Protocol**: Types define their own schemas via protocol conformance
-2. **SwiftUI-like DSL**: Declarative schema definition with result builders
-3. **Compile-time Safety**: No runtime reflection, all schemas verified at compile time
-4. **Provider Agnostic**: Same schema works across OpenAI, Anthropic, Google
-5. **Type Safety**: Leverage Swift's type system and compile-time checks
+1. **@AIModel Macro**: Automatic schema generation with field annotations
+2. **Type Safety**: Compile-time verification of schemas
+3. **Provider Agnostic**: Same schema works across OpenAI, Anthropic, Google
+4. **Clean API**: Simple, declarative syntax that's hard to misuse
 
 ### 🏗️ Implementation Patterns
 
-#### SchemaProviding Types (Recommended)
+#### @AIModel Types (Recommended - 90% of use cases)
 ```swift
-struct Person: SchemaProviding {
+@AIModel
+struct Person {
+    @Field("Full legal name", minLength: 1)
     let name: String
-    let age: Int
-    let email: String?
     
-    static var schema: ObjectSchema<Person> {
-        .define(description: "A person profile") {
-            Schema.string("name", description: "Full legal name", minLength: 1)
-            Schema.integer("age", description: "Age in years", minimum: 0, maximum: 150)
-            Schema.email("email", description: "Optional contact email", required: false)
-        }
-    }
+    @Field("Age in years", range: 0...150)
+    let age: Int
+    
+    @Field("Optional contact email", format: "email")
+    let email: String?
 }
 
 // Clean, type-safe API
 let person = try await client.generateObject(model, prompt: "Create a person", type: Person.self)
 ```
 
-#### Manual ObjectSchema (When needed)
+#### Manual ObjectSchema (For external types only)
 ```swift
-// Manual only when you need full control
-let manual = ObjectSchema<Person>.manual(
-    jsonSchema: customSchema,
-    name: "Person"
+// Only use when you can't modify the type to add @AIModel
+let schema = ObjectSchema<ExternalType>.manual(
+    jsonSchema: .object(properties: [
+        "name": .string(minLength: 1),
+        "age": .integer(minimum: 0, maximum: 150)
+    ], required: ["name", "age"]),
+    name: "ExternalType"
 )
-let response = try await client.generateObject(model, prompt: "Create a person", schema: manual)
+let response = try await client.generateObject(model, prompt: "Create a person", schema: schema)
 ```
 
 #### Provider Integration Pattern
@@ -239,57 +239,53 @@ protocol AIProvider {
 // Google: OpenAPI conversion
 ```
 
-#### Field Constraint Patterns
+#### Field Constraint Patterns with @Field
 ```swift
-// Numeric constraints
-.describe(\.price, "Price in USD", minimum: 0.01, maximum: 99999.99)
-
-// String constraints  
-.describe(\.name, "Product name", minLength: 1, maxLength: 100)
-
-// Enum constraints
-.describe(\.category, "Category", enum: ["electronics", "books", "clothing"])
-
-// Array constraints
-.describe(\.tags, "Product tags", maxItems: 10)
+@AIModel
+struct Product {
+    @Field("Price in USD", range: 0.01...99999.99)
+    let price: Double
+    
+    @Field("Product name", minLength: 1, maxLength: 100)
+    let name: String
+    
+    @Field("Category", enum: ["electronics", "books", "clothing"])
+    let category: String
+    
+    @Field("Product tags", maxItems: 10)
+    let tags: [String]
+}
 ```
 
 ### 🧪 Testing Patterns
 
 #### Schema Generation Tests
 ```swift
-struct TestType: SchemaProviding {
+@AIModel
+struct TestType {
+    @Field("Test field")
     let field: String
-    
-    static var schema: ObjectSchema<TestType> {
-        .define {
-            Schema.string("field", description: "Test field")
-        }
-    }
 }
 
-func testSchemaProvidingTypes() {
+func testAIModelTypes() {
     let schema = TestType.schema
     XCTAssertNotNil(schema.jsonSchema)
     XCTAssertEqual(schema.name, "TestType")
     
     // Test clean API
-    // let result = try await client.generateObject(model, prompt: "test", type: TestType.self)
+    let result = try await client.generateObject(model, prompt: "test", type: TestType.self)
 }
 ```
 
 #### E2E Object Generation Tests
 ```swift
-struct TestPerson: SchemaProviding {
+@AIModel
+struct TestPerson {
+    @Field("Full name")
     let name: String
-    let age: Int
     
-    static var schema: ObjectSchema<TestPerson> {
-        .define {
-            Schema.string("name", description: "Full name")
-            Schema.integer("age", description: "Age in years", minimum: 0, maximum: 150)
-        }
-    }
+    @Field("Age in years", range: 0...150)
+    let age: Int
 }
 
 func testRealObjectGeneration() async throws {
@@ -304,19 +300,11 @@ func testRealObjectGeneration() async throws {
 }
 ```
 
-### ✨ Schema Evolution: From Reflection to Protocol-Based Design
+### ✨ Schema Evolution: From Manual to Macro-Based
 
-**Old Approach (Deprecated):**
+**Old Approach (Manual):**
 ```swift
-// ❌ Unsafe runtime reflection, no compile-time guarantees
-let schema = ObjectSchema<Person>()
-    .describe(\.name, "Full name")  // KeyPath-based, brittle
-    .describe(\.age, "Age", minimum: 0, maximum: 150)
-```
-
-**New Approach (Recommended):**
-```swift
-// ✅ Compile-time safety, explicit schema definition
+// ❌ Verbose, error-prone manual implementation
 struct Person: SchemaProviding {
     let name: String
     let age: Int
@@ -328,19 +316,33 @@ struct Person: SchemaProviding {
         }
     }
 }
+```
 
-// Clean API that leverages the schema
+**New Approach (Recommended):**
+```swift
+// ✅ Clean, declarative, automatic
+@AIModel
+struct Person {
+    @Field("Full name")
+    let name: String
+    
+    @Field("Age", range: 0...150)
+    let age: Int
+}
+
+// Same clean API
 let person = try await client.generateObject(model, prompt: "Create person", type: Person.self)
 ```
 
-### 🏆 Benefits of SchemaProviding
+### 🏆 Benefits of @AIModel
 
-1. **🏗️ SwiftUI-like DSL**: Familiar declarative syntax with result builders
-2. **⚡ Compile-time Safety**: No runtime failures, all schemas verified upfront
-3. **🔗 Automatic Nesting**: Reference other SchemaProviding types seamlessly
-4. **📝 Self-Documenting**: Schema lives with the type, improving discoverability
-5. **🎯 Type-safe API**: `generateObject(type: T.self)` vs manual schema passing
+1. **🏗️ Clean Syntax**: Simple, declarative field annotations
+2. **⚡ Compile-time Safety**: All schemas verified at compile time
+3. **🔗 Automatic Nesting**: Reference other @AIModel types seamlessly
+4. **📝 Self-Documenting**: Field descriptions are part of the property declaration
+5. **🎯 Type-safe API**: `generateObject(type: T.self)` just works
 6. **🔄 Composable**: Easy to build complex nested structures
-7. **🚀 Performance**: No reflection overhead, faster execution
+7. **🚀 Zero Boilerplate**: No manual schema definitions needed
+8. **🛡️ Hard to Misuse**: One clear way to define schemas
 
 This methodology ensures high-quality, maintainable code that mirrors Vercel AI SDK while being idiomatic to Swift.

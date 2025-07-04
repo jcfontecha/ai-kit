@@ -3,7 +3,12 @@ import Foundation
 // MARK: - Core Protocol for Schema Providing Types
 
 /// Protocol for types that can provide their own schema.
+/// 
+/// ⚠️ **Note**: This protocol is automatically implemented by the @AIModel macro.
+/// You should use @AIModel for your types instead of implementing this protocol manually.
+/// 
 /// This creates a compile-time contract ensuring types define their schemas.
+/// The @AIModel macro generates conformance to this protocol automatically.
 public protocol SchemaProviding: Codable, Sendable {
     /// The schema definition for this type.
     static var schema: ObjectSchema<Self> { get }
@@ -15,26 +20,30 @@ public protocol SchemaProviding: Codable, Sendable {
 // MARK: - Result Builder for Schema Definition
 
 /// A result builder that enables declarative schema definition.
+/// 
+/// This is used internally by the @AIModel macro.
+/// You typically don't need to use this directly - use @AIModel instead.
+/// 
 /// This provides a SwiftUI-like syntax for building schemas.
 @resultBuilder
-public struct ObjectSchemaBuilder {
-    public static func buildBlock(_ components: SchemaProperty...) -> [SchemaProperty] {
+internal struct ObjectSchemaBuilder {
+    static func buildBlock(_ components: SchemaProperty...) -> [SchemaProperty] {
         Array(components)
     }
     
-    public static func buildOptional(_ component: SchemaProperty?) -> SchemaProperty? {
+    static func buildOptional(_ component: SchemaProperty?) -> SchemaProperty? {
         component
     }
     
-    public static func buildEither(first component: SchemaProperty) -> SchemaProperty {
+    static func buildEither(first component: SchemaProperty) -> SchemaProperty {
         component
     }
     
-    public static func buildEither(second component: SchemaProperty) -> SchemaProperty {
+    static func buildEither(second component: SchemaProperty) -> SchemaProperty {
         component
     }
     
-    public static func buildArray(_ components: [SchemaProperty]) -> [SchemaProperty] {
+    static func buildArray(_ components: [SchemaProperty]) -> [SchemaProperty] {
         components
     }
 }
@@ -42,7 +51,7 @@ public struct ObjectSchemaBuilder {
 // MARK: - Schema Property Definition
 
 /// Represents a single property in a schema.
-public struct SchemaProperty {
+internal struct SchemaProperty {
     let key: String
     let schema: JSONSchema
     let required: Bool
@@ -57,10 +66,13 @@ public struct SchemaProperty {
 // MARK: - Schema Property Builders
 
 /// Namespace for schema property builders.
-public enum Schema {
+/// 
+/// This is used internally by the @AIModel macro.
+/// You typically don't need to use this directly - use @Field annotations instead.
+internal enum Schema {
     
     /// Define a string property.
-    public static func string(
+    static func string(
         _ key: String,
         description: String? = nil,
         minLength: Int? = nil,
@@ -84,7 +96,7 @@ public enum Schema {
     }
     
     /// Define an integer property.
-    public static func integer(
+    static func integer(
         _ key: String,
         description: String? = nil,
         minimum: Int? = nil,
@@ -102,7 +114,7 @@ public enum Schema {
     }
     
     /// Define a number property.
-    public static func number(
+    static func number(
         _ key: String,
         description: String? = nil,
         minimum: Double? = nil,
@@ -120,7 +132,7 @@ public enum Schema {
     }
     
     /// Define a boolean property.
-    public static func boolean(
+    static func boolean(
         _ key: String,
         description: String? = nil,
         required: Bool = true
@@ -133,7 +145,7 @@ public enum Schema {
     }
     
     /// Define an array property.
-    public static func array<T: SchemaProviding>(
+    static func array<T: SchemaProviding>(
         _ key: String,
         of type: T.Type,
         description: String? = nil,
@@ -155,7 +167,7 @@ public enum Schema {
     }
     
     /// Define an array property with custom element schema.
-    public static func array(
+    static func array(
         _ key: String,
         elementSchema: JSONSchema,
         description: String? = nil,
@@ -177,7 +189,7 @@ public enum Schema {
     }
     
     /// Define an object property using a SchemaProviding type.
-    public static func object<T: SchemaProviding>(
+    static func object<T: SchemaProviding>(
         _ key: String,
         of type: T.Type,
         description: String? = nil,
@@ -191,7 +203,7 @@ public enum Schema {
     }
     
     /// Define an object property with custom schema.
-    public static func object(
+    static func object(
         _ key: String,
         schema: JSONSchema,
         description: String? = nil,
@@ -205,7 +217,7 @@ public enum Schema {
     }
     
     /// Define a date property.
-    public static func date(
+    static func date(
         _ key: String,
         description: String? = nil,
         required: Bool = true
@@ -218,7 +230,7 @@ public enum Schema {
     }
     
     /// Define a UUID property.
-    public static func uuid(
+    static func uuid(
         _ key: String,
         description: String? = nil,
         required: Bool = true
@@ -231,7 +243,7 @@ public enum Schema {
     }
     
     /// Define a URL property.
-    public static func url(
+    static func url(
         _ key: String,
         description: String? = nil,
         required: Bool = true
@@ -244,7 +256,7 @@ public enum Schema {
     }
     
     /// Define an email property.
-    public static func email(
+    static func email(
         _ key: String,
         description: String? = nil,
         required: Bool = true
@@ -259,7 +271,7 @@ public enum Schema {
 
 // MARK: - Enhanced ObjectSchema
 
-public extension ObjectSchema {
+internal extension ObjectSchema {
     
     /// Create a schema using the result builder syntax.
     static func define(

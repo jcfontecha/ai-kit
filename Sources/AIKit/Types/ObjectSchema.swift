@@ -534,28 +534,6 @@ public extension ObjectSchema {
 
 public extension ObjectSchema {
     
-    /// Create an ObjectSchema from a type that conforms to SchemaProviding.
-    ///
-    /// This is the recommended way to create schemas for types that define
-    /// their own JSON Schema through the SchemaProviding protocol.
-    ///
-    /// - Parameters:
-    ///   - type: The Swift type that conforms to SchemaProviding
-    ///   - name: Optional custom name for the schema
-    ///   - description: Optional description of the schema
-    /// - Returns: An ObjectSchema using the type's provided JSON Schema
-    static func from(
-        _ type: T.Type,
-        name: String? = nil,
-        description: String? = nil
-    ) -> ObjectSchema<T> where T: SchemaProviding {
-        let providedSchema = type.schema
-        return ObjectSchema<T>(
-            jsonSchema: providedSchema.jsonSchema,
-            name: name ?? providedSchema.name ?? String(describing: type).components(separatedBy: ".").last,
-            description: description ?? providedSchema.description
-        )
-    }
     
     
     /// Create an ObjectSchema with a manually defined JSON Schema.
