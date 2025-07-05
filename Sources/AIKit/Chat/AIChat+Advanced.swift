@@ -298,7 +298,7 @@ extension AIChat {
 @available(iOS 16.0, macOS 13.0, *)
 extension ChatMessage: Codable {
     enum CodingKeys: String, CodingKey {
-        case id, role, content, toolCalls, timestamp
+        case id, role, content, toolCalls, timestamp, orderedContent
     }
     
     public init(from decoder: Decoder) throws {
@@ -307,27 +307,38 @@ extension ChatMessage: Codable {
         role = try container.decode(MessageRole.self, forKey: .role)
         timestamp = try container.decode(Date.self, forKey: .timestamp)
         
-        // Decode legacy format and convert to ordered content
-        let contentString = try container.decode(String.self, forKey: .content)
-        let toolCallsArray = try container.decodeIfPresent([ToolCall].self, forKey: .toolCalls) ?? []
-        
-        var orderedContent: [MessageContent] = []
-        if !contentString.isEmpty {
-            orderedContent.append(.text(contentString))
+        // Try to decode orderedContent first (new format)
+        if let decodedOrderedContent = try? container.decode([MessageContent].self, forKey: .orderedContent) {
+            // New format with orderedContent preserved
+            self.orderedContent = decodedOrderedContent
+        } else {
+            // Fallback to legacy format for backward compatibility
+            let contentString = try container.decode(String.self, forKey: .content)
+            let toolCallsArray = try container.decodeIfPresent([ToolCall].self, forKey: .toolCalls) ?? []
+            
+            var orderedContent: [MessageContent] = []
+            if !contentString.isEmpty {
+                orderedContent.append(.text(contentString))
+            }
+            for toolCall in toolCallsArray {
+                orderedContent.append(.toolCall(toolCall))
+            }
+            self.orderedContent = orderedContent
         }
-        for toolCall in toolCallsArray {
-            orderedContent.append(.toolCall(toolCall))
-        }
-        self.orderedContent = orderedContent
     }
     
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(role, forKey: .role)
+        try container.encode(timestamp, forKey: .timestamp)
+        
+        // Encode both legacy format (for backward compatibility) and new format
         try container.encode(content, forKey: .content)
         try container.encode(toolCalls, forKey: .toolCalls)
-        try container.encode(timestamp, forKey: .timestamp)
+        
+        // Encode the full orderedContent array
+        try container.encode(orderedContent, forKey: .orderedContent)
     }
 }
 
