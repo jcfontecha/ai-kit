@@ -165,10 +165,7 @@ public struct AnthropicProvider: AIProvider {
             allBetaFeatures.insert("pdfs-2024-09-25")
         }
         
-        // Add reasoning beta if using reasoning model
-        if isReasoningModel(request.modelId) {
-            allBetaFeatures.insert("claude-3-7-sonnet-2024-10-22-v1:0")
-        }
+        // Note: Reasoning models don't require special beta headers
         
         // Add beta features if any
         if !allBetaFeatures.isEmpty {
@@ -259,10 +256,7 @@ public struct AnthropicProvider: AIProvider {
                         allBetaFeatures.insert("pdfs-2024-09-25")
                     }
                     
-                    // Add reasoning beta if using reasoning model
-                    if isReasoningModel(request.modelId) {
-                        allBetaFeatures.insert("claude-3-7-sonnet-2024-10-22-v1:0")
-                    }
+                    // Note: Reasoning models don't require special beta headers
                     
                     // Add beta features if any
                     if !allBetaFeatures.isEmpty {
@@ -420,6 +414,9 @@ public struct AnthropicProvider: AIProvider {
         if configuration.seed != nil {
             throw AIProviderError.unsupportedParameter("seed", "Not supported by Anthropic")
         }
+        
+        // Note: For reasoning models, temperature/topK/topP validation is handled
+        // in convertToAnthropicRequest where we have access to the model ID
     }
 }
 
@@ -492,20 +489,10 @@ private extension AnthropicProvider {
             toolChoice = AnthropicToolChoice(type: "tool", name: tool.function.name)
         }
         
-        // Check for reasoning model and validate configuration
+        // Check for reasoning model
         let isReasoning = isReasoningModel(request.modelId)
-        if isReasoning {
-            // Reasoning models don't support temperature, topK, topP
-            if request.configuration.temperature != nil {
-                throw AIProviderError.unsupportedParameter("temperature", "Not supported for reasoning models")
-            }
-            if request.configuration.topK != nil {
-                throw AIProviderError.unsupportedParameter("topK", "Not supported for reasoning models")
-            }
-            if request.configuration.topP != nil {
-                throw AIProviderError.unsupportedParameter("topP", "Not supported for reasoning models")
-            }
-        }
+        // Note: For reasoning models, we silently ignore temperature, topK, topP
+        // following Vercel AI SDK's pattern. They are set to nil below.
         
         // Extract thinking configuration from provider-specific options
         var thinkingBudget: Int? = nil
