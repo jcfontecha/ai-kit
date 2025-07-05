@@ -419,15 +419,9 @@ public struct ChatMessage: Identifiable, Sendable {
                case .text(let existingText) = orderedContent[lastIndex] {
                 // Append to existing text content
                 orderedContent[lastIndex] = .text(existingText + delta)
-                #if DEBUG
-                print("[AIChat] Appending text delta to existing content: '\(delta)' -> total: '\(existingText + delta)'")
-                #endif
             } else {
                 // Create new text content
                 orderedContent.append(.text(delta))
-                #if DEBUG
-                print("[AIChat] Creating new text content with delta: '\(delta)'")
-                #endif
             }
         }
     }
