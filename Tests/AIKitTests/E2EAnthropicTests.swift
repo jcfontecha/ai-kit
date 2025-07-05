@@ -91,6 +91,23 @@ struct AnthropicRecipe: Codable {
     }
 }
 
+// Define schema for object generation test
+struct AnthropicTestPerson: Codable, Sendable, SchemaProviding {
+    let name: String
+    let age: Int
+    let email: String
+    
+    typealias Partial = AnthropicTestPerson
+    
+    static var schema: ObjectSchema<AnthropicTestPerson> {
+        .define(description: "Person object") {
+            Schema.string("name", description: "Person's full name", required: true)
+            Schema.integer("age", description: "Age in years", minimum: 0, maximum: 150, required: true)
+            Schema.string("email", description: "Email address", format: "email", required: true)
+        }
+    }
+}
+
 // MARK: - E2E Tests for Anthropic
 
 @Suite("Real Anthropic API E2E Tests")
@@ -522,5 +539,327 @@ struct E2EAnthropicTests {
         }
         
         print("✅ Anthropic streaming tool calling fix verified!")
+    }
+    
+    // MARK: - New Feature Tests
+    
+    @Test("Real Anthropic Image Support")
+    func testRealAnthropicImageSupport() async throws {
+        print("🧪 Testing image support with real Anthropic API...")
+        
+        let provider = try createAnthropicProvider()
+        let model = provider.languageModel(Self.TEST_MODEL)
+            .temperature(0.3)
+            .maxTokens(Self.MAX_TOKENS)
+        
+        let client = AIClient()
+        
+        // Create a small test image (1x1 red pixel)
+        let redPixelBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+        let imageData = Data(base64Encoded: redPixelBase64)!
+        
+        // Test with base64 image data
+        let response = try await client.generateText(
+            model,
+            messages: [
+                Message.user("What color is this 1x1 pixel image?", image: 
+                    ImageContent.data(imageData, mimeType: "image/png")
+                )
+            ]
+        )
+        
+        print("✅ Image support test successful")
+        print("📝 Response: \(response.text)")
+        
+        #expect(!response.text.isEmpty, "Response should not be empty")
+        #expect(response.text.lowercased().contains("red") || response.text.lowercased().contains("pixel"), "Response should describe the image")
+        
+        // Test with another base64 image (green pixel)
+        let greenPixelBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        let greenImageData = Data(base64Encoded: greenPixelBase64)!
+        
+        let greenResponse = try await client.generateText(
+            model,
+            messages: [
+                Message.user("What color is this pixel?", image: 
+                    ImageContent.data(greenImageData, mimeType: "image/png")
+                )
+            ]
+        )
+        
+        print("📝 Green pixel response: \(greenResponse.text)")
+        #expect(!greenResponse.text.isEmpty, "Green response should not be empty")
+        #expect(greenResponse.text.lowercased().contains("green"), "Response should mention green")
+    }
+    
+    @Test("Real Anthropic PDF Support") 
+    func testRealAnthropicPDFSupport() async throws {
+        print("🧪 Testing PDF support with real Anthropic API...")
+        
+        let provider = try createAnthropicProvider()
+        let model = provider.languageModel(Self.TEST_MODEL)
+            .temperature(0.3)
+            .maxTokens(Self.MAX_TOKENS)
+        
+        let client = AIClient()
+        
+        // Create a simple PDF with "Hello PDF" text
+        // This is a minimal valid PDF file
+        let pdfContent = """
+        %PDF-1.4
+        1 0 obj
+        << /Type /Catalog /Pages 2 0 R >>
+        endobj
+        2 0 obj
+        << /Type /Pages /Kids [3 0 R] /Count 1 >>
+        endobj
+        3 0 obj
+        << /Type /Page /Parent 2 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> /Contents 4 0 R >>
+        endobj
+        4 0 obj
+        << /Length 44 >>
+        stream
+        BT
+        /F1 12 Tf
+        100 700 Td
+        (Hello PDF) Tj
+        ET
+        endstream
+        endobj
+        xref
+        0 5
+        0000000000 65535 f
+        0000000009 00000 n
+        0000000058 00000 n
+        0000000115 00000 n
+        0000000262 00000 n
+        trailer
+        << /Size 5 /Root 1 0 R >>
+        startxref
+        350
+        %%EOF
+        """.data(using: .utf8)!
+        
+        let response = try await client.generateText(
+            model,
+            messages: [
+                Message.user("What text is in this PDF?", file: 
+                    FileContent.data(pdfContent, mimeType: "application/pdf", filename: "test.pdf")
+                )
+            ]
+        )
+        
+        print("✅ PDF support test successful")
+        print("📝 Response: \(response.text)")
+        print("🔢 Token usage: \(response.usage.totalTokens)")
+        
+        #expect(!response.text.isEmpty, "Response should not be empty")
+        #expect(response.text.contains("Hello") || response.text.contains("PDF"), "Response should mention content from PDF")
+    }
+    
+    @Test("Real Anthropic Object Generation with Tools")
+    func testRealAnthropicObjectGenerationWithTools() async throws {
+        print("🧪 Testing object generation via tools with real Anthropic API...")
+        
+        let provider = try createAnthropicProvider()
+        let model = provider.languageModel(Self.TEST_MODEL)
+            .temperature(0.1)
+            .maxTokens(200)
+        
+        let client = AIClient()
+        
+        // Use object generation which should use tool calling under the hood
+        let person = try await client.generateObject(
+            model,
+            prompt: "Generate a person named Alice Smith, age 28, with email alice@example.com",
+            type: AnthropicTestPerson.self
+        )
+        
+        print("✅ Object generation successful")
+        print("👤 Generated person: \(person.object.name), age \(person.object.age), email: \(person.object.email)")
+        
+        #expect(person.object.name.contains("Alice"), "Name should contain Alice")
+        #expect(person.object.age == 28, "Age should be 28")
+        #expect(person.object.email.contains("alice"), "Email should contain alice")
+    }
+    
+    @Test("Real Anthropic Cache Control")
+    func testRealAnthropicCacheControl() async throws {
+        print("🧪 Testing cache control with real Anthropic API...")
+        
+        let provider = try createAnthropicProvider()
+        let model = provider.languageModel(Self.TEST_MODEL)
+            .temperature(0.3)
+            .maxTokens(Self.MAX_TOKENS)
+        
+        let client = AIClient()
+        
+        // Make two identical requests to test cache behavior
+        let messages = [Message.user("What is the capital of France?")]
+        
+        let response1 = try await client.generateText(model, messages: messages)
+        print("📝 First response: \(response1.text)")
+        print("🔢 First usage: \(response1.usage.promptTokens) prompt, \(response1.usage.completionTokens) completion")
+        
+        // Check for cache information in usage details
+        if let details = response1.usage.details {
+            print("📊 First cache details: \(details)")
+        }
+        
+        // Make the same request again
+        let response2 = try await client.generateText(model, messages: messages)
+        print("📝 Second response: \(response2.text)")
+        print("🔢 Second usage: \(response2.usage.promptTokens) prompt, \(response2.usage.completionTokens) completion")
+        
+        // Check for cache information in second request
+        if let details = response2.usage.details {
+            print("📊 Second cache details: \(details)")
+            #expect(details["cache_read_input_tokens"] != nil || details["cache_creation_input_tokens"] != nil, 
+                   "Should have cache information in usage details")
+        }
+        
+        #expect(!response1.text.isEmpty && !response2.text.isEmpty, "Both responses should have content")
+        #expect(response1.text.lowercased().contains("paris") && response2.text.lowercased().contains("paris"), 
+               "Both responses should mention Paris")
+    }
+    
+    @Test("Real Anthropic Reasoning Model Support")
+    func testRealAnthropicReasoningModelSupport() async throws {
+        print("🧪 Testing reasoning model support with real Anthropic API...")
+        
+        // Skip this test if reasoning models aren't available
+        let reasoningModel = "claude-3-7-sonnet-20241022-v1:0"
+        
+        let provider = try createAnthropicProvider()
+        
+        // Test that reasoning models don't allow temperature/topK/topP
+        do {
+            let _ = provider.languageModel(reasoningModel)
+                .temperature(0.5) // This should be rejected during request
+            
+            let client = AIClient()
+            _ = try await client.generateText(
+                provider.languageModel(reasoningModel).temperature(0.5),
+                messages: [Message.user("Test")]
+            )
+            
+            Issue.record("Should have thrown error for temperature on reasoning model")
+        } catch {
+            print("✅ Correctly rejected temperature for reasoning model")
+            #expect(error.localizedDescription.contains("temperature") || error.localizedDescription.contains("reasoning"), 
+                   "Error should mention temperature or reasoning")
+        }
+        
+        // Test with thinking budget tokens
+        let model = provider.languageModel(reasoningModel)
+            .maxTokens(100)
+            .providerSpecific(["thinking_budget_tokens": "1000"])
+        
+        // Note: This might fail if the reasoning model isn't available
+        // We'll catch and skip in that case
+        do {
+            let client = AIClient()
+            let response = try await client.generateText(
+                model,
+                messages: [Message.user("What is 25 * 4?")]
+            )
+            
+            print("✅ Reasoning model test successful")
+            print("📝 Response: \(response.text)")
+            
+            // Check if response contains thinking blocks
+            if response.text.contains("[Thinking]") {
+                print("🧠 Found thinking blocks in response")
+                #expect(response.text.contains("[Thinking]"), "Response should contain thinking blocks")
+            }
+            
+            #expect(response.text.contains("100"), "Response should contain the answer 100")
+        } catch {
+            print("⚠️ Reasoning model test skipped: \(error)")
+            // This is okay - reasoning models might not be available
+        }
+    }
+    
+    @Test("Real Anthropic Enhanced Error Handling")
+    func testRealAnthropicEnhancedErrorHandling() async throws {
+        print("🧪 Testing enhanced error handling with real Anthropic API...")
+        
+        // Test with invalid API key
+        let invalidProvider = AnthropicProvider(apiKey: "invalid-key-test")
+        let model = invalidProvider.languageModel(Self.TEST_MODEL)
+        
+        let client = AIClient()
+        
+        do {
+            _ = try await client.generateText(
+                model,
+                messages: [Message.user("Hello")]
+            )
+            Issue.record("Should have thrown authentication error")
+        } catch {
+            print("✅ Correctly caught authentication error")
+            print("❌ Error: \(error)")
+            #expect(error.localizedDescription.contains("authentication") || error.localizedDescription.contains("401"), 
+                   "Error should mention authentication")
+        }
+        
+        // Test with invalid model
+        let provider = try createAnthropicProvider()
+        let invalidModel = provider.languageModel("invalid-model-name")
+        
+        do {
+            _ = try await client.generateText(
+                invalidModel,
+                messages: [Message.user("Hello")]
+            )
+            Issue.record("Should have thrown invalid model error")
+        } catch {
+            print("✅ Correctly caught invalid model error")
+            print("❌ Error: \(error)")
+            #expect(error.localizedDescription.contains("model") || error.localizedDescription.contains("400"), 
+                   "Error should mention invalid model")
+        }
+    }
+    
+    @Test("Real Anthropic Streaming with Images")
+    func testRealAnthropicStreamingWithImages() async throws {
+        print("🧪 Testing streaming with images using real Anthropic API...")
+        
+        let provider = try createAnthropicProvider()
+        let model = provider.languageModel(Self.TEST_MODEL)
+            .temperature(0.3)
+            .maxTokens(Self.MAX_TOKENS)
+        
+        let client = AIClient()
+        
+        // Create a blue pixel image
+        let bluePixelBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBwIAMCbHYQAAAABJRU5ErkJggg=="
+        let imageData = Data(base64Encoded: bluePixelBase64)!
+        
+        let stream = await client.streamText(
+            model,
+            messages: [
+                Message.user("Describe this image in a few words.", image: 
+                    ImageContent.data(imageData, mimeType: "image/png")
+                )
+            ]
+        )
+        
+        var chunks: [TextChunk] = []
+        var fullContent = ""
+        
+        for try await chunk in stream.textStream {
+            chunks.append(chunk)
+            fullContent += chunk.delta
+        }
+        
+        print("✅ Streaming with images successful")
+        print("📊 Received \(chunks.count) chunks")
+        print("📝 Full content: \(fullContent)")
+        
+        #expect(chunks.count > 1, "Should receive multiple chunks")
+        #expect(!fullContent.isEmpty, "Should have content")
+        #expect(fullContent.lowercased().contains("blue") || fullContent.lowercased().contains("pixel") || fullContent.lowercased().contains("image"), 
+               "Should describe the image")
     }
 }

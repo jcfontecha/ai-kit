@@ -157,9 +157,22 @@ public struct AnthropicProvider: AIProvider {
         httpRequest.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         httpRequest.setValue(version, forHTTPHeaderField: "anthropic-version")
         
+        // Collect all beta features including dynamic ones from the request
+        var allBetaFeatures = Set(betaFeatures)
+        
+        // Check if request contains PDF content and add beta feature if needed
+        if requestContainsPDF(request) {
+            allBetaFeatures.insert("pdfs-2024-09-25")
+        }
+        
+        // Add reasoning beta if using reasoning model
+        if isReasoningModel(request.modelId) {
+            allBetaFeatures.insert("claude-3-7-sonnet-2024-10-22-v1:0")
+        }
+        
         // Add beta features if any
-        if !betaFeatures.isEmpty {
-            httpRequest.setValue(betaFeatures.joined(separator: ","), forHTTPHeaderField: "anthropic-beta")
+        if !allBetaFeatures.isEmpty {
+            httpRequest.setValue(allBetaFeatures.sorted().joined(separator: ","), forHTTPHeaderField: "anthropic-beta")
         }
         
         // Add custom headers
@@ -180,9 +193,31 @@ public struct AnthropicProvider: AIProvider {
         }
         
         if httpResponse.statusCode != 200 {
-            let errorResponse = try? JSONDecoder().decode(AnthropicErrorResponse.self, from: data)
-            let errorMessage = errorResponse?.error.message ?? "HTTP \(httpResponse.statusCode)"
-            throw AnthropicError.apiError(httpResponse.statusCode, errorMessage)
+            // Try to decode error response
+            if let errorResponse = try? JSONDecoder().decode(AnthropicErrorResponse.self, from: data) {
+                let errorType = errorResponse.error.type
+                let errorMessage = errorResponse.error.message
+                
+                // Map to specific error types based on error type
+                switch errorType {
+                case "authentication_error":
+                    throw AnthropicError.authenticationFailed
+                case "rate_limit_error":
+                    throw AnthropicError.rateLimitExceeded
+                case "invalid_request_error":
+                    throw AnthropicError.invalidRequest(errorMessage)
+                case "overloaded_error":
+                    throw AnthropicError.overloaded
+                case "permission_error":
+                    throw AnthropicError.permissionDenied(errorMessage)
+                default:
+                    throw AnthropicError.apiError(httpResponse.statusCode, "\(errorType): \(errorMessage)")
+                }
+            } else {
+                // Fallback for non-JSON error responses
+                let errorText = String(data: data, encoding: .utf8) ?? "Unknown error"
+                throw AnthropicError.apiError(httpResponse.statusCode, errorText)
+            }
         }
         
         // Decode response
@@ -216,9 +251,22 @@ public struct AnthropicProvider: AIProvider {
                     httpRequest.setValue(version, forHTTPHeaderField: "anthropic-version")
                     httpRequest.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     
+                    // Collect all beta features including dynamic ones from the request
+                    var allBetaFeatures = Set(betaFeatures)
+                    
+                    // Check if request contains PDF content and add beta feature if needed
+                    if requestContainsPDF(request) {
+                        allBetaFeatures.insert("pdfs-2024-09-25")
+                    }
+                    
+                    // Add reasoning beta if using reasoning model
+                    if isReasoningModel(request.modelId) {
+                        allBetaFeatures.insert("claude-3-7-sonnet-2024-10-22-v1:0")
+                    }
+                    
                     // Add beta features if any
-                    if !betaFeatures.isEmpty {
-                        httpRequest.setValue(betaFeatures.joined(separator: ","), forHTTPHeaderField: "anthropic-beta")
+                    if !allBetaFeatures.isEmpty {
+                        httpRequest.setValue(allBetaFeatures.sorted().joined(separator: ","), forHTTPHeaderField: "anthropic-beta")
                     }
                     
                     // Add custom headers
@@ -239,7 +287,34 @@ public struct AnthropicProvider: AIProvider {
                     }
                     
                     if httpResponse.statusCode != 200 {
-                        throw AnthropicError.apiError(httpResponse.statusCode, "Streaming request failed")
+                        // Try to read error response for streaming
+                        var errorData = Data()
+                        for try await byte in asyncBytes {
+                            errorData.append(byte)
+                            if errorData.count > 4096 { break } // Limit error response size
+                        }
+                        
+                        if let errorResponse = try? JSONDecoder().decode(AnthropicErrorResponse.self, from: errorData) {
+                            let errorType = errorResponse.error.type
+                            let errorMessage = errorResponse.error.message
+                            
+                            switch errorType {
+                            case "authentication_error":
+                                throw AnthropicError.authenticationFailed
+                            case "rate_limit_error":
+                                throw AnthropicError.rateLimitExceeded
+                            case "invalid_request_error":
+                                throw AnthropicError.invalidRequest(errorMessage)
+                            case "overloaded_error":
+                                throw AnthropicError.overloaded
+                            case "permission_error":
+                                throw AnthropicError.permissionDenied(errorMessage)
+                            default:
+                                throw AnthropicError.apiError(httpResponse.statusCode, "\(errorType): \(errorMessage)")
+                            }
+                        } else {
+                            throw AnthropicError.apiError(httpResponse.statusCode, "Streaming request failed")
+                        }
                     }
                     
                     // Process Server-Sent Events
@@ -353,6 +428,16 @@ public struct AnthropicProvider: AIProvider {
 @available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
 private extension AnthropicProvider {
     
+    /// Check if a model is a reasoning model
+    func isReasoningModel(_ modelId: String) -> Bool {
+        let reasoningModels = [
+            "claude-4-opus",
+            "claude-4-sonnet", 
+            "claude-3-7-sonnet"
+        ]
+        return reasoningModels.contains { modelId.contains($0) }
+    }
+    
     /// Convert ProviderRequest to Anthropic API format following Vercel AI SDK patterns.
     func convertToAnthropicRequest(_ request: ProviderRequest) throws -> AnthropicMessagesRequest {
         // Group messages by role and extract system messages
@@ -407,18 +492,43 @@ private extension AnthropicProvider {
             toolChoice = AnthropicToolChoice(type: "tool", name: tool.function.name)
         }
         
+        // Check for reasoning model and validate configuration
+        let isReasoning = isReasoningModel(request.modelId)
+        if isReasoning {
+            // Reasoning models don't support temperature, topK, topP
+            if request.configuration.temperature != nil {
+                throw AIProviderError.unsupportedParameter("temperature", "Not supported for reasoning models")
+            }
+            if request.configuration.topK != nil {
+                throw AIProviderError.unsupportedParameter("topK", "Not supported for reasoning models")
+            }
+            if request.configuration.topP != nil {
+                throw AIProviderError.unsupportedParameter("topP", "Not supported for reasoning models")
+            }
+        }
+        
+        // Extract thinking configuration from provider-specific options
+        var thinkingBudget: Int? = nil
+        if isReasoning,
+           let providerOptions = request.configuration.providerSpecific,
+           let thinkingBudgetStr = providerOptions["thinking_budget_tokens"],
+           let budgetTokens = Int(thinkingBudgetStr) {
+            thinkingBudget = budgetTokens
+        }
+        
         return AnthropicMessagesRequest(
             model: request.modelId,
             maxTokens: request.configuration.maxTokens ?? 4096,
             system: systemMessages.isEmpty ? nil : systemMessages,
             messages: conversationMessages,
-            temperature: request.configuration.temperature,
-            topK: request.configuration.topK,
-            topP: request.configuration.topP,
+            temperature: isReasoning ? nil : request.configuration.temperature,
+            topK: isReasoning ? nil : request.configuration.topK,
+            topP: isReasoning ? nil : request.configuration.topP,
             stopSequences: request.configuration.stopSequences,
             tools: tools,
             toolChoice: toolChoice,
-            stream: false
+            stream: false,
+            thinkingBudgetTokens: thinkingBudget
         )
     }
     
@@ -454,7 +564,8 @@ private extension AnthropicProvider {
                 if let role = currentRole, !currentContent.isEmpty {
                     conversationMessages.append(AnthropicMessage(
                         role: role == .user ? "user" : "assistant",
-                        content: currentContent
+                        content: currentContent,
+                        cacheControl: nil
                     ))
                 }
                 
@@ -467,7 +578,8 @@ private extension AnthropicProvider {
         if let role = currentRole, !currentContent.isEmpty {
             conversationMessages.append(AnthropicMessage(
                 role: role == .user ? "user" : "assistant", 
-                content: currentContent
+                content: currentContent,
+                cacheControl: nil
             ))
         }
         
@@ -483,6 +595,72 @@ private extension AnthropicProvider {
             switch item {
             case .text(let text):
                 content.append(AnthropicContent(type: "text", text: text))
+            case .image(let imageContent):
+                // Handle image content
+                if let imageUrl = imageContent.url {
+                    // URL-based image
+                    content.append(AnthropicContent(
+                        type: "image",
+                        source: AnthropicSource(
+                            type: "url",
+                            url: imageUrl.absoluteString,
+                            data: nil,
+                            mediaType: nil
+                        )
+                    ))
+                } else if let imageData = imageContent.data {
+                    // Data-based image - convert to base64
+                    let base64String = imageData.base64EncodedString()
+                    content.append(AnthropicContent(
+                        type: "image",
+                        source: AnthropicSource(
+                            type: "base64",
+                            url: nil,
+                            data: base64String,
+                            mediaType: imageContent.mimeType
+                        )
+                    ))
+                }
+            case .file(let fileContent):
+                // Handle PDF files (beta feature)
+                if fileContent.mimeType == "application/pdf" {
+                    // Add PDF to beta features if not already present
+                    if !betaFeatures.contains("pdfs-2024-09-25") {
+                        // Note: We can't modify betaFeatures here as it's immutable
+                        // This will be handled at the request level
+                    }
+                    
+                    if let fileUrl = fileContent.url {
+                        // URL-based PDF
+                        content.append(AnthropicContent(
+                            type: "document",
+                            source: AnthropicSource(
+                                type: "url",
+                                url: fileUrl.absoluteString,
+                                data: nil,
+                                mediaType: "application/pdf"
+                            )
+                        ))
+                    } else if let fileData = fileContent.data {
+                        // Data-based PDF - convert to base64
+                        let base64String = fileData.base64EncodedString()
+                        content.append(AnthropicContent(
+                            type: "document",
+                            source: AnthropicSource(
+                                type: "base64",
+                                url: nil,
+                                data: base64String,
+                                mediaType: "application/pdf"
+                            )
+                        ))
+                    }
+                } else {
+                    // Other file types not supported by Anthropic
+                    // Skip them silently or convert to text if possible
+                    if let textValue = item.textValue {
+                        content.append(AnthropicContent(type: "text", text: textValue))
+                    }
+                }
             case .toolResult(let result):
                 // Tool results are handled as tool_result content
                 let resultText: String
@@ -550,19 +728,34 @@ private extension AnthropicProvider {
                     )
                     toolCalls.append(toolCall)
                 }
+            case "thinking", "redacted_thinking":
+                // Thinking blocks for reasoning models - included in content for debugging
+                // Note: In production, you might want to handle these separately
+                if let text = contentBlock.text {
+                    content += "[Thinking] " + text + "\n"
+                }
             default:
                 // Skip unknown content types
                 break
             }
         }
         
-        // Convert usage
+        // Convert usage with cache information
+        var usageDetails: [String: String] = [:]
+        if let cacheCreation = response.usage.cacheCreationInputTokens {
+            usageDetails["cache_creation_input_tokens"] = String(cacheCreation)
+        }
+        if let cacheRead = response.usage.cacheReadInputTokens {
+            usageDetails["cache_read_input_tokens"] = String(cacheRead)
+        }
+        
         let usage = Usage(
             promptTokens: response.usage.inputTokens,
             completionTokens: response.usage.outputTokens,
             promptCost: nil,
             completionCost: nil,
-            currency: "USD"
+            currency: "USD",
+            details: usageDetails.isEmpty ? nil : usageDetails
         )
         
         // Convert stop reason
@@ -580,16 +773,32 @@ private extension AnthropicProvider {
             finishReason = .other
         }
         
+        // Build provider metadata
+        var metadata: [String: String] = [
+            "model": response.model,
+            "role": response.role,
+            "type": response.type
+        ]
+        
+        if let stopSequence = response.stopSequence {
+            metadata["stop_sequence"] = stopSequence
+        }
+        
+        // Add cache usage information if available
+        if let cacheCreation = response.usage.cacheCreationInputTokens {
+            metadata["cache_creation_tokens"] = String(cacheCreation)
+        }
+        if let cacheRead = response.usage.cacheReadInputTokens {
+            metadata["cache_read_tokens"] = String(cacheRead)
+        }
+        
         return ProviderResponse(
             content: content,
             toolCalls: toolCalls.isEmpty ? nil : toolCalls,
             usage: usage,
             finishReason: finishReason,
             responseId: response.id,
-            providerMetadata: [
-                "model": response.model,
-                "role": response.role
-            ]
+            providerMetadata: metadata
         )
     }
     
@@ -607,6 +816,14 @@ private extension AnthropicProvider {
             // Initialize with usage if present
             if let message = event.message,
                let usage = message.usage {
+                var usageDetails: [String: String] = [:]
+                if let cacheCreation = usage.cacheCreationInputTokens {
+                    usageDetails["cache_creation_input_tokens"] = String(cacheCreation)
+                }
+                if let cacheRead = usage.cacheReadInputTokens {
+                    usageDetails["cache_read_input_tokens"] = String(cacheRead)
+                }
+                
                 let chunk = ProviderChunk(
                     delta: "",
                     usage: Usage(
@@ -614,7 +831,8 @@ private extension AnthropicProvider {
                         completionTokens: usage.outputTokens,
                         promptCost: nil,
                         completionCost: nil,
-                        currency: "USD"
+                        currency: "USD",
+                        details: usageDetails.isEmpty ? nil : usageDetails
                     ),
                     finishReason: nil,
                     chunkIndex: chunkIndex
@@ -720,12 +938,21 @@ private extension AnthropicProvider {
             
             if let delta = event.delta {
                 if let deltaUsage = delta.usage {
+                    var usageDetails: [String: String] = [:]
+                    if let cacheCreation = deltaUsage.cacheCreationInputTokens {
+                        usageDetails["cache_creation_input_tokens"] = String(cacheCreation)
+                    }
+                    if let cacheRead = deltaUsage.cacheReadInputTokens {
+                        usageDetails["cache_read_input_tokens"] = String(cacheRead)
+                    }
+                    
                     usage = Usage(
                         promptTokens: deltaUsage.inputTokens,
                         completionTokens: deltaUsage.outputTokens,
                         promptCost: nil,
                         completionCost: nil,
-                        currency: "USD"
+                        currency: "USD",
+                        details: usageDetails.isEmpty ? nil : usageDetails
                     )
                 }
                 
@@ -838,6 +1065,7 @@ private struct AnthropicMessagesRequest: Codable {
     let tools: [AnthropicTool]?
     let toolChoice: AnthropicToolChoice?
     var stream: Bool
+    let thinkingBudgetTokens: Int?
     
     enum CodingKeys: String, CodingKey {
         case model
@@ -849,6 +1077,7 @@ private struct AnthropicMessagesRequest: Codable {
         case tools
         case toolChoice = "tool_choice"
         case stream
+        case thinkingBudgetTokens = "thinking_budget_tokens"
     }
 }
 
@@ -856,6 +1085,12 @@ private struct AnthropicMessagesRequest: Codable {
 private struct AnthropicMessage: Codable {
     let role: String
     let content: [AnthropicContent]
+    let cacheControl: AnthropicCacheControl?
+    
+    enum CodingKeys: String, CodingKey {
+        case role, content
+        case cacheControl = "cache_control"
+    }
 }
 
 /// Anthropic content structure.
@@ -866,19 +1101,21 @@ private struct AnthropicContent: Codable {
     let name: String?
     let input: [String: Any]?
     let toolUseId: String?
+    let source: AnthropicSource?
     
     enum CodingKeys: String, CodingKey {
-        case type, text, id, name, input
+        case type, text, id, name, input, source
         case toolUseId = "tool_use_id"
     }
     
-    init(type: String, text: String? = nil, id: String? = nil, name: String? = nil, input: [String: Any]? = nil, toolUseId: String? = nil) {
+    init(type: String, text: String? = nil, id: String? = nil, name: String? = nil, input: [String: Any]? = nil, toolUseId: String? = nil, source: AnthropicSource? = nil) {
         self.type = type
         self.text = text
         self.id = id
         self.name = name
         self.input = input
         self.toolUseId = toolUseId
+        self.source = source
     }
     
     func encode(to encoder: Encoder) throws {
@@ -888,6 +1125,7 @@ private struct AnthropicContent: Codable {
         try container.encodeIfPresent(id, forKey: .id)
         try container.encodeIfPresent(name, forKey: .name)
         try container.encodeIfPresent(toolUseId, forKey: .toolUseId)
+        try container.encodeIfPresent(source, forKey: .source)
         
         if let input = input {
             try container.encode(AnyCodable(input), forKey: .input)
@@ -901,12 +1139,26 @@ private struct AnthropicContent: Codable {
         id = try container.decodeIfPresent(String.self, forKey: .id)
         name = try container.decodeIfPresent(String.self, forKey: .name)
         toolUseId = try container.decodeIfPresent(String.self, forKey: .toolUseId)
+        source = try container.decodeIfPresent(AnthropicSource.self, forKey: .source)
         
         if let inputValue = try container.decodeIfPresent(AnyCodable.self, forKey: .input) {
             input = inputValue.value as? [String: Any]
         } else {
             input = nil
         }
+    }
+}
+
+/// Anthropic source structure for images and documents.
+private struct AnthropicSource: Codable {
+    let type: String
+    let url: String?
+    let data: String?
+    let mediaType: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case type, url, data
+        case mediaType = "media_type"
     }
 }
 
@@ -1153,6 +1405,8 @@ private enum AnthropicError: Error, LocalizedError {
     case authenticationFailed
     case rateLimitExceeded
     case invalidRequest(String)
+    case overloaded
+    case permissionDenied(String)
     
     var errorDescription: String? {
         switch self {
@@ -1166,6 +1420,10 @@ private enum AnthropicError: Error, LocalizedError {
             return "Anthropic rate limit exceeded"
         case .invalidRequest(let message):
             return "Invalid Anthropic request: \(message)"
+        case .overloaded:
+            return "Anthropic API is overloaded, please try again later"
+        case .permissionDenied(let message):
+            return "Anthropic permission denied: \(message)"
         }
     }
 }
@@ -1219,4 +1477,28 @@ private struct AnyCodable: Codable {
             value = NSNull()
         }
     }
+}
+
+// MARK: - Private Helper Methods
+
+@available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+private extension AnthropicProvider {
+    
+    /// Check if the request contains PDF content that requires beta features.
+    func requestContainsPDF(_ request: ProviderRequest) -> Bool {
+        for message in request.messages {
+            for content in message.content {
+                if case .file(let fileContent) = content,
+                   fileContent.mimeType == "application/pdf" {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+}
+
+/// Anthropic cache control structure.
+private struct AnthropicCacheControl: Codable {
+    let type: String  // "ephemeral"
 }
