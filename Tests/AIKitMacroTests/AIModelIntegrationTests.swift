@@ -1,5 +1,6 @@
 import XCTest
 @testable import AIKit
+import AIKitMacro
 
 // MARK: - Test Models using @AIModel
 
@@ -29,7 +30,39 @@ struct TestUser: Codable, Sendable {
     let createdAt: Date
 }
 
-final class AIModelTests: XCTestCase {
+@AIModel
+struct TestUserProfile: Codable, Sendable {
+    @Field("Full name")
+    let name: String
+    
+    @Field("Age in years")
+    let age: Int
+    
+    @Field("Email address")
+    let email: String
+    
+    @Field("Account active status")
+    let active: Bool
+}
+
+@AIModel
+struct TestProductWithConstraints: Codable, Sendable {
+    @Field("Product name", minLength: 1, maxLength: 100)
+    let name: String
+    
+    @Field("Price in USD", range: 0.01...99999.99)
+    let price: Double
+    
+    @Field("Product category", enum: ["electronics", "books", "clothing"])
+    let category: String
+    
+    @Field("Product tags", maxItems: 10)
+    let tags: [String]
+}
+
+final class AIModelIntegrationTests: XCTestCase {
+    
+    // MARK: - Schema Generation Tests
     
     func testRecipeSchemaGeneration() {
         let schema = TestRecipe.schema
@@ -50,27 +83,44 @@ final class AIModelTests: XCTestCase {
         }
     }
     
-    func testProductSchemaConstraints() {
-        let schema = TestProduct.schema
+    func testProductSchemaWithConstraints() {
+        let schema = TestProductWithConstraints.schema
         
-        // TODO: Implement @Field annotations for property constraints
-        // This test expects field constraints that are not yet supported by @AIModel
-        // The macro generates basic schemas without constraints for now
-        
-        // For now, just verify the schema is generated
-        XCTAssertEqual(schema.name, "TestProduct")
+        XCTAssertEqual(schema.name, "TestProductWithConstraints")
         XCTAssertNotNil(schema.jsonSchema)
         
         if case .definition(let def) = schema.jsonSchema,
            let properties = def.properties {
-            XCTAssertEqual(properties.count, 5)
-            XCTAssertNotNil(properties["name"])
-            XCTAssertNotNil(properties["price"])
-            XCTAssertNotNil(properties["category"])
-            XCTAssertNotNil(properties["tags"])
-            XCTAssertNotNil(properties["inStock"])
+            XCTAssertEqual(properties.count, 4)
+            
+            // Verify constraints are applied
+            if case .definition(let nameDef) = properties["name"] {
+                XCTAssertEqual(nameDef.minLength, 1)
+                XCTAssertEqual(nameDef.maxLength, 100)
+            }
+            
+            if case .definition(let priceDef) = properties["price"] {
+                XCTAssertEqual(priceDef.minimum, 0.01)
+                XCTAssertEqual(priceDef.maximum, 99999.99)
+            }
+            
+            if case .definition(let categoryDef) = properties["category"] {
+                let enumValues = categoryDef.enum?.compactMap { value in
+                    if case .string(let str) = value {
+                        return str
+                    }
+                    return nil
+                }
+                XCTAssertEqual(enumValues, ["electronics", "books", "clothing"])
+            }
+            
+            if case .definition(let tagsDef) = properties["tags"] {
+                XCTAssertEqual(tagsDef.maxItems, 10)
+            }
         }
     }
+    
+    // MARK: - Partial Type Tests
     
     func testPartialTypeGeneration() {
         // Test that Partial type is generated
@@ -145,6 +195,8 @@ final class AIModelTests: XCTestCase {
         XCTAssertNil(complete.prepTime)
     }
     
+    // MARK: - Integration Tests with AIClient
+    
     @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
     func testObjectGenerationWithAIModel() async throws {
         let client = AIClient()
@@ -180,5 +232,31 @@ final class AIModelTests: XCTestCase {
         XCTAssertTrue(response.object.count >= 1, "Should generate at least one product")
         XCTAssertFalse(response.object[0].name.isEmpty, "Product should have a name")
         XCTAssertTrue(response.object[0].price > 0, "Product should have a price")
+    }
+    
+    // MARK: - SchemaProviding Conformance Tests
+    
+    func testAIModelConformsToSchemaProviding() {
+        // Verify that @AIModel types conform to SchemaProviding
+        XCTAssertTrue((TestRecipe.self as Any) is any SchemaProviding.Type)
+        XCTAssertTrue((TestProduct.self as Any) is any SchemaProviding.Type)
+        XCTAssertTrue((TestUser.self as Any) is any SchemaProviding.Type)
+    }
+    
+    func testFieldAnnotations() {
+        let schema = TestUserProfile.schema
+        
+        // Verify field descriptions are captured
+        if case .definition(let def) = schema.jsonSchema,
+           let properties = def.properties {
+            
+            if case .definition(let nameDef) = properties["name"] {
+                XCTAssertEqual(nameDef.description, "Full name")
+            }
+            
+            if case .definition(let ageDef) = properties["age"] {
+                XCTAssertEqual(ageDef.description, "Age in years")
+            }
+        }
     }
 }

@@ -4,28 +4,57 @@ import Foundation
 
 // MARK: - Test Types for Schema DSL
 
-/// Test types that demonstrate the new @AIModel approach
-@AIModel
-private struct User: Codable, Sendable {
+/// Test types that demonstrate manual SchemaProviding approach
+private struct User: Codable, Sendable, SchemaProviding {
     let id: UUID
     let username: String
     let email: String
     let age: Int?
+    
+    static var schema: ObjectSchema<User> {
+        .define(name: "User", description: "User object") {
+            Schema.uuid("id", required: true)
+            Schema.string("username", required: true)
+            Schema.string("email", required: true)
+            Schema.integer("age", required: false)
+        }
+    }
+    
+    typealias Partial = User
 }
 
-@AIModel
-private struct Address: Codable, Sendable {
+private struct Address: Codable, Sendable, SchemaProviding {
     let street: String
     let city: String
     let country: String
     let postalCode: String
+    
+    static var schema: ObjectSchema<Address> {
+        .define(name: "Address", description: "Address object") {
+            Schema.string("street", required: true)
+            Schema.string("city", required: true)
+            Schema.string("country", required: true)
+            Schema.string("postalCode", required: true)
+        }
+    }
+    
+    typealias Partial = Address
 }
 
-@AIModel
-private struct Company: Codable, Sendable {
+private struct Company: Codable, Sendable, SchemaProviding {
     let name: String
     let address: Address
     let employees: [User]
+    
+    static var schema: ObjectSchema<Company> {
+        .define(name: "Company", description: "Company object") {
+            Schema.string("name", required: true)
+            Schema.object("address", of: Address.self, required: true)
+            Schema.array("employees", of: User.self, required: true)
+        }
+    }
+    
+    typealias Partial = Company
 }
 
 // MARK: - Schema DSL Core Tests

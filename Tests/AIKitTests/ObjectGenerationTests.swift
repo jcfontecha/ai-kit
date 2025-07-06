@@ -4,40 +4,52 @@ import Foundation
 
 // MARK: - Test Types
 
-@AIModel
-struct Person: Codable, Sendable {
-    @Field("Full name", minLength: 1)
+struct Person: Codable, Sendable, SchemaProviding {
     let name: String
-    
-    @Field("Age in years", range: 0...150)
     let age: Int
-    
-    @Field("Email address")
     let email: String?
+    
+    static var schema: ObjectSchema<Person> {
+        .define(name: "Person", description: "Person object") {
+            Schema.string("name", description: "Full name", minLength: 1, required: true)
+            Schema.integer("age", description: "Age in years", minimum: 0, maximum: 150, required: true)
+            Schema.string("email", description: "Email address", required: false)
+        }
+    }
+    
+    typealias Partial = Person
 }
 
-@AIModel
-struct Recipe: Codable, Sendable {
-    @Field("Recipe name")
+struct Recipe: Codable, Sendable, SchemaProviding {
     let name: String
-    
-    @Field("List of ingredients")
     let ingredients: [String]
-    
-    @Field("Cooking time in minutes")
     let cookingTime: Int
+    
+    static var schema: ObjectSchema<Recipe> {
+        .define(name: "Recipe", description: "Recipe object") {
+            Schema.string("name", description: "Recipe name", required: true)
+            Schema.array("ingredients", elementSchema: .string(), description: "List of ingredients", required: true)
+            Schema.integer("cookingTime", description: "Cooking time in minutes", required: true)
+        }
+    }
+    
+    typealias Partial = Recipe
 }
 
-@AIModel
-struct TodoItem: Codable, Sendable {
-    @Field("Unique identifier", range: 1...999999)
+struct TodoItem: Codable, Sendable, SchemaProviding {
     let id: Int
-    
-    @Field("Task description", minLength: 1)
     let task: String
-    
-    @Field("Completion status")
     let completed: Bool
+    
+    static var schema: ObjectSchema<TodoItem> {
+        .define(name: "TodoItem", description: "TodoItem object") {
+            Schema.integer("id", description: "Unique identifier", minimum: 1, maximum: 999999, required: true)
+            Schema.string("task", description: "Task description", minLength: 1, required: true)
+            Schema.boolean("completed", description: "Completion status", required: true)
+        }
+    }
+    
+    typealias Partial = TodoItem
 }
 
 enum Priority: String, Codable, CaseIterable, Sendable {
@@ -47,47 +59,57 @@ enum Priority: String, Codable, CaseIterable, Sendable {
     case urgent = "urgent"
 }
 
-@AIModel
-struct ProjectProjectTask: Codable, Sendable {
-    @Field("Task title")
+struct ProjectProjectTask: Codable, Sendable, SchemaProviding {
     let title: String
-    
-    @Field("Task priority level")
     let priority: Priority
-    
-    @Field("Estimated hours to complete")
     let estimatedHours: Int
+    
+    static var schema: ObjectSchema<ProjectProjectTask> {
+        .define(name: "ProjectProjectTask", description: "ProjectProjectTask object") {
+            Schema.string("title", description: "Task title", required: true)
+            Schema.string("priority", description: "Task priority level", enum: Priority.allCases.map { $0.rawValue }, required: true)
+            Schema.integer("estimatedHours", description: "Estimated hours to complete", required: true)
+        }
+    }
+    
+    typealias Partial = ProjectProjectTask
 }
 
 // SchemaProviding test types
-@AIModel
-struct UserProfile: Codable, Sendable {
-    @Field("Unique username", minLength: 3, maxLength: 20)
+struct UserProfile: Codable, Sendable, SchemaProviding {
     let username: String
-    
-    @Field("User email address", format: "email")
     let email: String
-    
-    @Field("User age", range: 13...120)
     let age: Int
-    
-    @Field("Whether user account is active")
     let isActive: Bool
+    
+    static var schema: ObjectSchema<UserProfile> {
+        .define(name: "UserProfile", description: "UserProfile object") {
+            Schema.string("username", description: "Unique username", minLength: 3, maxLength: 20, required: true)
+            Schema.email("email", description: "User email address", required: true)
+            Schema.integer("age", description: "User age", minimum: 13, maximum: 120, required: true)
+            Schema.boolean("isActive", description: "Whether user account is active", required: true)
+        }
+    }
+    
+    typealias Partial = UserProfile
 }
 
-@AIModel
-struct Product: Codable, Sendable {
-    @Field("Product ID")
+struct Product: Codable, Sendable, SchemaProviding {
     let id: String
-    
-    @Field("Product name")
     let name: String
-    
-    @Field("Price in USD", range: 0.01...999999.99)
     let price: Double
-    
-    @Field("Stock availability")
     let inStock: Bool
+    
+    static var schema: ObjectSchema<Product> {
+        .define(name: "Product", description: "Product object") {
+            Schema.string("id", description: "Product ID", required: true)
+            Schema.string("name", description: "Product name", required: true)
+            Schema.number("price", description: "Price in USD", minimum: 0.01, maximum: 999999.99, required: true)
+            Schema.boolean("inStock", description: "Stock availability", required: true)
+        }
+    }
+    
+    typealias Partial = Product
 }
 
 // MARK: - Basic ObjectSchema Tests

@@ -17,6 +17,9 @@ let package = Package(
         .library(
             name: "AIKit",
             targets: ["AIKit"]),
+        .library(
+            name: "AIKitMacro",
+            targets: ["AIKitMacro"]),
     ],
     dependencies: [
         // SwiftSyntax for macro implementation
@@ -32,10 +35,15 @@ let package = Package(
             ]
         ),
         
-        // Main library target with macro dependency
+        // Main library target without macro dependency
         .target(
-            name: "AIKit",
-            dependencies: ["AIKitMacros"]
+            name: "AIKit"
+        ),
+        
+        // Separate target that provides macro functionality
+        .target(
+            name: "AIKitMacro",
+            dependencies: ["AIKit", "AIKitMacros"]
         ),
         
         // Test targets
@@ -53,6 +61,7 @@ let package = Package(
         .testTarget(
             name: "AIKitMacroTests",
             dependencies: [
+                "AIKitMacro",
                 "AIKitMacros",
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax")
             ]

@@ -61,133 +61,146 @@ private enum E2ETestError: Error, LocalizedError {
 
 // MARK: - Test Types for E2E Tests
 
-@AIModel
-private struct E2EUserProfile: Codable, Sendable {
-    @Field("Full name")
+private struct E2EUserProfile: Codable, Sendable, SchemaProviding {
     let name: String
-    
-    @Field("Age in years")
     let age: Int
-    
-    @Field("Email address")
     let email: String
-    
-    @Field("Account active status")
     let active: Bool
+    
+    static var schema: ObjectSchema<E2EUserProfile> {
+        .define(name: "E2EUserProfile", description: "E2EUserProfile object") {
+            Schema.string("name", description: "Full name", required: true)
+            Schema.integer("age", description: "Age in years", required: true)
+            Schema.string("email", description: "Email address", required: true)
+            Schema.boolean("active", description: "Account active status", required: true)
+        }
+    }
+    
+    typealias Partial = E2EUserProfile
 }
 
-@AIModel
-private struct E2EIngredient: Codable, Sendable {
-    @Field("Ingredient name")
+private struct E2EIngredient: Codable, Sendable, SchemaProviding {
     let name: String
-    
-    @Field("Amount with units")
     let amount: String
-    
-    @Field("Whether ingredient is optional")
     let optional: Bool?
+    
+    static var schema: ObjectSchema<E2EIngredient> {
+        .define(name: "E2EIngredient", description: "E2EIngredient object") {
+            Schema.string("name", description: "Ingredient name", required: true)
+            Schema.string("amount", description: "Amount with units", required: true)
+            Schema.boolean("optional", description: "Whether ingredient is optional", required: false)
+        }
+    }
+    
+    typealias Partial = E2EIngredient
 }
 
-@AIModel
-private struct E2ERecipe: Codable, Sendable {
-    @Field("Recipe name")
+private struct E2ERecipe: Codable, Sendable, SchemaProviding {
     let name: String
-    
-    @Field("Recipe description")
     let description: String
-    
-    @Field("Preparation time in minutes")
     let prepTime: Int
-    
-    @Field("Cooking time in minutes")
     let cookTime: Int
-    
-    @Field("Difficulty level", enum: ["easy", "medium", "hard"])
     let difficulty: String
-    
-    @Field("List of ingredients")
     let ingredients: [E2EIngredient]
-    
-    @Field("Cooking steps")
     let steps: [String]
-    
-    @Field("Number of servings")
     let servings: Int
+    
+    static var schema: ObjectSchema<E2ERecipe> {
+        .define(name: "E2ERecipe", description: "E2ERecipe object") {
+            Schema.string("name", description: "Recipe name", required: true)
+            Schema.string("description", description: "Recipe description", required: true)
+            Schema.integer("prepTime", description: "Preparation time in minutes", required: true)
+            Schema.integer("cookTime", description: "Cooking time in minutes", required: true)
+            Schema.string("difficulty", description: "Difficulty level", enum: ["easy", "medium", "hard"], required: true)
+            Schema.array("ingredients", of: E2EIngredient.self, description: "List of ingredients", required: true)
+            Schema.array("steps", elementSchema: .string(), description: "Cooking steps", required: true)
+            Schema.integer("servings", description: "Number of servings", required: true)
+        }
+    }
+    
+    typealias Partial = E2ERecipe
 }
 
-@AIModel
-private struct E2EPersonProfile: Codable, Sendable {
-    @Field("Full name", minLength: 1, maxLength: 100)
+private struct E2EPersonProfile: Codable, Sendable, SchemaProviding {
     let name: String
-    
-    @Field("Age in years", range: 0...150)
     let age: Int
-    
-    @Field("Email address", format: "email")
     let email: String?
-    
-    @Field("Account active status")
     let isActive: Bool
+    
+    static var schema: ObjectSchema<E2EPersonProfile> {
+        .define(name: "E2EPersonProfile", description: "E2EPersonProfile object") {
+            Schema.string("name", description: "Full name", minLength: 1, maxLength: 100, required: true)
+            Schema.integer("age", description: "Age in years", minimum: 0, maximum: 150, required: true)
+            Schema.email("email", description: "Email address", required: false)
+            Schema.boolean("isActive", description: "Account active status", required: true)
+        }
+    }
+    
+    typealias Partial = E2EPersonProfile
 }
 
-@AIModel
-private struct E2EProductInfo: Codable, Sendable {
-    @Field("Product name", minLength: 1, maxLength: 200)
+private struct E2EProductInfo: Codable, Sendable, SchemaProviding {
     let name: String
-    
-    @Field("Product SKU", pattern: "^[A-Z]{3}-\\d{4}$")
     let sku: String
-    
-    @Field("Price in USD", range: 0.01...99999.99)
     let price: Double
-    
-    @Field("Stock availability")
     let inStock: Bool
-    
-    @Field("Product category", enum: ["electronics", "books", "clothing", "home", "other"])
     let category: String
+    
+    static var schema: ObjectSchema<E2EProductInfo> {
+        .define(name: "E2EProductInfo", description: "E2EProductInfo object") {
+            Schema.string("name", description: "Product name", minLength: 1, maxLength: 200, required: true)
+            Schema.string("sku", description: "Product SKU", pattern: "^[A-Z]{3}-\\d{4}$", required: true)
+            Schema.number("price", description: "Price in USD", minimum: 0.01, maximum: 99999.99, required: true)
+            Schema.boolean("inStock", description: "Stock availability", required: true)
+            Schema.string("category", description: "Product category", enum: ["electronics", "books", "clothing", "home", "other"], required: true)
+        }
+    }
+    
+    typealias Partial = E2EProductInfo
 }
 
-@AIModel
-private struct E2ESimpleProduct: Codable, Sendable {
-    @Field("Product identifier", minLength: 1)
+private struct E2ESimpleProduct: Codable, Sendable, SchemaProviding {
     let id: String
-    
-    @Field("Product name", minLength: 1, maxLength: 100)
     let name: String
-    
-    @Field("Product price in USD", range: 0...999999.99)
     let price: Double
-    
-    @Field("Product description")
     let description: String?
-    
-    @Field("Product category")
     let category: String?
+    
+    static var schema: ObjectSchema<E2ESimpleProduct> {
+        .define(name: "E2ESimpleProduct", description: "E2ESimpleProduct object") {
+            Schema.string("id", description: "Product identifier", minLength: 1, required: true)
+            Schema.string("name", description: "Product name", minLength: 1, maxLength: 100, required: true)
+            Schema.number("price", description: "Product price in USD", minimum: 0, maximum: 999999.99, required: true)
+            Schema.string("description", description: "Product description", required: false)
+            Schema.string("category", description: "Product category", required: false)
+        }
+    }
+    
+    typealias Partial = E2ESimpleProduct
 }
 
-@AIModel
-private struct E2EFieldValidationTest: Codable, Sendable {
-    @Field("A code that MUST start with 'TEST-' followed by exactly 4 digits")
+private struct E2EFieldValidationTest: Codable, Sendable, SchemaProviding {
     let testCode: String
-    
-    @Field("A special number that MUST be exactly 42")
     let specialNumber: Int
-    
-    @Field("A greeting that MUST contain the word 'Swift'")
     let greeting: String
-    
-    @Field("A hex color code that MUST be in format #RRGGBB")
     let colorCode: String
-    
-    @Field("A score between 0 and 100 that MUST be divisible by 5")
     let score: Int
-    
-    @Field("An email that MUST end with '@aikit.test'")
     let email: String
-    
-    @Field("A boolean that MUST be true if score is greater than 50")
     let isPassing: Bool
+    
+    static var schema: ObjectSchema<E2EFieldValidationTest> {
+        .define(name: "E2EFieldValidationTest", description: "E2EFieldValidationTest object") {
+            Schema.string("testCode", description: "A code that MUST start with 'TEST-' followed by exactly 4 digits", required: true)
+            Schema.integer("specialNumber", description: "A special number that MUST be exactly 42", required: true)
+            Schema.string("greeting", description: "A greeting that MUST contain the word 'Swift'", required: true)
+            Schema.string("colorCode", description: "A hex color code that MUST be in format #RRGGBB", required: true)
+            Schema.integer("score", description: "A score between 0 and 100 that MUST be divisible by 5", required: true)
+            Schema.string("email", description: "An email that MUST end with '@aikit.test'", required: true)
+            Schema.boolean("isPassing", description: "A boolean that MUST be true if score is greater than 50", required: true)
+        }
+    }
+    
+    typealias Partial = E2EFieldValidationTest
 }
 
 // MARK: - E2E Tests with Real OpenAI Provider
