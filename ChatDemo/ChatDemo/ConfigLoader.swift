@@ -8,13 +8,22 @@
 import Foundation
 
 struct ConfigLoader {
-    static func loadAPIKey() -> String? {
+    private static func loadValue(for key: String) -> String? {
         guard let url = Bundle.main.url(forResource: "Config", withExtension: "plist"),
               let data = try? Data(contentsOf: url),
               let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
-              let apiKey = plist["OPENAI_API_KEY"] as? String else {
+              let value = plist[key] as? String,
+              value.isEmpty == false else {
             return nil
         }
-        return apiKey
+        return value
+    }
+    
+    static func loadAPIKey() -> String? {
+        loadValue(for: "OPENAI_API_KEY")
+    }
+    
+    static func loadOpenRouterAPIKey() -> String? {
+        loadValue(for: "OPENROUTER_API_KEY")
     }
 }

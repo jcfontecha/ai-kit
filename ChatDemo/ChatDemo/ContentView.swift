@@ -19,6 +19,9 @@ struct ContentView: View {
                     NavigationLink("Persistent Chat", destination: PersistentChatDemoView())
                     NavigationLink("Advanced Persistence", destination: AdvancedPersistentChatDemoView())
                     NavigationLink("Custom Styled Chat", destination: CustomStyledChatView())
+                    if #available(iOS 16.0, macOS 13.0, *) {
+                        NavigationLink("OpenRouter Chat", destination: OpenRouterChatDemoView())
+                    }
                 }
                 
                 Section("Advanced Features") {

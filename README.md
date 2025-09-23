@@ -81,6 +81,31 @@ for try await chunk in stream {
 }
 ```
 
+### OpenRouter Provider
+
+AIKit ships with a first-class `OpenRouterProvider` that mirrors the community OpenRouter provider from the Vercel AI SDK. You can route requests through OpenRouter while keeping the same AIKit ergonomics:
+
+```swift
+import AIKit
+
+let provider = OpenRouterProvider(
+    apiKey: ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"] ?? "",
+    compatibility: .strict // use .compatible when targeting third-party routers
+)
+
+let model = provider.languageModel("anthropic/claude-3.5-sonnet")
+    .temperature(0.7)
+    .providerSpecific([
+        "openrouter.reasoning": "{\"enabled\":true,\"max_tokens\":256}"
+    ])
+
+let client = AIKit.client()
+let response = try await client.generateText(model, prompt: "Summarise the latest Swift Evolution proposal")
+print(response.text)
+```
+
+The provider supports streaming, tool calling, JSON schema responses, OpenRouter reasoning/usage extensions, custom routing headers, and automatic handling of the OpenRouter compatibility modes.
+
 ### Structured Object Generation
 
 AIKit provides two approaches for structured object generation: **@AIModel macro** for your own types and **Manual ObjectSchema** for external types you can't modify.
