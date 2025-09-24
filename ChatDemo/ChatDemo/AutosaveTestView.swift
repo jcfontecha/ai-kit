@@ -8,12 +8,40 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct AutosaveTestView: View {
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o-mini")) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
+    
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        AutosaveTestContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "autosave-test", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct AutosaveTestContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
     @State private var logMessages: [String] = []
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(model: model)
+    }
     
     var body: some View {
         VStack {
+            Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                .font(.caption2)
+                .foregroundColor(isUsingRealAPI ? .secondary : .orange)
+                .padding(.top, 8)
             // Log messages
             ScrollView {
                 VStack(alignment: .leading, spacing: 4) {
@@ -60,7 +88,12 @@ struct AutosaveTestView: View {
 }
 
 #Preview {
-    NavigationView {
-        AutosaveTestView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            AutosaveTestView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

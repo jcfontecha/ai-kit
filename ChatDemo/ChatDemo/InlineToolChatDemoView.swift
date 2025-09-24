@@ -8,20 +8,43 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct InlineToolChatDemoView: View {
-    @UseChat(
-        model: ProviderManager.shared.languageModel("gpt-4o-mini"),
-        tools: [
-            NavigationTool.createTool(),
-            UIComponentTool.createTool(),
-            ActionCardTool.createTool(),
-            ProgressIndicatorTool.createTool()
-        ]
-    ) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
     
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        InlineToolChatDemoContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "inline-tools", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct InlineToolChatDemoContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
     @State private var selectedTab = 0
     @State private var showingSettings = false
     @State private var showingProfile = false
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(
+            model: model,
+            tools: [
+                NavigationTool.createTool(),
+                UIComponentTool.createTool(),
+                ActionCardTool.createTool(),
+                ProgressIndicatorTool.createTool()
+            ]
+        )
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +55,9 @@ struct InlineToolChatDemoView: View {
                 Text("AI can render interactive UI components inline")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                    .font(.caption2)
+                    .foregroundColor(isUsingRealAPI ? .secondary : .orange)
                 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -113,7 +139,9 @@ struct InlineToolChatDemoView: View {
                 chat.setMessages([
                     ChatMessage(
                         role: .assistant,
-                        content: "Hello! I can render interactive UI components inline. Try asking me to show navigation options, create action cards, or display progress indicators!"
+                        content: isUsingRealAPI
+                            ? "Hello! I'm powered by \(providerSummary). I can render interactive UI components inline. Try asking me to show navigation options, create action cards, or display progress indicators!"
+                            : "Hello! I'm using the mock provider. I can render interactive UI components inline. Try asking me to show navigation options, create action cards, or display progress indicators!"
                     )
                 ])
             }
@@ -834,7 +862,12 @@ struct FileContentView: View {
 }
 
 #Preview {
-    NavigationView {
-        InlineToolChatDemoView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            InlineToolChatDemoView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

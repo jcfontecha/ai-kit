@@ -8,9 +8,33 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct CustomStyledChatView: View {
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o-mini")) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
+    
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        CustomStyledChatContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "custom-styled", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct CustomStyledChatContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
     @State private var selectedTheme: ChatTheme = .default
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(model: model)
+    }
     
     var body: some View {
         ZStack {
@@ -34,6 +58,9 @@ struct CustomStyledChatView: View {
                             Text("Beautiful, customizable interface")
                                 .font(.caption)
                                 .foregroundColor(selectedTheme.secondaryColor)
+                            Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                                .font(.caption2)
+                                .foregroundColor(isUsingRealAPI ? selectedTheme.secondaryColor : .orange)
                         }
                         
                         Spacer()
@@ -101,7 +128,9 @@ struct CustomStyledChatView: View {
                 chat.setMessages([
                     ChatMessage(
                         role: .assistant,
-                        content: "Welcome to the custom styled chat! Try different themes using the brush icon above. 🎨"
+                        content: isUsingRealAPI
+                            ? "Welcome to the custom styled chat! I'm powered by \(providerSummary). Try different themes using the brush icon above. 🎨"
+                            : "Welcome to the custom styled chat! I'm using the mock provider. Try different themes using the brush icon above. 🎨"
                     )
                 ])
             }
@@ -387,5 +416,10 @@ struct StyledChatInput: View {
 }
 
 #Preview {
-    CustomStyledChatView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        CustomStyledChatView()
+            .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
+    }
 }

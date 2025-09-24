@@ -8,11 +8,35 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct AttachmentChatDemoView: View {
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o")) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
+    
+    var body: some View {
+        let fallbackModel = "gpt-4o"
+        AttachmentChatDemoContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "attachments", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct AttachmentChatDemoContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
     @State private var showingImagePicker = false
     @State private var selectedImage: UIImage?
     @State private var showingDocumentPicker = false
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(model: model)
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -23,6 +47,9 @@ struct AttachmentChatDemoView: View {
                 Text("Send images and files with your messages")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                    .font(.caption2)
+                    .foregroundColor(isUsingRealAPI ? .secondary : .orange)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
@@ -117,7 +144,9 @@ struct AttachmentChatDemoView: View {
                 chat.setMessages([
                     ChatMessage(
                         role: .assistant,
-                        content: "Hello! I can analyze images and files you send me. Try uploading an image or document!"
+                        content: isUsingRealAPI
+                            ? "Hello! I'm powered by \(providerSummary) and can analyze images and files you send me. Try uploading something!"
+                            : "Hello! I'm using the mock provider but can demonstrate how attachments flow through AIKit. Try uploading an image or document!"
                     )
                 ])
             }
@@ -345,7 +374,12 @@ struct ImagePicker: UIViewControllerRepresentable {
 }
 
 #Preview {
-    NavigationView {
-        AttachmentChatDemoView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            AttachmentChatDemoView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

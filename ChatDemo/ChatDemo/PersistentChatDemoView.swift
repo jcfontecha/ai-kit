@@ -8,12 +8,36 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct PersistentChatDemoView: View {
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o-mini")) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
+    
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        PersistentChatDemoContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "persistent", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct PersistentChatDemoContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
     @State private var showingExportSheet = false
     @State private var exportedMarkdown = ""
     @State private var showingSaveAlert = false
     @State private var saveMessage = ""
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(model: model)
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -24,6 +48,9 @@ struct PersistentChatDemoView: View {
                 Text("Your conversation is automatically saved")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                    .font(.caption2)
+                    .foregroundColor(isUsingRealAPI ? .secondary : .orange)
                 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -132,7 +159,9 @@ struct PersistentChatDemoView: View {
                 chat.setMessages([
                     ChatMessage(
                         role: .assistant,
-                        content: "Welcome to the persistent chat demo! Your conversation will be automatically saved. Try the save/load buttons above!"
+                        content: isUsingRealAPI
+                            ? "Welcome to the persistent chat demo! I'm powered by \(providerSummary), and your conversation will be automatically saved. Try the save/load buttons above!"
+                            : "Welcome to the persistent chat demo! I'm using the mock provider, but persistence still works the same. Try the save/load buttons above!"
                     )
                 ])
             }
@@ -267,7 +296,12 @@ struct ExportView: View {
 }
 
 #Preview {
-    NavigationView {
-        PersistentChatDemoView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            PersistentChatDemoView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

@@ -8,8 +8,32 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct AdvancedPersistentChatDemoView: View {
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o-mini")) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
+    
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        AdvancedPersistentChatDemoContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "advanced-persistent", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct AdvancedPersistentChatDemoContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(model: model)
+    }
     
     // Different persistence implementations
     @State private var selectedPersistence: PersistenceType = .userDefaults
@@ -64,6 +88,9 @@ struct AdvancedPersistentChatDemoView: View {
                 Text("Choose different storage backends for your chat")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                    .font(.caption2)
+                    .foregroundColor(isUsingRealAPI ? .secondary : .orange)
                 
                 // Persistence type selector
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -171,10 +198,11 @@ struct AdvancedPersistentChatDemoView: View {
             
             // Show demo message
             if chat.messages.isEmpty {
+                let providerLine = isUsingRealAPI ? "I'm powered by \(providerSummary)." : "I'm running with the mock provider."
                 chat.setMessages([
                     ChatMessage(
                         role: .assistant,
-                        content: "Welcome to the advanced persistence demo! Try different storage backends:\n\n• **UserDefaults**: Simple, synchronous storage\n• **File System**: Larger capacity, structured storage\n• **Cloud Storage**: Simulated cloud sync with delays\n• **Encrypted**: Secure storage (demo encryption)\n• **Versioned**: Migration-ready storage\n• **Composite**: Local + cloud redundancy\n\nEach backend implements the ChatPersistence protocol!"
+                        content: "Welcome to the advanced persistence demo! \(providerLine) Try different storage backends:\n\n• **UserDefaults**: Simple, synchronous storage\n• **File System**: Larger capacity, structured storage\n• **Cloud Storage**: Simulated cloud sync with delays\n• **Encrypted**: Secure storage (demo encryption)\n• **Versioned**: Migration-ready storage\n• **Composite**: Local + cloud redundancy\n\nEach backend implements the ChatPersistence protocol!"
                     )
                 ])
             }
@@ -275,8 +303,8 @@ struct AdvancedPersistentChatDemoView: View {
     }
 }
 
-struct PersistenceButton: View {
-    let type: AdvancedPersistentChatDemoView.PersistenceType
+private struct PersistenceButton: View {
+    let type: AdvancedPersistentChatDemoContent.PersistenceType
     let isSelected: Bool
     let action: () -> Void
     
@@ -304,8 +332,8 @@ struct PersistenceButton: View {
     }
 }
 
-struct EmptyStateView: View {
-    let persistenceType: AdvancedPersistentChatDemoView.PersistenceType
+private struct EmptyStateView: View {
+    let persistenceType: AdvancedPersistentChatDemoContent.PersistenceType
     
     var body: some View {
         VStack(spacing: 16) {
@@ -345,7 +373,12 @@ struct EmptyStateView: View {
 }
 
 #Preview {
-    NavigationView {
-        AdvancedPersistentChatDemoView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            AdvancedPersistentChatDemoView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

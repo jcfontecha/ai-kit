@@ -10,40 +10,24 @@ import AIKit
 
 @available(iOS 16.0, macOS 13.0, *)
 struct OpenRouterChatDemoView: View {
-    private let state: ProviderState
-    
-    private struct ProviderState {
-        let model: LanguageModel?
-        let providerDescription: String
-        let isConfigured: Bool
-    }
-    
-    init() {
-        if let apiKey = ConfigLoader.loadOpenRouterAPIKey() {
-            let provider = OpenRouterProvider(
-                apiKey: apiKey,
-                compatibility: .strict,
-                headers: ["HTTP-Referer": "AIKit Demo"]
-            )
-            let model = provider
-                .languageModel("anthropic/claude-3.5-sonnet")
-                .temperature(0.6)
-            state = ProviderState(
-                model: model,
-                providerDescription: "OpenRouter • anthropic/claude-3.5-sonnet (strict mode)",
-                isConfigured: true
-            )
-        } else {
-            state = ProviderState(model: nil, providerDescription: "Missing OPENROUTER_API_KEY", isConfigured: false)
-        }
-    }
+    @EnvironmentObject private var providerStore: ProviderStore
     
     var body: some View {
+        let fallbackModel = "anthropic/claude-3.5-sonnet"
+        let isOpenRouterSelection = providerStore.selection.provider == .openRouter
+        let isConfigured = providerStore.isUsingRealAPI && isOpenRouterSelection
+        let availabilityMessage = providerStore.availabilityMessage(for: .openRouter)
         Group {
-            if let model = state.model {
-                OpenRouterChatExperienceView(model: model, providerDescription: state.providerDescription)
-            } else {
+            if isOpenRouterSelection && !isConfigured {
                 MissingOpenRouterConfigView()
+            } else {
+                OpenRouterChatExperienceView(
+                    model: providerStore.languageModel(fallbackModel),
+                    providerDescription: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+                    isOpenRouterSelection: isOpenRouterSelection,
+                    availabilityMessage: availabilityMessage
+                )
+                .id(providerStore.selectionIdentity(context: "openrouter", fallbackModelId: fallbackModel))
             }
         }
         .navigationTitle("OpenRouter Chat")
@@ -54,11 +38,15 @@ struct OpenRouterChatDemoView: View {
 @available(iOS 16.0, macOS 13.0, *)
 private struct OpenRouterChatExperienceView: View {
     let providerDescription: String
+    let isOpenRouterSelection: Bool
+    let availabilityMessage: String?
     @UseChat private var chat: AIChat
     
-    init(model: LanguageModel, providerDescription: String) {
+    init(model: LanguageModel, providerDescription: String, isOpenRouterSelection: Bool, availabilityMessage: String?) {
         self.providerDescription = providerDescription
-        self._chat = UseChat(model: model)
+        self.isOpenRouterSelection = isOpenRouterSelection
+        self.availabilityMessage = availabilityMessage
+        _chat = UseChat(model: model)
     }
     
     var body: some View {
@@ -78,6 +66,16 @@ private struct OpenRouterChatExperienceView: View {
                 Text(providerDescription)
                     .font(.caption)
                     .foregroundColor(.secondary)
+                if !isOpenRouterSelection {
+                    Text("Select OpenRouter in settings to test strict compatibility features.")
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                }
+                if let availabilityMessage, isOpenRouterSelection {
+                    Text(availabilityMessage)
+                        .font(.caption2)
+                        .foregroundColor(.orange)
+                }
             }
             Spacer()
             StatusIndicator(status: chat.status)
@@ -91,7 +89,7 @@ private struct OpenRouterChatExperienceView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     if chat.messages.isEmpty {
-                        OpenRouterEmptyStateView()
+                        OpenRouterEmptyStateView(isOpenRouterSelection: isOpenRouterSelection)
                     }
                     
                     ForEach(chat.messages) { message in
@@ -129,7 +127,12 @@ private struct OpenRouterChatExperienceView: View {
     
     private func prepareWelcomeMessage() {
         guard chat.messages.isEmpty else { return }
-        let welcome = "Hello from OpenRouter! This chat is routed through anthropic/claude-3.5-sonnet. Ask anything to see responses proxied through OpenRouter."
+        let welcome: String
+        if isOpenRouterSelection {
+            welcome = "Hello from OpenRouter! This chat is routed through \(providerDescription). Ask anything to see responses proxied through OpenRouter."
+        } else {
+            welcome = "Hello! This view highlights OpenRouter features, but you're currently using \(providerDescription). Switch providers in the settings to test OpenRouter's strict compatibility."
+        }
         chat.setMessages([
             ChatMessage(
                 role: .assistant,
@@ -141,16 +144,19 @@ private struct OpenRouterChatExperienceView: View {
 
 @available(iOS 16.0, macOS 13.0, *)
 private struct OpenRouterEmptyStateView: View {
+    let isOpenRouterSelection: Bool
+    
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "network")
                 .font(.system(size: 56))
                 .foregroundColor(.blue)
-            Text("Connected to OpenRouter")
+            Text(isOpenRouterSelection ? "Connected to OpenRouter" : "Using alternate provider")
                 .font(.title3)
-            Text("Send a message to test cross-provider routing and reasoning support.")
+            Text(isOpenRouterSelection ? "Send a message to test cross-provider routing and reasoning support." : "Select OpenRouter to see strict routing details, or continue chatting with the current provider.")
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 120)
@@ -219,5 +225,6 @@ private struct MissingOpenRouterConfigView: View {
     NavigationView {
         OpenRouterChatDemoView()
     }
+    .environmentObject(ProviderStore())
 }
 #endif

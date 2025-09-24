@@ -56,6 +56,7 @@ public struct OpenRouterProvider: AIProvider {
     private let completionModelIds: Set<String>
     private let structuredOutputs: Bool?
     private let urlSession: URLSession
+    private let debugLogging: Bool
     
     // MARK: - Initialization
     
@@ -72,7 +73,8 @@ public struct OpenRouterProvider: AIProvider {
         extraBody: [String: JSONValue] = [:],
         completionModelIds: Set<String> = ["openai/gpt-3.5-turbo-instruct"],
         structuredOutputs: Bool? = nil,
-        urlSession: URLSession = .shared
+        urlSession: URLSession = .shared,
+        debugLogging: Bool = false
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -87,6 +89,14 @@ public struct OpenRouterProvider: AIProvider {
         self.completionModelIds = completionModelIds
         self.structuredOutputs = structuredOutputs
         self.urlSession = urlSession
+        self.debugLogging = debugLogging
+    }
+
+    private func debugLog(_ message: @autoclosure () -> String) {
+#if DEBUG
+        guard debugLogging else { return }
+        print("[OpenRouter] \(message())")
+#endif
     }
     
     // MARK: - AIProvider
@@ -175,16 +185,15 @@ public struct OpenRouterProvider: AIProvider {
     ) async throws -> ProviderResponse {
         let payload = try buildChatPayload(request: request, options: options)
         let data = try encodeJSON(payload)
-#if DEBUG
         if let jsonString = String(data: data, encoding: .utf8) {
-            print("[OpenRouter] Request Payload:", jsonString)
+            debugLog("Request Payload: \(jsonString)")
         }
-#endif
         let urlRequest = try buildURLRequest(path: "/chat/completions", body: data, accept: "application/json")
         let (responseData, response) = try await urlSession.data(for: urlRequest)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenRouterError.invalidResponse("Invalid response type")
         }
+        debugLog("Chat completion response status: \(httpResponse.statusCode)")
         guard httpResponse.statusCode == 200 else {
             throw try parseError(from: responseData, statusCode: httpResponse.statusCode)
         }
@@ -238,17 +247,16 @@ public struct OpenRouterProvider: AIProvider {
             ])
         }
         let data = try encodeJSON(payload)
-#if DEBUG
         if let jsonString = String(data: data, encoding: .utf8) {
-            print("[OpenRouter] Streaming Request Payload:", jsonString)
+            debugLog("Streaming Request Payload: \(jsonString)")
         }
-#endif
         var urlRequest = try buildURLRequest(path: "/chat/completions", body: data, accept: "text/event-stream")
         urlRequest.timeoutInterval = 60 * 5
         let (bytes, response) = try await urlSession.bytes(for: urlRequest)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenRouterError.invalidResponse("Invalid response type")
         }
+        debugLog("Streaming HTTP status: \(httpResponse.statusCode)")
         guard httpResponse.statusCode == 200 else {
             let collected = try await collectBody(from: bytes)
             throw try parseError(from: collected, statusCode: httpResponse.statusCode)
@@ -258,10 +266,12 @@ public struct OpenRouterProvider: AIProvider {
             for try await line in bytes.lines {
                 guard line.hasPrefix("data: ") else { continue }
                 let payload = String(line.dropFirst(6))
+                debugLog("Streaming chunk: \(payload.prefix(200))")
                 if payload.trimmingCharacters(in: .whitespacesAndNewlines) == "[DONE]" {
                     if let finalChunk = accumulator.finalize() {
                         continuation.yield(finalChunk)
                     }
+                    debugLog("Received [DONE] sentinel")
                     break
                 }
                 guard let jsonData = payload.data(using: .utf8) else { continue }
@@ -275,11 +285,14 @@ public struct OpenRouterProvider: AIProvider {
                     }
                 } catch {
                     // Ignore malformed chunk but keep streaming
+                    debugLog("Failed to decode stream event: \(error.localizedDescription)")
                     continue
                 }
             }
             continuation.finish()
+            debugLog("Streaming finished successfully")
         } catch {
+            debugLog("Streaming terminated with error: \(error)")
             continuation.finish(throwing: error)
         }
     }
@@ -299,12 +312,18 @@ public struct OpenRouterProvider: AIProvider {
         for (key, value) in customHeaders {
             request.setValue(value, forHTTPHeaderField: key)
         }
+        if let bodyString = String(data: body, encoding: .utf8) {
+            debugLog("Prepared request to \(url.absoluteString) with Accept=\(accept), headers=\(customHeaders), body=\(bodyString)")
+        }
         return request
     }
-    
+
     private func parseError(from data: Data, statusCode: Int) throws -> Error {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
+        if let payload = String(data: data, encoding: .utf8) {
+            debugLog("Parsing error response (status \(statusCode)): \(payload)")
+        }
         if let errorResponse = try? decoder.decode(OpenRouterErrorResponse.self, from: data) {
             return AIProviderError.providerSpecific(errorResponse.error.message, underlyingError: nil)
         }
@@ -1465,6 +1484,15 @@ private func convertSchemaDefinitionToDict(_ definition: SchemaDefinition, stric
     if dict["required"] == nil, let required = definition.required {
         dict["required"] = required
     }
+    if let uniqueItems = definition.uniqueItems {
+        dict["uniqueItems"] = uniqueItems
+    }
+    if let minProperties = definition.minProperties {
+        dict["minProperties"] = minProperties
+    }
+    if let maxProperties = definition.maxProperties {
+        dict["maxProperties"] = maxProperties
+    }
     if let enumValues = definition.enum {
         dict["enum"] = enumValues.map { convertJSONSchemaValueToAny($0) }
     }
@@ -1479,6 +1507,30 @@ private func convertSchemaDefinitionToDict(_ definition: SchemaDefinition, stric
     if let maximum = definition.maximum { dict["maximum"] = maximum }
     if let pattern = definition.pattern { dict["pattern"] = pattern }
     if let format = definition.format { dict["format"] = format }
+    if let examples = definition.examples {
+        dict["examples"] = examples.map { convertJSONSchemaValueToAny($0) }
+    }
+    if let minLength = definition.minLength { dict["minLength"] = minLength }
+    if let maxLength = definition.maxLength { dict["maxLength"] = maxLength }
+    if let exclusiveMinimum = definition.exclusiveMinimum { dict["exclusiveMinimum"] = exclusiveMinimum }
+    if let exclusiveMaximum = definition.exclusiveMaximum { dict["exclusiveMaximum"] = exclusiveMaximum }
+    if let additional = definition.additionalProperties {
+        dict["additionalProperties"] = try convertAdditionalPropertiesToAny(additional, strict: strict)
+    } else if strict && definition.type == .object {
+        dict["additionalProperties"] = false
+    }
+    if let oneOf = definition.oneOf {
+        dict["oneOf"] = try oneOf.map { try convertJSONSchemaToDict($0, strict: strict) }
+    }
+    if let anyOf = definition.anyOf {
+        dict["anyOf"] = try anyOf.map { try convertJSONSchemaToDict($0, strict: strict) }
+    }
+    if let allOf = definition.allOf {
+        dict["allOf"] = try allOf.map { try convertJSONSchemaToDict($0, strict: strict) }
+    }
+    if let not = definition.not {
+        dict["not"] = try convertJSONSchemaToDict(not, strict: strict)
+    }
     return dict
 }
 
@@ -1490,6 +1542,16 @@ private func convertJSONSchemaValueToAny(_ value: JSONSchemaValue) -> Any {
     case .integer(let int): return int
     case .boolean(let bool): return bool
     case .null: return NSNull()
+    }
+}
+
+@available(macOS 12.0, iOS 15.0, watchOS 8.0, tvOS 15.0, *)
+private func convertAdditionalPropertiesToAny(_ additional: AdditionalProperties, strict: Bool) throws -> Any {
+    switch additional {
+    case .boolean(let value):
+        return value
+    case .schema(let schema):
+        return try convertJSONSchemaToDict(schema, strict: strict)
     }
 }
 

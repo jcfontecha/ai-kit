@@ -8,11 +8,35 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct MessageManagementDemoView: View {
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o-mini")) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
+    
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        MessageManagementDemoContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "message-management", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct MessageManagementDemoContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
     @State private var selectedMessage: ChatMessage?
     @State private var showingEditAlert = false
     @State private var editingText = ""
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(model: model)
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -23,6 +47,9 @@ struct MessageManagementDemoView: View {
                 Text("Edit, delete, and manipulate messages")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                    .font(.caption2)
+                    .foregroundColor(isUsingRealAPI ? .secondary : .orange)
                 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -142,7 +169,9 @@ struct MessageManagementDemoView: View {
                     ),
                     ChatMessage(
                         role: .assistant,
-                        content: "Hello! This is the message management demo. You can edit and delete messages by long-pressing them. Try sending some messages!"
+                        content: isUsingRealAPI
+                            ? "Hello! I'm powered by \(providerSummary). This is the message management demo—long-press messages to edit or delete them."
+                            : "Hello! I'm using the mock provider. This is the message management demo—long-press messages to edit or delete them."
                     )
                 ])
             }
@@ -238,7 +267,12 @@ struct RoleIndicator: View {
 }
 
 #Preview {
-    NavigationView {
-        MessageManagementDemoView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            MessageManagementDemoView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

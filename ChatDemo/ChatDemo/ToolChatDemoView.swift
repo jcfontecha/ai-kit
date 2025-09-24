@@ -8,15 +8,41 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct ToolChatDemoView: View {
-    @UseChat(
-        model: ProviderManager.shared.languageModel("gpt-4o-mini"),
-        tools: [
+    @EnvironmentObject private var providerStore: ProviderStore
+    
+    private var tools: [Tool] {
+        [
             WeatherTool.createTool(),
             CalculatorTool.createTool(),
             CurrentTimeTool.createTool()
         ]
-    ) var chat
+    }
+    
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        ToolChatDemoContent(
+            model: providerStore.languageModel(fallbackModel),
+            tools: tools,
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "tool", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct ToolChatDemoContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
+    
+    init(model: LanguageModel, tools: [Tool], providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(model: model, tools: tools)
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -27,6 +53,9 @@ struct ToolChatDemoView: View {
                 Text("Available tools: Weather, Calculator, Current Time")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                    .font(.caption2)
+                    .foregroundColor(isUsingRealAPI ? .secondary : .orange)
                 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -92,7 +121,9 @@ struct ToolChatDemoView: View {
                 chat.setMessages([
                     ChatMessage(
                         role: .assistant,
-                        content: "Hello! I can help you with weather, calculations, and telling time. Try asking me to use one of my tools!"
+                        content: isUsingRealAPI
+                            ? "Hello! I'm powered by \(providerSummary) and can use tools like weather, calculator, and time. Try asking me to use one!"
+                            : "Hello! I'm using the mock provider but can demonstrate tool calls for weather, calculator, and time. Try asking me to use one!"
                     )
                 ])
             }
@@ -288,7 +319,12 @@ struct CurrentTimeTool {
 }
 
 #Preview {
-    NavigationView {
-        ToolChatDemoView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            ToolChatDemoView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

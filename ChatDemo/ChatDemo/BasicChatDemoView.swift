@@ -8,8 +8,32 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct BasicChatDemoView: View {
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o-mini")) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
+    
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        BasicChatDemoContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "basic", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct BasicChatDemoContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(model: model)
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -20,8 +44,8 @@ struct BasicChatDemoView: View {
                         .font(.headline)
                     HStack(spacing: 4) {
                         Text("Experience the @UseChat property wrapper")
-                        Text(ProviderManager.shared.isUsingRealAPI ? "• OpenAI" : "• Mock")
-                            .foregroundColor(ProviderManager.shared.isUsingRealAPI ? .green : .orange)
+                        Text(isUsingRealAPI ? providerSummary : "Mock Provider")
+                            .foregroundColor(isUsingRealAPI ? .green : .orange)
                             .fontWeight(.medium)
                     }
                     .font(.caption)
@@ -45,7 +69,7 @@ struct BasicChatDemoView: View {
                                 Text("Start a conversation!")
                                     .font(.title2)
                                     .foregroundColor(.secondary)
-                                Text("This demo uses a mock provider for testing")
+                                Text(isUsingRealAPI ? "Live: \(providerSummary)" : "This demo uses the mock provider for testing")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
@@ -102,8 +126,8 @@ struct BasicChatDemoView: View {
         .onAppear {
             // Add a welcome message
             if chat.messages.isEmpty {
-                let welcomeMessage = ProviderManager.shared.isUsingRealAPI
-                    ? "Hello! I'm powered by OpenAI's GPT-4o-mini. This demo uses the @UseChat property wrapper with a real AI model. Ask me anything!"
+                let welcomeMessage = isUsingRealAPI
+                    ? "Hello! I'm powered by \(providerSummary). This demo uses the @UseChat property wrapper with a real AI model. Ask me anything!"
                     : "Hello! I'm your AI assistant using a mock provider. This is a demo of the @UseChat property wrapper. Try asking me anything!"
                 
                 chat.setMessages([
@@ -240,7 +264,12 @@ struct ChatInputView: View {
 }
 
 #Preview {
-    NavigationView {
-        BasicChatDemoView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            BasicChatDemoView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

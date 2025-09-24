@@ -8,15 +8,38 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct ErrorHandlingDemoView: View {
-    @UseChat(
-        model: ProviderManager.shared.languageModel("gpt-4o-mini"),
-        onError: { error in
-            print("Chat error occurred: \(error)")
-        }
-    ) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
     
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        ErrorHandlingDemoContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "error-handling", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct ErrorHandlingDemoContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
     @State private var simulateError = false
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(
+            model: model,
+            onError: { error in
+                print("Chat error occurred: \(error)")
+            }
+        )
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -27,6 +50,9 @@ struct ErrorHandlingDemoView: View {
                 Text("Test how the chat handles various error scenarios")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                    .font(.caption2)
+                    .foregroundColor(isUsingRealAPI ? .secondary : .orange)
                 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -121,7 +147,9 @@ struct ErrorHandlingDemoView: View {
                 chat.setMessages([
                     ChatMessage(
                         role: .assistant,
-                        content: "Hello! This demo shows how AIChat handles errors gracefully. Try the error simulation buttons above!"
+                        content: isUsingRealAPI
+                            ? "Hello! I'm powered by \(providerSummary). This demo shows how AIChat handles errors gracefully. Try the simulation buttons above!"
+                            : "Hello! I'm using the mock provider. This demo shows how AIChat handles errors gracefully. Try the simulation buttons above!"
                     )
                 ])
             }
@@ -284,7 +312,12 @@ struct MessageWithErrorIndicatorView: View {
 }
 
 #Preview {
-    NavigationView {
-        ErrorHandlingDemoView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            ErrorHandlingDemoView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

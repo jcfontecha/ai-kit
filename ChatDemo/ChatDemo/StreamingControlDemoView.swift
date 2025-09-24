@@ -8,18 +8,42 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct StreamingControlDemoView: View {
-    @UseChat(
-        model: ProviderManager.shared.languageModel("gpt-4o-mini"),
-        onFinish: { message, details in
-            print("Streaming finished. Tokens used: \(details.usage?.totalTokens ?? 0)")
-        }
-    ) var chat
+    @EnvironmentObject private var providerStore: ProviderStore
+    
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        StreamingControlDemoContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "streaming", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct StreamingControlDemoContent: View {
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chat: AIChat
     
     @State private var streamingSpeed: Double = 1.0
     @State private var showTokenCount = true
     @State private var autoStop = false
     @State private var maxResponseLength = 500
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chat = UseChat(
+            model: model,
+            onFinish: { _, details in
+                print("Streaming finished. Tokens used: \(details.usage?.totalTokens ?? 0)")
+            }
+        )
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -35,7 +59,9 @@ struct StreamingControlDemoView: View {
                 chat.setMessages([
                     ChatMessage(
                         role: .assistant,
-                        content: "Welcome to the streaming control demo! Try sending a message and watch it stream in real-time. Use the controls above to customize the experience."
+                        content: isUsingRealAPI
+                            ? "Welcome to the streaming control demo! I'm powered by \(providerSummary). Try sending a message and watch it stream in real-time."
+                            : "Welcome to the streaming control demo! I'm using the mock provider. Try sending a message and watch the simulated streaming."
                     )
                 ])
             }
@@ -47,7 +73,9 @@ struct StreamingControlDemoView: View {
             streamingSpeed: $streamingSpeed,
             showTokenCount: $showTokenCount,
             autoStop: $autoStop,
-            maxResponseLength: $maxResponseLength
+            maxResponseLength: $maxResponseLength,
+            providerSummary: providerSummary,
+            isUsingRealAPI: isUsingRealAPI
         )
     }
     
@@ -401,6 +429,8 @@ struct StreamingControlsHeader: View {
     @Binding var showTokenCount: Bool
     @Binding var autoStop: Bool
     @Binding var maxResponseLength: Int
+    let providerSummary: String
+    let isUsingRealAPI: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -409,6 +439,9 @@ struct StreamingControlsHeader: View {
             Text("Control real-time message streaming")
                 .font(.caption)
                 .foregroundColor(.secondary)
+            Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                .font(.caption2)
+                .foregroundColor(isUsingRealAPI ? .secondary : .orange)
             
             // Streaming controls
             VStack(spacing: 8) {
@@ -444,7 +477,12 @@ struct StreamingControlsHeader: View {
 }
 
 #Preview {
-    NavigationView {
-        StreamingControlDemoView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            StreamingControlDemoView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }

@@ -23,6 +23,10 @@ struct ConfigLoader {
         loadValue(for: "OPENAI_API_KEY")
     }
     
+    static func loadAnthropicAPIKey() -> String? {
+        loadValue(for: "ANTHROPIC_API_KEY")
+    }
+    
     static func loadOpenRouterAPIKey() -> String? {
         loadValue(for: "OPENROUTER_API_KEY")
     }

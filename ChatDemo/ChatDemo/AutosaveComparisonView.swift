@@ -8,19 +8,45 @@
 import SwiftUI
 import AIKit
 
+@available(iOS 16.0, macOS 13.0, *)
 struct AutosaveComparisonView: View {
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o-mini")) var chatOnDisappear
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o-mini")) var chatOnChange
-    @UseChat(model: ProviderManager.shared.languageModel("gpt-4o-mini")) var chatDebounced
+    @EnvironmentObject private var providerStore: ProviderStore
     
-    @State private var selectedTab = 0
-    @State private var saveLog: [SaveLogEntry] = []
-    
+    var body: some View {
+        let fallbackModel = "gpt-4o-mini"
+        AutosaveComparisonContent(
+            model: providerStore.languageModel(fallbackModel),
+            providerSummary: providerStore.selectionSummary(fallbackModelId: fallbackModel),
+            isUsingRealAPI: providerStore.isUsingRealAPI
+        )
+        .id(providerStore.selectionIdentity(context: "autosave-comparison", fallbackModelId: fallbackModel))
+    }
+}
+
+@available(iOS 16.0, macOS 13.0, *)
+private struct AutosaveComparisonContent: View {
     struct SaveLogEntry: Identifiable {
         let id = UUID()
         let timestamp: Date
         let method: String
         let messageCount: Int
+    }
+    
+    let providerSummary: String
+    let isUsingRealAPI: Bool
+    @UseChat private var chatOnDisappear: AIChat
+    @UseChat private var chatOnChange: AIChat
+    @UseChat private var chatDebounced: AIChat
+    
+    @State private var selectedTab = 0
+    @State private var saveLog: [SaveLogEntry] = []
+    
+    init(model: LanguageModel, providerSummary: String, isUsingRealAPI: Bool) {
+        self.providerSummary = providerSummary
+        self.isUsingRealAPI = isUsingRealAPI
+        _chatOnDisappear = UseChat(model: model)
+        _chatOnChange = UseChat(model: model)
+        _chatDebounced = UseChat(model: model)
     }
     
     var body: some View {
@@ -32,6 +58,9 @@ struct AutosaveComparisonView: View {
                 Text("Compare different autosave strategies")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                Text(isUsingRealAPI ? "Using \(providerSummary)" : "Mock provider active")
+                    .font(.caption2)
+                    .foregroundColor(isUsingRealAPI ? .secondary : .orange)
                 
                 Picker("Strategy", selection: $selectedTab) {
                     Text("On Disappear").tag(0)
@@ -223,7 +252,12 @@ struct LoggingPersistence: ChatPersistence {
 }
 
 #Preview {
-    NavigationView {
-        AutosaveComparisonView()
+    if #available(iOS 16.0, macOS 13.0, *) {
+        NavigationView {
+            AutosaveComparisonView()
+        }
+        .environmentObject(ProviderStore())
+    } else {
+        Text("Requires iOS 16 or macOS 13")
     }
 }
