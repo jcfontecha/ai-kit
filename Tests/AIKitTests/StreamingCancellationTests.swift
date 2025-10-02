@@ -63,19 +63,18 @@ import Foundation
     let provider = MockProvider(configuration: config)
     let model = provider.languageModel("gpt-4.1-nano")
     
-    var streamWasCancelled = false
-    
-    let task = Task {
+    let flag = CancellationFlag()
+
+    let task = Task<Void, Error> { @MainActor in
         do {
             let result = await client.streamText(model, prompt: "Test cancellation cleanup Generate a longer response with many words to ensure multiple chunks")
-            
+
             for try await _ in result.textStream {
-                // This loop should be interrupted by cancellation
-                try Task.checkCancellation() // Check for cancellation
-                try await Task.sleep(nanoseconds: 10_000_000) // 0.01 seconds delay to allow cancellation
+                try Task.checkCancellation()
+                try await Task.sleep(nanoseconds: 10_000_000)
             }
         } catch is CancellationError {
-            streamWasCancelled = true
+            await flag.mark()
             throw CancellationError()
         }
     }
@@ -88,7 +87,8 @@ import Foundation
         try await task.value
         #expect(Bool(false), "Task should have thrown CancellationError")
     } catch is CancellationError {
-        #expect(streamWasCancelled, "Stream should have detected cancellation")
+        let wasCancelled = await flag.value
+        #expect(wasCancelled, "Stream should have detected cancellation")
     }
 }
 
@@ -126,4 +126,12 @@ import Foundation
     }
     
     #expect(cancelledTasks > 0, "At least some tasks should have been cancelled")
+}
+
+private actor CancellationFlag {
+    private(set) var value = false
+
+    func mark() {
+        value = true
+    }
 }

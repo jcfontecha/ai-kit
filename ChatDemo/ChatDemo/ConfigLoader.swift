@@ -30,4 +30,5 @@ struct ConfigLoader {
     static func loadOpenRouterAPIKey() -> String? {
         loadValue(for: "OPENROUTER_API_KEY")
     }
+
 }

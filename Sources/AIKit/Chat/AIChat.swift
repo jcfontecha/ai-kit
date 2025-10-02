@@ -72,9 +72,10 @@ public class AIChat: ObservableObject {
     internal let onError: ((Error) -> Void)?
     internal let onResponse: ((HTTPURLResponse) -> Void)?
     internal var streamTask: Task<Void, Never>?
-    
+
     // Track attachments per message ID
     internal var messageAttachments: [String: [ChatAttachment]] = [:]
+    internal var pendingToolAttachments: [String: [ChatAttachment]] = [:]
     
     // MARK: - Initialization
     
@@ -121,13 +122,13 @@ public class AIChat: ObservableObject {
     /// - Returns: Whether the message was sent successfully
     @discardableResult
     public func send(content: String) async -> Bool {
-        guard !content.isEmpty, (status == .ready || status == .error) else { return false }
-        
-        // Add user message
-        let userMessage = ChatMessage(role: .user, content: content)
-        messages.append(userMessage)
-        
-        // Clear input
+        guard status == .ready || status == .error else { return false }
+
+        if !content.isEmpty {
+            let userMessage = ChatMessage(role: .user, content: content)
+            messages.append(userMessage)
+        }
+
         input = ""
         
         // Update status
@@ -163,6 +164,7 @@ public class AIChat: ObservableObject {
         
         // Remove last assistant message if exists
         if let lastMessage = messages.last, lastMessage.role == .assistant {
+            cleanupAttachments(for: lastMessage)
             messages.removeLast()
         }
         
@@ -177,6 +179,8 @@ public class AIChat: ObservableObject {
     /// - Parameter newMessages: The new message list
     public func setMessages(_ newMessages: [ChatMessage]) {
         messages = newMessages
+        messageAttachments.removeAll()
+        pendingToolAttachments.removeAll()
     }
     
     /// Clear all messages
@@ -187,10 +191,73 @@ public class AIChat: ObservableObject {
         error = nil
         streamTask?.cancel()
         streamTask = nil
+        messageAttachments.removeAll()
+        pendingToolAttachments.removeAll()
     }
     
     // MARK: - Private Methods
     
+    func cleanupAttachments(for message: ChatMessage) {
+        messageAttachments.removeValue(forKey: message.id)
+        for content in message.orderedContent {
+            if case .toolCall(let call) = content {
+                pendingToolAttachments.removeValue(forKey: call.id)
+            }
+        }
+    }
+
+    private func inline(toolResult: ToolResult, currentAssistantIndex: Int, assistantMessage: inout ChatMessage) -> Bool {
+        storeAttachments(from: toolResult)
+        return false
+    }
+
+    private func storeAttachments(from toolResult: ToolResult) {
+        let newAttachments = attachments(from: toolResult)
+        guard !newAttachments.isEmpty else { return }
+
+        var stored = pendingToolAttachments[toolResult.toolCallId] ?? []
+        stored.append(contentsOf: newAttachments)
+        pendingToolAttachments[toolResult.toolCallId] = stored
+    }
+
+    private func attachments(from toolResult: ToolResult) -> [ChatAttachment] {
+        switch toolResult.result {
+        case .image(let image):
+            return [.image(image)]
+        case .file(let file):
+            return [.file(file)]
+        case .data(let data, let mimeType):
+            return [.data(data, mimeType: mimeType, filename: nil)]
+        case .text, .json, .error:
+            return []
+        }
+    }
+
+    private func applyPendingAttachments(to message: ChatMessage) {
+        guard message.role == .tool else { return }
+
+        var aggregated: [ChatAttachment] = []
+        var handledCallIDs: [String] = []
+
+        for content in message.orderedContent {
+            guard case .toolResult(let result) = content else { continue }
+            let toolCallId = result.toolCallId
+
+            if let stored = pendingToolAttachments[toolCallId], !stored.isEmpty {
+                aggregated.append(contentsOf: stored)
+                handledCallIDs.append(toolCallId)
+            }
+        }
+
+        guard !aggregated.isEmpty else { return }
+
+        messageAttachments[message.id] = aggregated
+
+        for callId in handledCallIDs {
+            pendingToolAttachments.removeValue(forKey: callId)
+        }
+    }
+
     private func streamResponse() async {
         streamTask?.cancel()
         
@@ -232,6 +299,7 @@ public class AIChat: ObservableObject {
                     if let toolCalls = chunk.toolCalls {
                         for toolCall in toolCalls {
                             assistantMessage.appendToolCall(toolCall)
+
                             if messageIndex < messages.count {
                                 messages[messageIndex] = assistantMessage
                             }
@@ -248,8 +316,133 @@ public class AIChat: ObservableObject {
                     }
                 }
                 
+                // Sync messages with fully processed response (includes tool results)
+                if messageIndex < messages.count {
+                    assistantMessage = messages[messageIndex]
+                }
+
+                let response = await streamResult.response
+                let convertedMessages: [ChatMessage] = response.messages.map { coreMessage in
+                    ChatMessage(
+                        id: coreMessage.id,
+                        role: coreMessage.role,
+                        orderedContent: coreMessage.content,
+                        timestamp: coreMessage.timestamp
+                    )
+                }
+
+                if let canonicalAssistant = convertedMessages.first {
+                    if messageIndex < messages.count {
+                        var mergedAssistant = messages[messageIndex]
+                        let originalId = mergedAssistant.id
+
+                        let existingText = mergedAssistant.content
+                        let finalText = canonicalAssistant.content
+                        let addition: String
+                        if canonicalAssistant.toolCalls.isEmpty {
+                            addition = ""
+                        } else {
+                            addition = finalText.newContent(usingExistingPrefix: existingText)
+                        }
+                        if !addition.isEmpty {
+                            mergedAssistant.appendText(addition)
+                        }
+
+                        mergedAssistant.mergeToolCalls(from: canonicalAssistant)
+
+                        let toolCallIDs = Set(mergedAssistant.toolCalls.map { $0.id })
+                        let trailingContent = mergedAssistant.extractTrailingContentAfterLastToolCall()
+                        let finalizedAssistant = ChatMessage(
+                            id: canonicalAssistant.id,
+                            role: mergedAssistant.role,
+                            orderedContent: mergedAssistant.orderedContent,
+                            timestamp: canonicalAssistant.timestamp
+                        )
+
+                        messages[messageIndex] = finalizedAssistant
+
+                        if finalizedAssistant.id != originalId,
+                           let storedAttachments = messageAttachments.removeValue(forKey: originalId) {
+                            messageAttachments[finalizedAssistant.id] = storedAttachments
+                        }
+
+                        assistantMessage = finalizedAssistant
+
+                        if let trailing = trailingContent, !trailing.isEmpty {
+                            let trailingMessage = ChatMessage(
+                                id: canonicalAssistant.id + "-tail",
+                                role: .assistant,
+                                orderedContent: trailing,
+                                timestamp: canonicalAssistant.timestamp
+                            )
+                            var insertionIndex = messageIndex + 1
+                            while insertionIndex < messages.count {
+                                let candidate = messages[insertionIndex]
+                                guard candidate.role == .tool else { break }
+                                let containsRelevantTool = candidate.orderedContent.contains { content in
+                                    if case .toolResult(let result) = content {
+                                        return toolCallIDs.contains(result.toolCallId)
+                                    }
+                                    return false
+                                }
+                                if containsRelevantTool {
+                                    insertionIndex += 1
+                                } else {
+                                    break
+                                }
+                            }
+
+                            messages.insert(trailingMessage, at: insertionIndex)
+                        }
+                    } else {
+                        messages.append(canonicalAssistant)
+                        assistantMessage = canonicalAssistant
+                    }
+                } else if messageIndex < messages.count {
+                    messages.remove(at: messageIndex)
+                }
+
+                if convertedMessages.count > 1 {
+                    var insertionIndex = min(messageIndex + 1, messages.count)
+                    for additional in convertedMessages.dropFirst() {
+                        if additional.role == .tool {
+                            let toolResults = additional.orderedContent.compactMap { content -> ToolResult? in
+                                if case .toolResult(let result) = content {
+                                    return result
+                                }
+                                return nil
+                            }
+
+                            if !toolResults.isEmpty {
+                                var allInlined = true
+                                for toolResult in toolResults {
+                                    if !inline(toolResult: toolResult, currentAssistantIndex: messageIndex, assistantMessage: &assistantMessage) {
+                                        allInlined = false
+                                    }
+                                }
+
+                                if allInlined {
+                                    continue
+                                }
+                            }
+                        }
+
+                        if let existingIndex = messages.firstIndex(where: { $0.id == additional.id }) {
+                            messages[existingIndex] = additional
+                            applyPendingAttachments(to: messages[existingIndex])
+                            if existingIndex >= insertionIndex {
+                                insertionIndex = existingIndex + 1
+                            }
+                        } else {
+                            messages.insert(additional, at: insertionIndex)
+                            applyPendingAttachments(to: messages[insertionIndex])
+                            insertionIndex += 1
+                        }
+                    }
+                }
+
                 status = .ready
-                
+
                 // Call onFinish callback
                 if let finishReason = finishReason {
                     let details = FinishDetails(
@@ -436,5 +629,84 @@ public struct ChatMessage: Identifiable, Sendable {
     public mutating func finalizeCurrentTextIfNeeded() {
         // This is implicitly handled by appendToolCall creating a boundary
         // No explicit action needed as appendTextDelta handles accumulation
+    }
+}
+
+// MARK: - Internal Helpers
+
+@available(iOS 16.0, macOS 13.0, *)
+private extension ChatMessage {
+    func withTimestamp(_ newTimestamp: Date) -> ChatMessage {
+        ChatMessage(
+            id: id,
+            role: role,
+            orderedContent: orderedContent,
+            timestamp: newTimestamp
+        )
+    }
+
+    mutating func mergeToolCalls(from canonical: ChatMessage) {
+        let canonicalCalls = canonical.toolCalls
+        guard !canonicalCalls.isEmpty else { return }
+
+        var updatedContent: [MessageContent] = []
+        var handledIDs = Set<String>()
+
+        for content in orderedContent {
+            switch content {
+            case .toolCall(let call):
+                if let replacement = canonicalCalls.first(where: { $0.id == call.id }) {
+                    updatedContent.append(.toolCall(replacement))
+                    handledIDs.insert(replacement.id)
+                } else {
+                    updatedContent.append(content)
+                }
+            default:
+                updatedContent.append(content)
+            }
+        }
+
+        for call in canonicalCalls where !handledIDs.contains(call.id) {
+            updatedContent.append(.toolCall(call))
+        }
+
+        orderedContent = updatedContent
+    }
+
+    mutating func extractTrailingContentAfterLastToolCall() -> [MessageContent]? {
+        guard let lastToolIndex = orderedContent.lastIndex(where: { content in
+            if case .toolCall = content { return true }
+            return false
+        }) else {
+            return nil
+        }
+
+        let trailingStart = lastToolIndex + 1
+        guard trailingStart < orderedContent.count else {
+            return nil
+        }
+
+        let trailing = Array(orderedContent[trailingStart..<orderedContent.count])
+        if trailing.isEmpty {
+            return nil
+        }
+
+        orderedContent.removeSubrange(trailingStart..<orderedContent.count)
+        return trailing
+    }
+}
+
+private extension String {
+    func newContent(usingExistingPrefix existing: String) -> String {
+        guard !isEmpty else { return "" }
+        if existing.isEmpty { return self }
+
+        if let range = range(of: existing) {
+            let remainder = self[range.upperBound...]
+            let trimmed = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "" : String(remainder)
+        }
+
+        return self
     }
 }

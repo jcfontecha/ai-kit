@@ -174,9 +174,10 @@ public extension AIClient {
                     var currentMessages = messages
                     var allAccumulatedText = ""
                     var globalChunkIndex = 0
-                    
-                    // Execute steps up to maxSteps
-                    for stepIndex in 0..<maxSteps {
+                    var stepCount = 0
+
+                    // Use a conditional loop like Vercel AI SDK - only continue if there are tool calls to process
+                    while stepCount < maxSteps {
                         // 1. Create provider request with tools
                         let request = ProviderRequest(
                             modelId: model.modelId,
@@ -185,30 +186,30 @@ public extension AIClient {
                             tools: tools,
                             mode: .regular(tools: tools, toolChoice: toolChoice)
                         )
-                        
+
                         // 2. Apply request middleware
                         let processedRequest = try await applyRequestMiddleware(request)
-                        
+
                         // 3. Stream from provider
                         let providerStream = model.provider.streamTextRaw(processedRequest)
                         var stepText = ""
                         var toolCallsReceived: [ToolCall] = []
                         var finishReason: FinishReason = .stop
-                        
+
                         for try await providerChunk in providerStream {
                             stepText += providerChunk.delta
                             allAccumulatedText += providerChunk.delta
-                            
+
                             // Collect tool calls from chunks
                             if let toolCall = providerChunk.toolCall {
                                 toolCallsReceived.append(toolCall)
                             }
-                            
+
                             // Track finish reason
                             if let reason = providerChunk.finishReason {
                                 finishReason = reason
                             }
-                            
+
                             // Transform ProviderChunk to TextChunk with full tool call support
                             let textChunk = TextChunk(
                                 delta: providerChunk.delta,
@@ -217,7 +218,7 @@ public extension AIClient {
                                 usage: providerChunk.usage,
                                 chunkId: UUID().uuidString,
                                 timestamp: Date(),
-                                stepId: String(stepIndex),
+                                stepId: String(stepCount),
                                 toolCalls: providerChunk.toolCall != nil ? [providerChunk.toolCall!] : nil,
                                 toolCallStreamingStart: providerChunk.toolCallStreamingStart.map { start in
                                     ToolCallStreamingStart(
@@ -233,48 +234,53 @@ public extension AIClient {
                                     )
                                 }
                             )
-                            
+
                             // 4. Apply chunk middleware and yield
                             let processedChunk = try await applyChunkMiddleware(textChunk)
                             continuation.yield(processedChunk)
                             globalChunkIndex += 1
                         }
-                        
+
                         // Track accumulated content in message tracker
                         if !stepText.isEmpty {
                             await messageTracker.appendText(stepText)
                         }
-                        
+
                         for toolCall in toolCallsReceived {
                             await messageTracker.addToolCall(toolCall)
                         }
-                        
+
                         // Handle automatic tool execution if needed
-                        if !toolCallsReceived.isEmpty && finishReason == .toolCalls && stepIndex + 1 < maxSteps {
-                            // Add assistant message with tool calls
-                            let assistantMessage = Message(
-                                role: .assistant,
-                                content: stepText.isEmpty ? [] : [.text(stepText)],
-                                toolCalls: toolCallsReceived
-                            )
-                            currentMessages.append(assistantMessage)
-                            
-                            // Execute tools and add results
-                            for toolCall in toolCallsReceived {
-                                let result = try await executeToolCall(toolCall, tools: tools)
-                                currentMessages.append(.tool(result: result))
-                                // Track tool results in message tracker
-                                await messageTracker.addToolResult(result)
+                        if !toolCallsReceived.isEmpty && finishReason == .toolCalls {
+                            // Increment step count BEFORE checking if we should continue
+                            stepCount += 1
+
+                            if stepCount < maxSteps {
+                                // Add assistant message with tool calls
+                                let assistantMessage = Message(
+                                    role: .assistant,
+                                    content: stepText.isEmpty ? [] : [.text(stepText)],
+                                    toolCalls: toolCallsReceived
+                                )
+                                currentMessages.append(assistantMessage)
+
+                                // Execute tools and add results
+                                for toolCall in toolCallsReceived {
+                                    let result = try await executeToolCall(toolCall, tools: tools)
+                                    currentMessages.append(.tool(result: result))
+                                    // Track tool results in message tracker
+                                    await messageTracker.addToolResult(result)
+                                }
+
+                                // Continue to next step for follow-up generation
+                                continue
                             }
-                            
-                            // Continue to next step for follow-up generation
-                            continue
                         }
-                        
-                        // No more tool calls or reached max steps - finish streaming
+
+                        // No tool calls or reached max steps - finish streaming
                         break
                     }
-                    
+
                     // Finalize message tracking
                     await messageTracker.finalize()
                     continuation.finish()

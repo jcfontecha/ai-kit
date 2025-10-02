@@ -26,8 +26,10 @@ public extension AIClient {
         var currentMessages = messages
         var allSteps: [GenerationStep] = []
         var totalUsage = Usage(promptTokens: 0, completionTokens: 0, totalTokens: 0)
-        
-        for stepIndex in 0..<maxSteps {
+        var stepCount = 0
+
+        // Use a conditional loop like Vercel AI SDK - only continue if there are tool calls to process
+        while stepCount < maxSteps {
             // 1. Create provider request for this step
             // Use provided toolChoice or default to 'auto' when tools are provided
             let effectiveToolChoice: ToolChoice? = {
@@ -39,7 +41,7 @@ public extension AIClient {
                     return nil
                 }
             }()
-            
+
             let mode: ProviderMode = {
                 if let tools = tools, !tools.isEmpty {
                     return .regular(tools: tools, toolChoice: effectiveToolChoice)
@@ -47,7 +49,7 @@ public extension AIClient {
                     return .regular(tools: nil, toolChoice: effectiveToolChoice)
                 }
             }()
-            
+
             let request = ProviderRequest(
                 modelId: model.modelId,
                 messages: currentMessages,
@@ -55,23 +57,23 @@ public extension AIClient {
                 tools: tools,
                 mode: mode
             )
-            
+
             // 2. Apply request middleware
             let processedRequest = try await applyRequestMiddleware(request)
-            
+
             // 3. Call provider
             let providerResponse = try await model.provider.generateTextRaw(processedRequest)
-            
+
             // 4. Accumulate usage
             totalUsage = Usage(
                 promptTokens: totalUsage.promptTokens + providerResponse.usage.promptTokens,
                 completionTokens: totalUsage.completionTokens + providerResponse.usage.completionTokens,
                 totalTokens: totalUsage.totalTokens + providerResponse.usage.totalTokens
             )
-            
+
             // 5. Handle the response based on finish reason
             if let toolCalls = providerResponse.toolCalls, !toolCalls.isEmpty, providerResponse.finishReason == .toolCalls {
-                // Step 1: Record the tool call step
+                // Record the tool call step
                 let toolCallStep = GenerationStep(
                     stepType: .toolCall,
                     usage: providerResponse.usage,
@@ -79,67 +81,64 @@ public extension AIClient {
                     toolCalls: toolCalls
                 )
                 allSteps.append(toolCallStep)
-                
+
+                // Increment step count BEFORE checking if we should continue
+                stepCount += 1
+
                 // Check if we have more steps available for tool execution
-                if stepIndex + 1 < maxSteps {
-                    // Step 2: Execute tools and create tool result messages
+                if stepCount < maxSteps {
+                    // Execute tools and create tool result messages
                     var toolResults: [ToolResult] = []
                     for toolCall in toolCalls {
                         let result = try await executeToolCall(toolCall, tools: tools)
                         toolResults.append(result)
                     }
-                    
-                    // Step 3: Add assistant message with tool calls, then tool results to conversation
-                    // Create assistant message with both text content and tool calls if text exists
+
+                    // Add assistant message with tool calls, then tool results to conversation
                     let assistantContent: [MessageContent]
                     if !providerResponse.content.isEmpty {
-                        // Include both text and tool calls
                         assistantContent = [.text(providerResponse.content)] + toolCalls.map { .toolCall($0) }
                     } else {
-                        // Just tool calls
                         assistantContent = toolCalls.map { .toolCall($0) }
                     }
-                    
+
                     let assistantMessage = Message(
                         role: .assistant,
                         content: assistantContent,
                         toolCalls: toolCalls
                     )
                     currentMessages.append(assistantMessage)
-                    
+
                     for result in toolResults {
                         currentMessages.append(Message.tool(result: result))
                     }
-                    
-                    // Step 4: Record the tool result processing step
+
+                    // Record the tool result processing step
                     let toolResultStep = GenerationStep(
                         stepType: .toolResult,
                         messages: toolResults.map { Message.tool(result: $0) },
                         toolResults: toolResults
                     )
                     allSteps.append(toolResultStep)
-                    
-                    // Continue to next step for final generation
+
+                    // Continue to next step for follow-up generation
                     continue
                 } else {
-                    // No more steps available, return with tool calls
-                    // Create assistant message with both text content and tool calls if text exists
+                    // No more steps available, return with unexecuted tool calls
                     let assistantContent: [MessageContent]
                     if !providerResponse.content.isEmpty {
-                        // Include both text and tool calls
                         assistantContent = [.text(providerResponse.content)] + toolCalls.map { .toolCall($0) }
                     } else {
-                        // Just tool calls
                         assistantContent = toolCalls.map { .toolCall($0) }
                     }
-                    
+
                     let assistantMessage = Message(
                         role: .assistant,
                         content: assistantContent,
                         toolCalls: toolCalls
                     )
                     currentMessages.append(assistantMessage)
-                    
+
                     let textResponse = TextResponse(
                         text: providerResponse.content,
                         finishReason: providerResponse.finishReason,
@@ -152,21 +151,21 @@ public extension AIClient {
                         warnings: nil,
                         responseHeaders: nil
                     )
-                    
+
                     return try await applyResponseMiddleware(textResponse)
                 }
-                
+
             } else {
-                // Final step: regular completion
+                // No tool calls - this is the final response, stop here
                 currentMessages.append(Message.assistant(providerResponse.content))
-                
+
                 let finalStep = GenerationStep(
-                    stepType: stepIndex == 0 ? .initial : .continue,
+                    stepType: stepCount == 0 ? .initial : .continue,
                     usage: providerResponse.usage,
                     messages: [Message.assistant(providerResponse.content)]
                 )
                 allSteps.append(finalStep)
-                
+
                 // Build final response
                 let textResponse = TextResponse(
                     text: providerResponse.content,
@@ -180,15 +179,16 @@ public extension AIClient {
                     warnings: nil,
                     responseHeaders: nil
                 )
-                
+
                 // Apply response middleware and return
                 return try await applyResponseMiddleware(textResponse)
             }
         }
-        
-        // If we reached maxSteps without completion
+
+        // This should never be reached in normal operation
+        // If we get here, it means we hit maxSteps with only tool calls
         let finalResponse = TextResponse(
-            text: "Maximum steps reached without completion",
+            text: "",
             finishReason: .length,
             usage: totalUsage,
             messages: currentMessages,
@@ -199,7 +199,7 @@ public extension AIClient {
             warnings: ["Reached maximum steps limit"],
             responseHeaders: nil
         )
-        
+
         return try await applyResponseMiddleware(finalResponse)
     }
     

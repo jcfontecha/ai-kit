@@ -14,6 +14,18 @@ final class AIChatTests: XCTestCase {
         client = AIClient()
         model = mockProvider.languageModel("test-model")
     }
+
+    private func waitForChatToBeReady(_ chat: AIChat, timeout: TimeInterval = 1.0) async {
+        let nanosPerSecond: Double = 1_000_000_000
+        let interval: UInt64 = 50_000_000 // 50ms
+        let deadline = UInt64(timeout * nanosPerSecond)
+        var elapsed: UInt64 = 0
+
+        while chat.status != .ready && elapsed < deadline {
+            try? await Task.sleep(nanoseconds: interval)
+            elapsed += interval
+        }
+    }
     
     // MARK: - Basic Functionality Tests
     
@@ -396,7 +408,7 @@ final class AIChatTests: XCTestCase {
         
         // Wait for completion
         try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
-        
+
         XCTAssertNotNil(finishMessage)
         XCTAssertEqual(finishMessage?.content, "Finished response")
         XCTAssertNotNil(finishDetails)
@@ -564,13 +576,22 @@ final class AIChatTests: XCTestCase {
     
     func testSendEmptyMessage() async {
         let chat = AIChat(client: client, model: model)
-        
-        // Try to send empty message
+
+        mockProvider.mockResponses["test-model"] = .success(.init(
+            text: "Hello from the assistant!",
+            finishReason: .stop,
+            usage: .init(promptTokens: 5, completionTokens: 6, totalTokens: 11)
+        ))
+
         chat.input = ""
         let sent = await chat.sendMessage()
-        
-        XCTAssertFalse(sent)
-        XCTAssertTrue(chat.messages.isEmpty)
+
+        await waitForChatToBeReady(chat)
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(chat.messages.count, 1)
+        XCTAssertEqual(chat.messages.first?.role, .assistant)
+        XCTAssertEqual(chat.messages.first?.content, "Hello from the assistant!")
     }
     
     func testSendMessageWhileStreaming() async {
@@ -793,14 +814,530 @@ final class AIChatTests: XCTestCase {
             XCTFail("Expected text content")
         }
     }
+
+    func testToolGeneratedImageResultEmitsToolMessageBeforeFollowUp() async {
+        let toolCallID = "tool-image-demo"
+        let handler = InlineImageToolHandler(provider: mockProvider, modelId: "test-model", finalContent: "Here is your image.")
+
+        let tool = Tool(
+            function: ToolFunction(
+                name: "generate_and_show_image",
+                description: "Generate an image",
+                parameters: .object(
+                    properties: [
+                        "prompt": .string().withDescription("Prompt for the image")
+                    ],
+                    required: ["prompt"]
+                )
+            ),
+            execute: { toolCall in
+                try await handler.execute(toolCall: toolCall)
+            }
+        )
+
+        let chat = AIChat(client: client, model: model, tools: [tool])
+        handler.chat = chat
+
+        let toolCall = ToolCall(
+            id: toolCallID,
+            type: .function,
+            function: ToolCallFunction(name: "generate_and_show_image", arguments: #"{"prompt":"test"}"#)
+        )
+
+        mockProvider.mockResponses["test-model"] = .success(ProviderResponse(
+            content: "",
+            toolCalls: [toolCall],
+            usage: Usage(promptTokens: 5, completionTokens: 0, totalTokens: 5),
+            finishReason: .toolCalls
+        ))
+
+        chat.input = "Please create an image"
+        let sent = await chat.sendMessage()
+        XCTAssertTrue(sent)
+
+        await waitForChatToBeReady(chat)
+
+        guard let assistantIndex = chat.messages.firstIndex(where: { message in
+            guard message.role == .assistant else { return false }
+            return message.orderedContent.contains { content in
+                if case .toolCall(let call) = content {
+                    return call.id == toolCallID
+                }
+                return false
+            }
+        }) else {
+            return XCTFail("Expected assistant message containing tool call")
+        }
+
+        let assistantWithTool = chat.messages[assistantIndex]
+
+        XCTAssertFalse(assistantWithTool.orderedContent.contains { content in
+            if case .image = content { return true }
+            if case .file = content { return true }
+            return false
+        }, "Assistant tool call message should not inline attachments")
+
+        XCTAssertTrue(chat.attachments(for: assistantWithTool).isEmpty)
+        XCTAssertTrue(assistantWithTool.orderedContent.contains { content in
+            if case .toolCall(let call) = content {
+                return call.id == toolCallID
+            }
+            return false
+        })
+
+        guard let toolMessageIndex = chat.messages.firstIndex(where: { message in
+            guard message.role == .tool else { return false }
+            return message.orderedContent.contains { content in
+                if case .toolResult(let result) = content {
+                    return result.toolCallId == toolCallID
+                }
+                return false
+            }
+        }) else {
+            return XCTFail("Expected tool message")
+        }
+
+        XCTAssertTrue(toolMessageIndex > assistantIndex)
+
+        let toolMessage = chat.messages[toolMessageIndex]
+        XCTAssertTrue(toolMessage.orderedContent.contains { content in
+            if case .toolResult(let result) = content {
+                return result.toolCallId == toolCallID
+            }
+            return false
+        })
+
+        let toolAttachments = chat.attachments(for: toolMessage)
+        XCTAssertEqual(toolAttachments.count, 1)
+        if case .some(.image) = toolAttachments.first {
+            // Attachment is an image
+        } else {
+            XCTFail("Expected image attachment on tool message")
+        }
+
+        guard let finalAssistantIndex = chat.messages[(toolMessageIndex + 1)..<chat.messages.count].firstIndex(where: { $0.role == .assistant }) else {
+            return XCTFail("Expected follow-up assistant message")
+        }
+
+        XCTAssertTrue(finalAssistantIndex > toolMessageIndex)
+
+        let finalAssistant = chat.messages[finalAssistantIndex]
+        XCTAssertTrue(finalAssistant.orderedContent.contains { content in
+            if case .text(let value) = content {
+                return value.contains("Here is your image")
+            }
+            return false
+        })
+
+        XCTAssertTrue(finalAssistant.orderedContent.allSatisfy { content in
+            if case .toolCall = content { return false }
+            if case .image = content { return false }
+            return true
+        })
+    }
+
+    func testToolGeneratedImageResultOrderingWithExistingAssistantHistory() async {
+        let handler = InlineImageToolHandler(provider: mockProvider, modelId: "test-model", finalContent: "Image ready.")
+
+        let tool = Tool(
+            function: ToolFunction(
+                name: "generate_and_show_image",
+                description: "Generate an image",
+                parameters: .object(
+                    properties: [
+                        "prompt": .string().withDescription("Prompt for the image")
+                    ],
+                    required: ["prompt"]
+                )
+            ),
+            execute: { toolCall in
+                try await handler.execute(toolCall: toolCall)
+            }
+        )
+
+        let chat = AIChat(client: client, model: model, tools: [tool])
+        handler.chat = chat
+
+        mockProvider.mockResponses["test-model"] = .success(ProviderResponse(
+            content: "Hello there!",
+            usage: Usage(promptTokens: 4, completionTokens: 4, totalTokens: 8),
+            finishReason: .stop
+        ))
+
+        chat.input = "Say hi"
+        let greeted = await chat.sendMessage()
+        XCTAssertTrue(greeted)
+        await waitForChatToBeReady(chat)
+
+        let toolCall = ToolCall(
+            id: "tool-image-history",
+            type: .function,
+            function: ToolCallFunction(name: "generate_and_show_image", arguments: #"{"prompt":"history"}"#)
+        )
+
+        mockProvider.mockResponses["test-model"] = .success(ProviderResponse(
+            content: "",
+            toolCalls: [toolCall],
+            usage: Usage(promptTokens: 6, completionTokens: 0, totalTokens: 6),
+            finishReason: .toolCalls
+        ))
+
+        chat.input = "Generate an inline image"
+        let sent = await chat.sendMessage()
+        XCTAssertTrue(sent)
+        await waitForChatToBeReady(chat)
+
+        guard let assistantIndex = chat.messages.lastIndex(where: { message in
+            guard message.role == .assistant else { return false }
+            return message.orderedContent.contains { content in
+                if case .toolCall(let call) = content {
+                    return call.id == toolCall.id
+                }
+                return false
+            }
+        }) else {
+            return XCTFail("Expected assistant message containing tool call in conversation with history")
+        }
+
+        let assistantWithTool = chat.messages[assistantIndex]
+
+        XCTAssertFalse(assistantWithTool.orderedContent.contains { content in
+            if case .image = content { return true }
+            if case .file = content { return true }
+            return false
+        })
+        XCTAssertTrue(chat.attachments(for: assistantWithTool).isEmpty)
+
+        guard let toolMessageIndex = chat.messages[(assistantIndex + 1)..<chat.messages.count].firstIndex(where: { message in
+            guard message.role == .tool else { return false }
+            return message.orderedContent.contains { content in
+                if case .toolResult(let result) = content {
+                    return result.toolCallId == toolCall.id
+                }
+                return false
+            }
+        }) else {
+            return XCTFail("Expected tool message following assistant tool call when history exists")
+        }
+
+        XCTAssertTrue(toolMessageIndex > assistantIndex)
+
+        let toolMessage = chat.messages[toolMessageIndex]
+        XCTAssertTrue(toolMessage.orderedContent.contains { content in
+            if case .toolResult(let result) = content {
+                return result.toolCallId == toolCall.id
+            }
+            return false
+        })
+
+        let toolAttachments = chat.attachments(for: toolMessage)
+        XCTAssertEqual(toolAttachments.count, 1)
+        if case .some(.image) = toolAttachments.first {
+            // Attachment preserved on tool message
+        } else {
+            XCTFail("Expected image attachment on tool message when history exists")
+        }
+
+        guard let followUpIndex = chat.messages[(toolMessageIndex + 1)..<chat.messages.count].firstIndex(where: { $0.role == .assistant }) else {
+            return XCTFail("Expected follow-up assistant message after tool result when history exists")
+        }
+
+        XCTAssertTrue(followUpIndex > toolMessageIndex)
+
+        let finalAssistant = chat.messages[followUpIndex]
+        XCTAssertTrue(finalAssistant.orderedContent.contains { content in
+            if case .text(let value) = content {
+                return value.contains("Image ready")
+            }
+            return false
+        })
+
+        XCTAssertTrue(finalAssistant.orderedContent.allSatisfy { content in
+            if case .toolCall = content { return false }
+            if case .image = content { return false }
+            return true
+        })
+
+        let priorAssistantMessages = chat.messages[..<assistantIndex].filter { $0.role == .assistant }
+        XCTAssertTrue(priorAssistantMessages.contains { message in
+            message.content == "Hello there!"
+        })
+    }
+
+    func testToolResultTextArrivesViaToolMessageWhenNoAttachmentsProvided() async {
+        let toolCallID = "tool-text-inline"
+        let handler = InlineTextToolHandler(provider: mockProvider, modelId: "test-model", inlineText: "Here is the generated caption.", finalContent: "Caption sent.")
+
+        let tool = Tool(
+            function: ToolFunction(
+                name: "generate_caption",
+                description: "Generate a caption",
+                parameters: .object(
+                    properties: [
+                        "prompt": .string().withDescription("Prompt for the caption")
+                    ],
+                    required: ["prompt"]
+                )
+            ),
+            execute: { toolCall in
+                try await handler.execute(toolCall: toolCall)
+            }
+        )
+
+        let chat = AIChat(client: client, model: model, tools: [tool])
+
+        let toolCall = ToolCall(
+            id: toolCallID,
+            type: .function,
+            function: ToolCallFunction(name: "generate_caption", arguments: #"{"prompt":"caption"}"#)
+        )
+
+        mockProvider.mockResponses["test-model"] = .success(ProviderResponse(
+            content: "",
+            toolCalls: [toolCall],
+            usage: Usage(promptTokens: 4, completionTokens: 0, totalTokens: 4),
+            finishReason: .toolCalls
+        ))
+
+        chat.input = "Generate a caption"
+        let sent = await chat.sendMessage()
+        XCTAssertTrue(sent)
+        await waitForChatToBeReady(chat)
+
+        guard let assistantWithTool = chat.messages.first(where: { message in
+            guard message.role == .assistant else { return false }
+            return message.orderedContent.contains { content in
+                if case .toolCall(let call) = content {
+                    return call.id == toolCallID
+                }
+                return false
+            }
+        }) else {
+            return XCTFail("Expected assistant message containing tool call")
+        }
+
+        guard let toolCallIndex = assistantWithTool.orderedContent.firstIndex(where: { content in
+            if case .toolCall(let call) = content {
+                return call.id == toolCallID
+            }
+            return false
+        }) else {
+            return XCTFail("Failed to locate tool call content")
+        }
+
+        XCTAssertTrue(toolCallIndex + 1 == assistantWithTool.orderedContent.count)
+
+        XCTAssertTrue(chat.attachments(for: assistantWithTool).isEmpty)
+
+        guard let toolMessage = chat.messages.first(where: { $0.role == .tool }) else {
+            return XCTFail("Expected tool message")
+        }
+
+        XCTAssertTrue(toolMessage.orderedContent.contains { content in
+            if case .toolResult(let result) = content {
+                return result.toolCallId == toolCallID
+            }
+            return false
+        })
+
+        guard let toolResult = toolMessage.orderedContent.compactMap({ content -> ToolResult? in
+            if case .toolResult(let result) = content { return result }
+            return nil
+        }).first else {
+            return XCTFail("Expected tool result content")
+        }
+
+        if case .json(let data) = toolResult.result {
+            let decoded = try? JSONDecoder().decode(ImageGenerationToolResultPayload.self, from: data)
+            XCTAssertEqual(decoded?.success, true)
+        } else {
+            XCTFail("Expected JSON tool result")
+        }
+
+        guard let finalAssistant = finalAssistantMessage(for: chat) else {
+            return XCTFail("Expected final assistant follow-up")
+        }
+
+        XCTAssertTrue(finalAssistant.orderedContent.contains { content in
+            if case .text(let value) = content {
+                return value == "Caption sent."
+            }
+            return false
+        })
+    }
+
+    func testAttachKeepsToolMessageAndUpdatesAttachments() {
+        let chat = AIChat(client: client, model: model)
+
+        let toolCall = ToolCall(
+            id: "tool-late-image",
+            type: .function,
+            function: ToolCallFunction(name: "generate_and_show_image", arguments: "{}")
+        )
+
+        let assistant = ChatMessage(
+            role: .assistant,
+            orderedContent: [
+                .toolCall(toolCall),
+                .text("Here is your image.")
+            ]
+        )
+
+        let toolMessage = ChatMessage(
+            role: .tool,
+            orderedContent: [
+                .toolResult(ToolResult.success(toolCallId: toolCall.id, text: "Image generation completed successfully."))
+            ]
+        )
+
+        chat.setMessages([
+            ChatMessage(role: .user, content: "Generate"),
+            assistant,
+            toolMessage
+        ])
+
+        let imageData = Data(repeating: 0xAB, count: 64)
+        let attachment = ChatAttachment.image(
+            ImageContent.data(imageData, mimeType: "image/png")
+        )
+
+        chat.attach(attachments: [attachment], toToolCallID: toolCall.id)
+
+        guard let updatedAssistant = chat.messages.first(where: { message in
+            message.role == .assistant && message.toolCalls.contains { $0.id == toolCall.id }
+        }) else {
+            return XCTFail("Expected assistant message with tool call")
+        }
+
+        XCTAssertTrue(chat.messages.contains { message in
+            message.role == .tool && message.orderedContent.contains { content in
+                if case .toolResult(let result) = content {
+                    return result.toolCallId == toolCall.id
+                }
+                return false
+            }
+        })
+
+        guard let updatedToolMessage = chat.messages.first(where: { message in
+            message.role == .tool && message.orderedContent.contains { content in
+                if case .toolResult(let result) = content {
+                    return result.toolCallId == toolCall.id
+                }
+                return false
+            }
+        }) else {
+            return XCTFail("Expected tool message to remain after attaching")
+        }
+
+        XCTAssertEqual(chat.attachments(for: updatedAssistant).count, 0)
+        let toolAttachments = chat.attachments(for: updatedToolMessage)
+        XCTAssertEqual(toolAttachments.count, 1)
+
+        guard let toolCallIndex = updatedAssistant.orderedContent.firstIndex(where: { content in
+            if case .toolCall(let call) = content {
+                return call.id == toolCall.id
+            }
+            return false
+        }) else {
+            return XCTFail("Tool call missing from assistant message")
+        }
+
+        XCTAssertTrue(toolCallIndex + 1 < updatedAssistant.orderedContent.count)
+        if case .text(let trailingText) = updatedAssistant.orderedContent[toolCallIndex + 1] {
+            XCTAssertEqual(trailingText, "Here is your image.")
+        } else {
+            XCTFail("Expected trailing assistant text to follow tool call")
+        }
+
+        XCTAssertFalse(updatedAssistant.orderedContent.contains { content in
+            if case .image = content { return true }
+            if case .file = content { return true }
+            return false
+        })
+    }
     
     func testAttachmentWithInvalidMessageId() async {
         let chat = AIChat(client: client, model: model)
         
         // Try to get attachments for non-existent message ID
         let attachments = chat.attachments(for: "non-existent-id")
-        
+
         XCTAssertTrue(attachments.isEmpty)
+    }
+}
+
+private extension AIChatTests {
+    func finalAssistantMessage(for chat: AIChat) -> ChatMessage? {
+        chat.messages.reversed().first { $0.role == .assistant }
+    }
+}
+
+private struct ImageGenerationToolResultPayload: Codable, Equatable {
+    let success: Bool
+    let attachmentIDs: [String]
+    let count: Int
+    let message: String?
+}
+
+@MainActor
+private final class InlineImageToolHandler {
+    weak var chat: AIChat?
+    private weak var provider: SimpleMockProvider?
+    private let modelId: String
+    private let finalContent: String
+
+    init(provider: SimpleMockProvider, modelId: String, finalContent: String) {
+        self.provider = provider
+        self.modelId = modelId
+        self.finalContent = finalContent
+    }
+
+    func execute(toolCall: ToolCall) async throws -> ToolResult {
+        let imageData = Data(repeating: 0xAB, count: 64)
+        let attachment = ChatAttachment.image(
+            ImageContent.data(imageData, mimeType: "image/png")
+        )
+
+        chat?.attach(attachments: [attachment], toToolCallID: toolCall.id)
+
+        provider?.mockResponses[modelId] = .success(ProviderResponse(
+            content: finalContent,
+            usage: Usage(promptTokens: 6, completionTokens: 6, totalTokens: 12),
+            finishReason: .stop
+        ))
+
+        return ToolResult.success(
+            toolCallId: toolCall.id,
+            text: "Image generated"
+        )
+    }
+}
+
+@MainActor
+private final class InlineTextToolHandler {
+    private weak var provider: SimpleMockProvider?
+    private let modelId: String
+    private let inlineText: String
+    private let finalContent: String
+
+    init(provider: SimpleMockProvider, modelId: String, inlineText: String, finalContent: String) {
+        self.provider = provider
+        self.modelId = modelId
+        self.inlineText = inlineText
+        self.finalContent = finalContent
+    }
+
+    func execute(toolCall: ToolCall) async throws -> ToolResult {
+        provider?.mockResponses[modelId] = .success(ProviderResponse(
+            content: finalContent,
+            usage: Usage(promptTokens: 4, completionTokens: 4, totalTokens: 8),
+            finishReason: .stop
+        ))
+
+        return ToolResult.success(
+            toolCallId: toolCall.id,
+            text: inlineText
+        )
     }
 }
 
