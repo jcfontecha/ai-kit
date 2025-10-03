@@ -1,0 +1,128 @@
+{
+  "name": "tool-execution-error",
+  "description": "Tool execution failure should surface the same structured error as the Vercel SDK.",
+  "config": {
+    "type": "messages",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Check the status of the database migration job JOB-77."
+          }
+        ]
+      }
+    ]
+  },
+  "maxSteps": 2,
+  "toolChoice": "auto",
+  "toolSchemas": [
+    {
+      "name": "get_migration_status",
+      "description": "Returns the status of a long running migration.",
+      "schema": {
+        "type": "object",
+        "description": "Migration status lookup",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "description": "Identifier of the migration job"
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "text": "I will query the migration tool for the latest status.",
+      "finishReason": "tool-calls",
+      "toolCalls": [
+        {
+          "toolCallId": "call-1",
+          "toolName": "get_migration_status",
+          "arguments": {
+            "jobId": "JOB-77"
+          },
+          "rawArguments": "{\"jobId\":\"JOB-77\"}"
+        }
+      ],
+      "usage": {
+        "promptTokens": 22,
+        "completionTokens": 10,
+        "totalTokens": 32
+      },
+      "response": {
+        "id": "resp-error-1",
+        "timestamp": "2024-01-01T00:00:00.000Z",
+        "modelId": "mock-model"
+      },
+      "rawCall": {
+        "rawPrompt": "tool-error-step-1",
+        "rawSettings": {}
+      }
+    }
+  ],
+  "recordedModelCalls": [
+    {
+      "step": 1,
+      "mode": {
+        "type": "regular",
+        "tools": [
+          {
+            "type": "function",
+            "name": "get_migration_status",
+            "description": "Returns the status of a long running migration.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "jobId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "jobId"
+              ],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            }
+          }
+        ],
+        "toolChoice": {
+          "type": "auto"
+        }
+      },
+      "prompt": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Check the status of the database migration job JOB-77."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "toolExecutions": [],
+  "vercel": {
+    "error": {
+      "name": "AI_ToolExecutionError",
+      "message": "Error executing tool get_migration_status: Migration job timed out contacting shard-3",
+      "stack": "AI_ToolExecutionError: Error executing tool get_migration_status: Migration job timed out contacting shard-3\n    at fn (file:///Users/juan/Developer/ai-kit/vercel-sdk/packages/ai/dist/index.mjs:4539:19)\n    at async file:///Users/juan/Developer/ai-kit/vercel-sdk/packages/ai/dist/index.mjs:470:22\n    at async file:///Users/juan/Developer/ai-kit/vercel-sdk/packages/ai/dist/index.mjs:4500:22\n    at async Promise.all (index 0)\n    at async executeTools (file:///Users/juan/Developer/ai-kit/vercel-sdk/packages/ai/dist/index.mjs:4494:23)\n    at async fn (file:///Users/juan/Developer/ai-kit/vercel-sdk/packages/ai/dist/index.mjs:4344:51)\n    at async file:///Users/juan/Developer/ai-kit/vercel-sdk/packages/ai/dist/index.mjs:470:22\n    at async runScenario (file:///Users/juan/Developer/ai-kit/tools/vercel-comparison/run-scenarios.mjs:308:14)\n    at async main (file:///Users/juan/Developer/ai-kit/tools/vercel-comparison/run-scenarios.mjs:361:21)",
+      "cause": {
+        "code": "ETIMEDOUT"
+      },
+      "toolArgs": {
+        "jobId": "JOB-77"
+      },
+      "toolName": "get_migration_status",
+      "toolCallId": "call-1"
+    }
+  }
+}

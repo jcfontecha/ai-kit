@@ -1,0 +1,678 @@
+{
+  "name": "tool-json-result",
+  "description": "Tool returns structured JSON that should be surfaced consistently across SDKs.",
+  "config": {
+    "type": "messages",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "Generate a grocery list for a vegan dinner party for four people."
+          }
+        ]
+      }
+    ]
+  },
+  "maxSteps": 3,
+  "toolChoice": "auto",
+  "toolSchemas": [
+    {
+      "name": "plan_menu",
+      "description": "Creates a menu and shopping list.",
+      "schema": {
+        "type": "object",
+        "description": "Menu planning inputs",
+        "properties": {
+          "diet": {
+            "type": "string",
+            "enum": [
+              "vegan",
+              "vegetarian",
+              "omnivore"
+            ]
+          },
+          "servings": {
+            "type": "integer",
+            "description": "Number of people to serve"
+          }
+        },
+        "required": [
+          "diet",
+          "servings"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "text": "Let me design a menu using the planning tool.",
+      "finishReason": "tool-calls",
+      "toolCalls": [
+        {
+          "toolCallId": "call-1",
+          "toolName": "plan_menu",
+          "arguments": {
+            "diet": "vegan",
+            "servings": 4
+          },
+          "rawArguments": "{\"diet\":\"vegan\",\"servings\":4}"
+        }
+      ],
+      "usage": {
+        "promptTokens": 30,
+        "completionTokens": 12,
+        "totalTokens": 42
+      },
+      "response": {
+        "id": "resp-json-1",
+        "timestamp": "2024-01-01T00:00:00.000Z",
+        "modelId": "mock-model"
+      },
+      "rawCall": {
+        "rawPrompt": "tool-json-step-1",
+        "rawSettings": {}
+      }
+    },
+    {
+      "text": "Here is a tailored vegan dinner party menu complete with ingredients and shopping list.",
+      "finishReason": "stop",
+      "toolCalls": [],
+      "usage": {
+        "promptTokens": 16,
+        "completionTokens": 80,
+        "totalTokens": 96
+      },
+      "response": {
+        "id": "resp-json-2",
+        "timestamp": "2024-01-01T00:00:01.000Z",
+        "modelId": "mock-model"
+      },
+      "rawCall": {
+        "rawPrompt": "tool-json-step-2",
+        "rawSettings": {}
+      }
+    }
+  ],
+  "recordedModelCalls": [
+    {
+      "step": 1,
+      "mode": {
+        "type": "regular",
+        "tools": [
+          {
+            "type": "function",
+            "name": "plan_menu",
+            "description": "Creates a menu and shopping list.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "diet": {
+                  "type": "string",
+                  "enum": [
+                    "vegan",
+                    "vegetarian",
+                    "omnivore"
+                  ]
+                },
+                "servings": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "diet",
+                "servings"
+              ],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            }
+          }
+        ],
+        "toolChoice": {
+          "type": "auto"
+        }
+      },
+      "prompt": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Generate a grocery list for a vegan dinner party for four people."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "mode": {
+        "type": "regular",
+        "tools": [
+          {
+            "type": "function",
+            "name": "plan_menu",
+            "description": "Creates a menu and shopping list.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "diet": {
+                  "type": "string",
+                  "enum": [
+                    "vegan",
+                    "vegetarian",
+                    "omnivore"
+                  ]
+                },
+                "servings": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "diet",
+                "servings"
+              ],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            }
+          }
+        ],
+        "toolChoice": {
+          "type": "auto"
+        }
+      },
+      "prompt": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Generate a grocery list for a vegan dinner party for four people."
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Let me design a menu using the planning tool."
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call-1",
+              "toolName": "plan_menu",
+              "args": {
+                "diet": "vegan",
+                "servings": 4
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "call-1",
+              "toolName": "plan_menu",
+              "result": {
+                "diet": "vegan",
+                "servings": 4,
+                "courses": [
+                  {
+                    "name": "Roasted Cauliflower Steak",
+                    "ingredients": [
+                      "cauliflower",
+                      "olive oil",
+                      "smoked paprika",
+                      "salt"
+                    ]
+                  },
+                  {
+                    "name": "Quinoa Salad",
+                    "ingredients": [
+                      "quinoa",
+                      "cherry tomatoes",
+                      "cucumber",
+                      "lemon"
+                    ]
+                  }
+                ],
+                "shoppingList": [
+                  {
+                    "item": "Cauliflower heads",
+                    "quantity": 2
+                  },
+                  {
+                    "item": "Quinoa (cups)",
+                    "quantity": 3
+                  },
+                  {
+                    "item": "Fresh herbs bundle",
+                    "quantity": 1
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "toolExecutions": [
+    {
+      "toolName": "plan_menu",
+      "callId": "call-1",
+      "args": {
+        "diet": "vegan",
+        "servings": 4
+      },
+      "result": {
+        "type": "json",
+        "value": {
+          "diet": "vegan",
+          "servings": 4,
+          "courses": [
+            {
+              "name": "Roasted Cauliflower Steak",
+              "ingredients": [
+                "cauliflower",
+                "olive oil",
+                "smoked paprika",
+                "salt"
+              ]
+            },
+            {
+              "name": "Quinoa Salad",
+              "ingredients": [
+                "quinoa",
+                "cherry tomatoes",
+                "cucumber",
+                "lemon"
+              ]
+            }
+          ],
+          "shoppingList": [
+            {
+              "item": "Cauliflower heads",
+              "quantity": 2
+            },
+            {
+              "item": "Quinoa (cups)",
+              "quantity": 3
+            },
+            {
+              "item": "Fresh herbs bundle",
+              "quantity": 1
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "vercel": {
+    "result": {
+      "text": "Here is a tailored vegan dinner party menu complete with ingredients and shopping list.",
+      "files": [],
+      "reasoningDetails": [],
+      "toolCalls": [],
+      "toolResults": [],
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 46,
+        "completionTokens": 92,
+        "totalTokens": 138
+      },
+      "request": {},
+      "response": {
+        "id": "resp-json-2",
+        "timestamp": "2024-01-01T00:00:01.000Z",
+        "modelId": "mock-model",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Let me design a menu using the planning tool."
+              },
+              {
+                "type": "tool-call",
+                "toolCallId": "call-1",
+                "toolName": "plan_menu",
+                "args": {
+                  "diet": "vegan",
+                  "servings": 4
+                }
+              }
+            ],
+            "id": "msg-grFXvOyELjjvBmA0QgEy0jy3"
+          },
+          {
+            "role": "tool",
+            "id": "msg-h11qaYIbCQrWhqhYkZZu38va",
+            "content": [
+              {
+                "type": "tool-result",
+                "toolCallId": "call-1",
+                "toolName": "plan_menu",
+                "result": {
+                  "diet": "vegan",
+                  "servings": 4,
+                  "courses": [
+                    {
+                      "name": "Roasted Cauliflower Steak",
+                      "ingredients": [
+                        "cauliflower",
+                        "olive oil",
+                        "smoked paprika",
+                        "salt"
+                      ]
+                    },
+                    {
+                      "name": "Quinoa Salad",
+                      "ingredients": [
+                        "quinoa",
+                        "cherry tomatoes",
+                        "cucumber",
+                        "lemon"
+                      ]
+                    }
+                  ],
+                  "shoppingList": [
+                    {
+                      "item": "Cauliflower heads",
+                      "quantity": 2
+                    },
+                    {
+                      "item": "Quinoa (cups)",
+                      "quantity": 3
+                    },
+                    {
+                      "item": "Fresh herbs bundle",
+                      "quantity": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Here is a tailored vegan dinner party menu complete with ingredients and shopping list."
+              }
+            ],
+            "id": "msg-LGt1xF6IjMNKfeF5VrFpHYEw"
+          }
+        ]
+      },
+      "steps": [
+        {
+          "stepType": "initial",
+          "text": "Let me design a menu using the planning tool.",
+          "reasoningDetails": [],
+          "files": [],
+          "sources": [],
+          "toolCalls": [
+            {
+              "type": "tool-call",
+              "toolCallId": "call-1",
+              "toolName": "plan_menu",
+              "args": {
+                "diet": "vegan",
+                "servings": 4
+              }
+            }
+          ],
+          "toolResults": [
+            {
+              "type": "tool-result",
+              "toolCallId": "call-1",
+              "toolName": "plan_menu",
+              "args": {
+                "diet": "vegan",
+                "servings": 4
+              },
+              "result": {
+                "diet": "vegan",
+                "servings": 4,
+                "courses": [
+                  {
+                    "name": "Roasted Cauliflower Steak",
+                    "ingredients": [
+                      "cauliflower",
+                      "olive oil",
+                      "smoked paprika",
+                      "salt"
+                    ]
+                  },
+                  {
+                    "name": "Quinoa Salad",
+                    "ingredients": [
+                      "quinoa",
+                      "cherry tomatoes",
+                      "cucumber",
+                      "lemon"
+                    ]
+                  }
+                ],
+                "shoppingList": [
+                  {
+                    "item": "Cauliflower heads",
+                    "quantity": 2
+                  },
+                  {
+                    "item": "Quinoa (cups)",
+                    "quantity": 3
+                  },
+                  {
+                    "item": "Fresh herbs bundle",
+                    "quantity": 1
+                  }
+                ]
+              }
+            }
+          ],
+          "finishReason": "tool-calls",
+          "usage": {
+            "promptTokens": 30,
+            "completionTokens": 12,
+            "totalTokens": 42
+          },
+          "request": {},
+          "response": {
+            "id": "resp-json-1",
+            "timestamp": "2024-01-01T00:00:00.000Z",
+            "modelId": "mock-model",
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Let me design a menu using the planning tool."
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call-1",
+                    "toolName": "plan_menu",
+                    "args": {
+                      "diet": "vegan",
+                      "servings": 4
+                    }
+                  }
+                ],
+                "id": "msg-grFXvOyELjjvBmA0QgEy0jy3"
+              },
+              {
+                "role": "tool",
+                "id": "msg-h11qaYIbCQrWhqhYkZZu38va",
+                "content": [
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call-1",
+                    "toolName": "plan_menu",
+                    "result": {
+                      "diet": "vegan",
+                      "servings": 4,
+                      "courses": [
+                        {
+                          "name": "Roasted Cauliflower Steak",
+                          "ingredients": [
+                            "cauliflower",
+                            "olive oil",
+                            "smoked paprika",
+                            "salt"
+                          ]
+                        },
+                        {
+                          "name": "Quinoa Salad",
+                          "ingredients": [
+                            "quinoa",
+                            "cherry tomatoes",
+                            "cucumber",
+                            "lemon"
+                          ]
+                        }
+                      ],
+                      "shoppingList": [
+                        {
+                          "item": "Cauliflower heads",
+                          "quantity": 2
+                        },
+                        {
+                          "item": "Quinoa (cups)",
+                          "quantity": 3
+                        },
+                        {
+                          "item": "Fresh herbs bundle",
+                          "quantity": 1
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "providerMetadata": {},
+          "experimental_providerMetadata": {},
+          "isContinued": false
+        },
+        {
+          "stepType": "tool-result",
+          "text": "Here is a tailored vegan dinner party menu complete with ingredients and shopping list.",
+          "reasoningDetails": [],
+          "files": [],
+          "sources": [],
+          "toolCalls": [],
+          "toolResults": [],
+          "finishReason": "stop",
+          "usage": {
+            "promptTokens": 16,
+            "completionTokens": 80,
+            "totalTokens": 96
+          },
+          "request": {},
+          "response": {
+            "id": "resp-json-2",
+            "timestamp": "2024-01-01T00:00:01.000Z",
+            "modelId": "mock-model",
+            "messages": [
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Let me design a menu using the planning tool."
+                  },
+                  {
+                    "type": "tool-call",
+                    "toolCallId": "call-1",
+                    "toolName": "plan_menu",
+                    "args": {
+                      "diet": "vegan",
+                      "servings": 4
+                    }
+                  }
+                ],
+                "id": "msg-grFXvOyELjjvBmA0QgEy0jy3"
+              },
+              {
+                "role": "tool",
+                "id": "msg-h11qaYIbCQrWhqhYkZZu38va",
+                "content": [
+                  {
+                    "type": "tool-result",
+                    "toolCallId": "call-1",
+                    "toolName": "plan_menu",
+                    "result": {
+                      "diet": "vegan",
+                      "servings": 4,
+                      "courses": [
+                        {
+                          "name": "Roasted Cauliflower Steak",
+                          "ingredients": [
+                            "cauliflower",
+                            "olive oil",
+                            "smoked paprika",
+                            "salt"
+                          ]
+                        },
+                        {
+                          "name": "Quinoa Salad",
+                          "ingredients": [
+                            "quinoa",
+                            "cherry tomatoes",
+                            "cucumber",
+                            "lemon"
+                          ]
+                        }
+                      ],
+                      "shoppingList": [
+                        {
+                          "item": "Cauliflower heads",
+                          "quantity": 2
+                        },
+                        {
+                          "item": "Quinoa (cups)",
+                          "quantity": 3
+                        },
+                        {
+                          "item": "Fresh herbs bundle",
+                          "quantity": 1
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "role": "assistant",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Here is a tailored vegan dinner party menu complete with ingredients and shopping list."
+                  }
+                ],
+                "id": "msg-LGt1xF6IjMNKfeF5VrFpHYEw"
+              }
+            ]
+          },
+          "providerMetadata": {},
+          "experimental_providerMetadata": {},
+          "isContinued": false
+        }
+      ],
+      "experimental_providerMetadata": {},
+      "providerMetadata": {},
+      "sources": []
+    }
+  }
+}

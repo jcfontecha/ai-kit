@@ -1255,6 +1255,126 @@ final class AIChatTests: XCTestCase {
             return false
         })
     }
+
+    func testMultipleToolCallResultsStayAdjacentToToolCalls() async {
+        let firstToolCallID = "tool-first"
+        let secondToolCallID = "tool-second"
+        let finalAssistantText = "All requested data has been processed."
+
+        let firstHandler = InlineTextToolHandler(
+            provider: mockProvider,
+            modelId: "test-model",
+            inlineText: "First tool result",
+            finalContent: finalAssistantText
+        )
+
+        let secondHandler = InlineTextToolHandler(
+            provider: mockProvider,
+            modelId: "test-model",
+            inlineText: "Second tool result",
+            finalContent: finalAssistantText
+        )
+
+        let firstTool = Tool(
+            function: ToolFunction(
+                name: "lookup_first_value",
+                description: "Returns the first lookup value",
+                parameters: .object(
+                    properties: [
+                        "query": .string().withDescription("Lookup key")
+                    ],
+                    required: ["query"]
+                )
+            ),
+            execute: { toolCall in
+                try await firstHandler.execute(toolCall: toolCall)
+            }
+        )
+
+        let secondTool = Tool(
+            function: ToolFunction(
+                name: "lookup_second_value",
+                description: "Returns the second lookup value",
+                parameters: .object(
+                    properties: [
+                        "query": .string().withDescription("Lookup key")
+                    ],
+                    required: ["query"]
+                )
+            ),
+            execute: { toolCall in
+                try await secondHandler.execute(toolCall: toolCall)
+            }
+        )
+
+        let chat = AIChat(client: client, model: model, tools: [firstTool, secondTool])
+
+        let firstToolCall = ToolCall(
+            id: firstToolCallID,
+            type: .function,
+            function: ToolCallFunction(name: "lookup_first_value", arguments: #"{"query":"alpha"}"#)
+        )
+
+        let secondToolCall = ToolCall(
+            id: secondToolCallID,
+            type: .function,
+            function: ToolCallFunction(name: "lookup_second_value", arguments: #"{"query":"beta"}"#)
+        )
+
+        mockProvider.mockResponses["test-model"] = .success(ProviderResponse(
+            content: "",
+            toolCalls: [firstToolCall, secondToolCall],
+            usage: Usage(promptTokens: 5, completionTokens: 0, totalTokens: 5),
+            finishReason: .toolCalls
+        ))
+
+        chat.input = "Run both lookups"
+        let sent = await chat.sendMessage()
+        XCTAssertTrue(sent)
+
+        await waitForChatToBeReady(chat)
+
+        let messages = chat.messages
+        guard let assistantIndex = messages.firstIndex(where: { message in
+            guard message.role == .assistant else { return false }
+            let toolCallIDs = message.orderedContent.compactMap { content -> String? in
+                if case .toolCall(let call) = content {
+                    return call.id
+                }
+                return nil
+            }
+            return toolCallIDs.contains(firstToolCallID) && toolCallIDs.contains(secondToolCallID)
+        }) else {
+            return XCTFail("Expected assistant message containing both tool calls")
+        }
+
+        XCTAssertTrue(messages.count > assistantIndex + 3, "Expected tool results and follow-up messages after assistant tool call")
+
+        let firstToolMessage = messages[assistantIndex + 1]
+        XCTAssertEqual(firstToolMessage.role, .tool)
+        guard case .toolResult(let firstResult) = firstToolMessage.orderedContent.first else {
+            return XCTFail("First tool message should contain a tool result")
+        }
+        XCTAssertEqual(firstResult.toolCallId, firstToolCallID)
+
+        let secondToolMessage = messages[assistantIndex + 2]
+        XCTAssertEqual(secondToolMessage.role, .tool)
+        guard case .toolResult(let secondResult) = secondToolMessage.orderedContent.first else {
+            return XCTFail("Second tool message should contain a tool result")
+        }
+        XCTAssertEqual(secondResult.toolCallId, secondToolCallID)
+
+        let followUpAssistantMessage = messages[assistantIndex + 3]
+        XCTAssertEqual(followUpAssistantMessage.role, .assistant)
+        XCTAssertTrue(
+            followUpAssistantMessage.content.contains(finalAssistantText),
+            "Expected follow-up assistant message to contain final response text"
+        )
+
+        // Ensure there are no assistant messages inserted between the tool call and its result
+        let interveningRoles = messages[(assistantIndex + 1)...(assistantIndex + 2)].map { $0.role }
+        XCTAssertTrue(interveningRoles.allSatisfy { $0 == .tool })
+    }
     
     func testAttachmentWithInvalidMessageId() async {
         let chat = AIChat(client: client, model: model)
@@ -1334,9 +1454,16 @@ private final class InlineTextToolHandler {
             finishReason: .stop
         ))
 
-        return ToolResult.success(
+        let payload = ImageGenerationToolResultPayload(
+            success: true,
+            attachmentIDs: [],
+            count: 1,
+            message: inlineText
+        )
+
+        return try ToolResult.json(
             toolCallId: toolCall.id,
-            text: inlineText
+            object: payload
         )
     }
 }

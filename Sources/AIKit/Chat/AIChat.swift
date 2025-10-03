@@ -323,10 +323,23 @@ public class AIChat: ObservableObject {
 
                 let response = await streamResult.response
                 let convertedMessages: [ChatMessage] = response.messages.map { coreMessage in
-                    ChatMessage(
+                    var orderedContent = coreMessage.content
+
+                    if let toolCalls = coreMessage.toolCalls, !toolCalls.isEmpty {
+                        let existingToolCallIDs = Set(orderedContent.compactMap { content -> String? in
+                            if case .toolCall(let call) = content { return call.id }
+                            return nil
+                        })
+
+                        for toolCall in toolCalls where !existingToolCallIDs.contains(toolCall.id) {
+                            orderedContent.append(.toolCall(toolCall))
+                        }
+                    }
+
+                    return ChatMessage(
                         id: coreMessage.id,
                         role: coreMessage.role,
-                        orderedContent: coreMessage.content,
+                        orderedContent: orderedContent,
                         timestamp: coreMessage.timestamp
                     )
                 }

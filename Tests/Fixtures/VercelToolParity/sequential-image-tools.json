@@ -1,0 +1,400 @@
+{
+  "name": "sequential-image-tools",
+  "description": "Two generate_and_show_image tool calls executed before the assistant sends a final message.",
+  "config": {
+    "type": "prompt",
+    "prompt": "Please create one image of a dog and one image of a cat. Call generate_and_show_image for each and only send a final reply after both succeed, including attachment links."
+  },
+  "maxSteps": 4,
+  "toolChoice": "auto",
+  "toolSchemas": [
+    {
+      "name": "generate_and_show_image",
+      "description": "Render an image and return an attachment identifier.",
+      "schema": {
+        "type": "object",
+        "description": "Image generation parameters",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "A short description of the desired image"
+          }
+        },
+        "required": [
+          "prompt"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "modelResponses": [
+    {
+      "text": "I will generate those images now.",
+      "finishReason": "tool-calls",
+      "toolCalls": [
+        {
+          "toolCallId": "call-img-1",
+          "toolName": "generate_and_show_image",
+          "arguments": {
+            "prompt": "a friendly dog playing in a park"
+          },
+          "rawArguments": "{\"prompt\":\"a friendly dog playing in a park\"}"
+        },
+        {
+          "toolCallId": "call-img-2",
+          "toolName": "generate_and_show_image",
+          "arguments": {
+            "prompt": "a curious cat sitting on a windowsill"
+          },
+          "rawArguments": "{\"prompt\":\"a curious cat sitting on a windowsill\"}"
+        }
+      ],
+      "usage": {
+        "promptTokens": 48,
+        "completionTokens": 14,
+        "totalTokens": 62
+      },
+      "response": {
+        "id": "resp-img-1",
+        "timestamp": "2024-01-01T00:00:00.000Z",
+        "modelId": "mock-model"
+      },
+      "rawCall": {
+        "rawPrompt": "sequential-image-step-1",
+        "rawSettings": {}
+      }
+    },
+    {
+      "text": "Here are the images you requested.\n<attachment:attachment_dog_image>\n<attachment:attachment_cat_image>",
+      "finishReason": "stop",
+      "toolCalls": [],
+      "usage": {
+        "promptTokens": 16,
+        "completionTokens": 44,
+        "totalTokens": 60
+      },
+      "response": {
+        "id": "resp-img-2",
+        "timestamp": "2024-01-01T00:00:01.000Z",
+        "modelId": "mock-model"
+      },
+      "rawCall": {
+        "rawPrompt": "sequential-image-step-2",
+        "rawSettings": {}
+      }
+    }
+  ],
+  "recordedModelCalls": [
+    {
+      "step": 1,
+      "mode": {
+        "type": "regular",
+        "tools": [
+          {
+            "type": "function",
+            "name": "generate_and_show_image",
+            "description": "Render an image and return an attachment identifier.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "prompt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "prompt"
+              ],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            }
+          }
+        ],
+        "toolChoice": {
+          "type": "auto"
+        }
+      },
+      "prompt": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Please create one image of a dog and one image of a cat. Call generate_and_show_image for each and only send a final reply after both succeed, including attachment links."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "mode": {
+        "type": "regular",
+        "tools": [
+          {
+            "type": "function",
+            "name": "generate_and_show_image",
+            "description": "Render an image and return an attachment identifier.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "prompt": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "prompt"
+              ],
+              "additionalProperties": false,
+              "$schema": "http://json-schema.org/draft-07/schema#"
+            }
+          }
+        ],
+        "toolChoice": {
+          "type": "auto"
+        }
+      },
+      "prompt": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Please create one image of a dog and one image of a cat. Call generate_and_show_image for each and only send a final reply after both succeed, including attachment links."
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will generate those images now."
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call-img-1",
+              "toolName": "generate_and_show_image",
+              "args": {
+                "prompt": "a friendly dog playing in a park"
+              }
+            },
+            {
+              "type": "tool-call",
+              "toolCallId": "call-img-2",
+              "toolName": "generate_and_show_image",
+              "args": {
+                "prompt": "a curious cat sitting on a windowsill"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "content": [
+            {
+              "type": "tool-result",
+              "toolCallId": "call-img-1",
+              "toolName": "generate_and_show_image",
+              "result": {
+                "attachments": [
+                  "attachment_dog_image"
+                ],
+                "success": true,
+                "prompt": "a friendly dog playing in a park"
+              }
+            },
+            {
+              "type": "tool-result",
+              "toolCallId": "call-img-2",
+              "toolName": "generate_and_show_image",
+              "result": {
+                "attachments": [
+                  "attachment_cat_image"
+                ],
+                "success": true,
+                "prompt": "a curious cat sitting on a windowsill"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "toolExecutions": [
+    {
+      "toolName": "generate_and_show_image",
+      "callId": "call-img-1",
+      "args": {
+        "prompt": "a friendly dog playing in a park"
+      },
+      "result": {
+        "type": "json",
+        "value": {
+          "attachments": [
+            "attachment_dog_image"
+          ],
+          "success": true,
+          "prompt": "a friendly dog playing in a park"
+        }
+      }
+    },
+    {
+      "toolName": "generate_and_show_image",
+      "callId": "call-img-2",
+      "args": {
+        "prompt": "a curious cat sitting on a windowsill"
+      },
+      "result": {
+        "type": "json",
+        "value": {
+          "attachments": [
+            "attachment_cat_image"
+          ],
+          "success": true,
+          "prompt": "a curious cat sitting on a windowsill"
+        }
+      }
+    }
+  ],
+  "vercel": {
+    "result": {
+      "text": "Here are the images you requested.\n<attachment:attachment_dog_image>\n<attachment:attachment_cat_image>",
+      "files": [],
+      "reasoningDetails": [],
+      "toolCalls": [],
+      "toolResults": [],
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 64,
+        "completionTokens": 58,
+        "totalTokens": 122
+      },
+      "response": {
+        "id": "resp-img-2",
+        "timestamp": "2024-01-01T00:00:02.000Z",
+        "modelId": "mock-model",
+        "messages": [
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "I will generate those images now."
+              },
+              {
+                "type": "tool-call",
+                "toolCallId": "call-img-1",
+                "toolName": "generate_and_show_image",
+                "args": {
+                  "prompt": "a friendly dog playing in a park"
+                }
+              },
+              {
+                "type": "tool-call",
+                "toolCallId": "call-img-2",
+                "toolName": "generate_and_show_image",
+                "args": {
+                  "prompt": "a curious cat sitting on a windowsill"
+                }
+              }
+            ],
+            "id": "msg-img-step-1"
+          },
+          {
+            "role": "tool",
+            "content": [
+              {
+                "type": "tool-result",
+                "toolCallId": "call-img-1",
+                "toolName": "generate_and_show_image",
+                "result": {
+                  "attachments": [
+                    "attachment_dog_image"
+                  ],
+                  "success": true,
+                  "prompt": "a friendly dog playing in a park"
+                }
+              },
+              {
+                "type": "tool-result",
+                "toolCallId": "call-img-2",
+                "toolName": "generate_and_show_image",
+                "result": {
+                  "attachments": [
+                    "attachment_cat_image"
+                  ],
+                  "success": true,
+                  "prompt": "a curious cat sitting on a windowsill"
+                }
+              }
+            ],
+            "id": "msg-img-tools"
+          },
+          {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "Here are the images you requested.\n<attachment:attachment_dog_image>\n<attachment:attachment_cat_image>"
+              }
+            ],
+            "id": "msg-img-final"
+          }
+        ]
+      },
+      "steps": [
+        {
+          "stepType": "initial",
+          "toolCalls": [
+            {
+              "toolCallId": "call-img-1",
+              "toolName": "generate_and_show_image",
+              "args": {
+                "prompt": "a friendly dog playing in a park"
+              }
+            },
+            {
+              "toolCallId": "call-img-2",
+              "toolName": "generate_and_show_image",
+              "args": {
+                "prompt": "a curious cat sitting on a windowsill"
+              }
+            }
+          ],
+          "toolResults": [
+            {
+              "toolCallId": "call-img-1",
+              "toolName": "generate_and_show_image",
+              "result": {
+                "attachments": [
+                  "attachment_dog_image"
+                ],
+                "success": true,
+                "prompt": "a friendly dog playing in a park"
+              }
+            },
+            {
+              "toolCallId": "call-img-2",
+              "toolName": "generate_and_show_image",
+              "result": {
+                "attachments": [
+                  "attachment_cat_image"
+                ],
+                "success": true,
+                "prompt": "a curious cat sitting on a windowsill"
+              }
+            }
+          ],
+          "text": "I will generate those images now."
+        },
+        {
+          "stepType": "tool-result",
+          "toolCalls": [],
+          "toolResults": [],
+          "text": "Here are the images you requested.\n<attachment:attachment_dog_image>\n<attachment:attachment_cat_image>"
+        }
+      ]
+    },
+    "error": null
+  }
+}

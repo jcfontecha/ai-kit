@@ -73,14 +73,27 @@ public extension AIClient {
 
             // 5. Handle the response based on finish reason
             if let toolCalls = providerResponse.toolCalls, !toolCalls.isEmpty, providerResponse.finishReason == .toolCalls {
-                // Record the tool call step
-                let toolCallStep = GenerationStep(
-                    stepType: .toolCall,
-                    usage: providerResponse.usage,
-                    messages: [Message.assistant(providerResponse.content)],
+                let stepType: StepType = stepCount == 0 ? .initial : .toolCall
+                let assistantContent: [MessageContent]
+                if !providerResponse.content.isEmpty {
+                    assistantContent = [.text(providerResponse.content)] + toolCalls.map { .toolCall($0) }
+                } else {
+                    assistantContent = toolCalls.map { .toolCall($0) }
+                }
+                let assistantMessage = Message(
+                    role: .assistant,
+                    content: assistantContent,
                     toolCalls: toolCalls
                 )
-                allSteps.append(toolCallStep)
+
+                let toolCallStepIndex = allSteps.count
+                let baseStep = GenerationStep(
+                    stepType: stepType,
+                    usage: providerResponse.usage,
+                    messages: [assistantMessage],
+                    toolCalls: toolCalls
+                )
+                allSteps.append(baseStep)
 
                 // Increment step count BEFORE checking if we should continue
                 stepCount += 1
@@ -95,48 +108,36 @@ public extension AIClient {
                     }
 
                     // Add assistant message with tool calls, then tool results to conversation
-                    let assistantContent: [MessageContent]
-                    if !providerResponse.content.isEmpty {
-                        assistantContent = [.text(providerResponse.content)] + toolCalls.map { .toolCall($0) }
-                    } else {
-                        assistantContent = toolCalls.map { .toolCall($0) }
-                    }
-
-                    let assistantMessage = Message(
-                        role: .assistant,
-                        content: assistantContent,
-                        toolCalls: toolCalls
-                    )
                     currentMessages.append(assistantMessage)
-
                     for result in toolResults {
                         currentMessages.append(Message.tool(result: result))
                     }
 
-                    // Record the tool result processing step
-                    let toolResultStep = GenerationStep(
-                        stepType: .toolResult,
-                        messages: toolResults.map { Message.tool(result: $0) },
-                        toolResults: toolResults
-                    )
-                    allSteps.append(toolResultStep)
+                    // Merge tool results into the existing tool call step
+                    if !toolResults.isEmpty {
+                        let previousStep = allSteps[toolCallStepIndex]
+                        let stepToolMessage = Message(
+                            role: .tool,
+                            content: toolResults.map { MessageContent.toolResult($0) }
+                        )
+                        let mergedMessages = (previousStep.messages ?? []) + [stepToolMessage]
+                        let mergedStep = GenerationStep(
+                            stepType: previousStep.stepType,
+                            stepId: previousStep.stepId,
+                            timestamp: previousStep.timestamp,
+                            usage: previousStep.usage,
+                            messages: mergedMessages,
+                            toolCalls: previousStep.toolCalls,
+                            toolResults: toolResults,
+                            metadata: previousStep.metadata
+                        )
+                        allSteps[toolCallStepIndex] = mergedStep
+                    }
 
                     // Continue to next step for follow-up generation
                     continue
                 } else {
                     // No more steps available, return with unexecuted tool calls
-                    let assistantContent: [MessageContent]
-                    if !providerResponse.content.isEmpty {
-                        assistantContent = [.text(providerResponse.content)] + toolCalls.map { .toolCall($0) }
-                    } else {
-                        assistantContent = toolCalls.map { .toolCall($0) }
-                    }
-
-                    let assistantMessage = Message(
-                        role: .assistant,
-                        content: assistantContent,
-                        toolCalls: toolCalls
-                    )
                     currentMessages.append(assistantMessage)
 
                     let textResponse = TextResponse(
