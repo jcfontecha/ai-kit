@@ -22,20 +22,55 @@ public extension AIClient {
     /// - Returns: A `TextResponse` containing the generated text and metadata
     /// - Throws: `AIError` for various failure conditions
     func generateText(_ model: LanguageModel, messages: [Message], tools: [Tool]? = nil, toolChoice: ToolChoice? = nil, maxSteps: Int = 1) async throws -> TextResponse {
-        // Multi-step execution implementation following Vercel AI SDK pattern
-        var currentMessages = messages
-        var allSteps: [GenerationStep] = []
-        var totalUsage = Usage(promptTokens: 0, completionTokens: 0, totalTokens: 0)
-        var stepCount = 0
+        precondition(maxSteps >= 1, "maxSteps must be at least 1")
 
-        // Use a conditional loop like Vercel AI SDK - only continue if there are tool calls to process
-        while stepCount < maxSteps {
-            // 1. Create provider request for this step
-            // Use provided toolChoice or default to 'auto' when tools are provided
+        enum LoopStepState {
+            case initial
+            case toolResult
+            case `continue`
+            case done
+
+            var generationStepType: StepType {
+                switch self {
+                case .initial:
+                    return .initial
+                case .toolResult:
+                    return .toolResult
+                case .continue:
+                    return .continue
+                case .done:
+                    // `.done` is only used as an exit sentinel and should never be recorded.
+                    return .initial
+                }
+            }
+        }
+
+        let debugParity = ProcessInfo.processInfo.environment["VERCEL_PARITY_DEBUG"] == "1"
+
+        var conversationMessages = messages
+        var responseMessages: [Message] = []
+        var generationSteps: [GenerationStep] = []
+        var accumulatedUsage: Usage? = nil
+        var stepCount = 0
+        var loopStep: LoopStepState = .initial
+        var finalText = ""
+        var finalFinishReason: FinishReason = .stop
+        var finalResponseId: String?
+        var finalTimestamp = Date()
+
+        repeat {
+            if debugParity {
+                print("[AIKit] Step \(stepCount) (\(loopStep)) input messages:")
+                for message in conversationMessages {
+                    print("  - \(message.role.rawValue):", message.content)
+                }
+            }
+
+            // Determine tool choice for this request, mirroring Vercel SDK defaults.
             let effectiveToolChoice: ToolChoice? = {
-                if let explicitChoice = toolChoice {
-                    return explicitChoice
-                } else if let tools = tools, !tools.isEmpty {
+                if let explicit = toolChoice {
+                    return explicit
+                } else if let tools, !tools.isEmpty {
                     return .auto
                 } else {
                     return nil
@@ -43,7 +78,7 @@ public extension AIClient {
             }()
 
             let mode: ProviderMode = {
-                if let tools = tools, !tools.isEmpty {
+                if let tools, !tools.isEmpty {
                     return .regular(tools: tools, toolChoice: effectiveToolChoice)
                 } else {
                     return .regular(tools: nil, toolChoice: effectiveToolChoice)
@@ -52,156 +87,110 @@ public extension AIClient {
 
             let request = ProviderRequest(
                 modelId: model.modelId,
-                messages: currentMessages,
+                messages: conversationMessages,
                 configuration: model.configuration,
                 tools: tools,
                 mode: mode
             )
 
-            // 2. Apply request middleware
             let processedRequest = try await applyRequestMiddleware(request)
-
-            // 3. Call provider
             let providerResponse = try await model.provider.generateTextRaw(processedRequest)
 
-            // 4. Accumulate usage
-            totalUsage = Usage(
-                promptTokens: totalUsage.promptTokens + providerResponse.usage.promptTokens,
-                completionTokens: totalUsage.completionTokens + providerResponse.usage.completionTokens,
-                totalTokens: totalUsage.totalTokens + providerResponse.usage.totalTokens
+            if debugParity {
+                print(
+                    "[AIKit] Step \(stepCount) finishReason=\(providerResponse.finishReason.rawValue) toolCalls=\(providerResponse.toolCalls?.count ?? 0) textLength=\(providerResponse.content.count)"
+                )
+            }
+
+            accumulatedUsage = mergeUsage(accumulatedUsage, with: providerResponse.usage)
+            finalFinishReason = providerResponse.finishReason
+            finalResponseId = providerResponse.responseId
+            finalTimestamp = providerResponse.timestamp
+
+            let toolCalls = providerResponse.toolCalls ?? []
+            var toolResults: [ToolResult] = []
+            if !toolCalls.isEmpty {
+                for toolCall in toolCalls {
+                    let result = try await executeToolCall(toolCall, tools: tools)
+                    toolResults.append(result)
+                }
+            }
+
+            let stepText = providerResponse.content
+
+            stepCount += 1
+            var nextLoopStep: LoopStepState = .done
+            if stepCount < maxSteps {
+                if !toolCalls.isEmpty && toolResults.count == toolCalls.count {
+                    nextLoopStep = .toolResult
+                }
+            }
+
+            let stepMessages = StepMessageBuilder.buildMessages(
+                text: stepText,
+                toolCalls: toolCalls,
+                toolResults: toolResults,
+                messageId: providerResponse.responseId ?? UUID().uuidString
             )
 
-            // 5. Handle the response based on finish reason
-            if let toolCalls = providerResponse.toolCalls, !toolCalls.isEmpty, providerResponse.finishReason == .toolCalls {
-                let stepType: StepType = stepCount == 0 ? .initial : .toolCall
-                let assistantContent: [MessageContent]
-                if !providerResponse.content.isEmpty {
-                    assistantContent = [.text(providerResponse.content)] + toolCalls.map { .toolCall($0) }
+            responseMessages.append(contentsOf: stepMessages)
+            conversationMessages = messages + responseMessages
+
+            if !stepText.isEmpty {
+                if loopStep == .continue || nextLoopStep == .continue {
+                    finalText += stepText
                 } else {
-                    assistantContent = toolCalls.map { .toolCall($0) }
+                    finalText = stepText
                 }
-                let assistantMessage = Message(
-                    role: .assistant,
-                    content: assistantContent,
-                    toolCalls: toolCalls
+            }
+
+            let recordedStep = GenerationStep(
+                stepType: loopStep.generationStepType,
+                timestamp: providerResponse.timestamp,
+                usage: providerResponse.usage,
+                messages: stepMessages.isEmpty ? nil : stepMessages,
+                toolCalls: toolCalls.isEmpty ? nil : toolCalls,
+                toolResults: toolResults.isEmpty ? nil : toolResults,
+                metadata: providerResponse.providerMetadata
+            )
+            generationSteps.append(recordedStep)
+
+            if debugParity {
+                print(
+                    "[AIKit] Recorded step type=\(recordedStep.stepType.rawValue) toolCalls=\(toolCalls.count) toolResults=\(toolResults.count)"
                 )
+            }
 
-                let toolCallStepIndex = allSteps.count
-                let baseStep = GenerationStep(
-                    stepType: stepType,
-                    usage: providerResponse.usage,
-                    messages: [assistantMessage],
-                    toolCalls: toolCalls
-                )
-                allSteps.append(baseStep)
+            loopStep = nextLoopStep
+        } while loopStep != .done
 
-                // Increment step count BEFORE checking if we should continue
-                stepCount += 1
+        let normalizedSteps = mergeToolOnlyContinuationSteps(generationSteps)
 
-                // Check if we have more steps available for tool execution
-                if stepCount < maxSteps {
-                    // Execute tools and create tool result messages
-                    var toolResults: [ToolResult] = []
-                    for toolCall in toolCalls {
-                        let result = try await executeToolCall(toolCall, tools: tools)
-                        toolResults.append(result)
-                    }
-
-                    // Add assistant message with tool calls, then tool results to conversation
-                    currentMessages.append(assistantMessage)
-                    for result in toolResults {
-                        currentMessages.append(Message.tool(result: result))
-                    }
-
-                    // Merge tool results into the existing tool call step
-                    if !toolResults.isEmpty {
-                        let previousStep = allSteps[toolCallStepIndex]
-                        let stepToolMessage = Message(
-                            role: .tool,
-                            content: toolResults.map { MessageContent.toolResult($0) }
-                        )
-                        let mergedMessages = (previousStep.messages ?? []) + [stepToolMessage]
-                        let mergedStep = GenerationStep(
-                            stepType: previousStep.stepType,
-                            stepId: previousStep.stepId,
-                            timestamp: previousStep.timestamp,
-                            usage: previousStep.usage,
-                            messages: mergedMessages,
-                            toolCalls: previousStep.toolCalls,
-                            toolResults: toolResults,
-                            metadata: previousStep.metadata
-                        )
-                        allSteps[toolCallStepIndex] = mergedStep
-                    }
-
-                    // Continue to next step for follow-up generation
-                    continue
-                } else {
-                    // No more steps available, return with unexecuted tool calls
-                    currentMessages.append(assistantMessage)
-
-                    let textResponse = TextResponse(
-                        text: providerResponse.content,
-                        finishReason: providerResponse.finishReason,
-                        usage: totalUsage,
-                        messages: currentMessages,
-                        steps: allSteps.isEmpty ? nil : allSteps,
-                        responseId: nil,
-                        modelId: model.modelId,
-                        timestamp: Date(),
-                        warnings: nil,
-                        responseHeaders: nil
-                    )
-
-                    return try await applyResponseMiddleware(textResponse)
-                }
-
-            } else {
-                // No tool calls - this is the final response, stop here
-                currentMessages.append(Message.assistant(providerResponse.content))
-
-                let finalStep = GenerationStep(
-                    stepType: stepCount == 0 ? .initial : .continue,
-                    usage: providerResponse.usage,
-                    messages: [Message.assistant(providerResponse.content)]
-                )
-                allSteps.append(finalStep)
-
-                // Build final response
-                let textResponse = TextResponse(
-                    text: providerResponse.content,
-                    finishReason: providerResponse.finishReason,
-                    usage: totalUsage,
-                    messages: currentMessages,
-                    steps: allSteps.isEmpty ? nil : allSteps,
-                    responseId: nil,
-                    modelId: model.modelId,
-                    timestamp: Date(),
-                    warnings: nil,
-                    responseHeaders: nil
-                )
-
-                // Apply response middleware and return
-                return try await applyResponseMiddleware(textResponse)
+        if debugParity {
+            print("[AIKit] Final step sequence:", normalizedSteps.map { $0.stepType.rawValue })
+            for (index, step) in normalizedSteps.enumerated() {
+                let ids = step.toolCalls?.map { $0.id } ?? []
+                let resultCount = step.toolResults?.count ?? 0
+                let hasText = stepContainsText(step)
+                print("[AIKit] Step #\(index) type=\(step.stepType.rawValue) callIds=\(ids) resultCount=\(resultCount) hasText=\(hasText)")
             }
         }
 
-        // This should never be reached in normal operation
-        // If we get here, it means we hit maxSteps with only tool calls
-        let finalResponse = TextResponse(
-            text: "",
-            finishReason: .length,
-            usage: totalUsage,
-            messages: currentMessages,
-            steps: allSteps.isEmpty ? nil : allSteps,
-            responseId: nil,
+        let finalUsage = accumulatedUsage ?? Usage(promptTokens: 0, completionTokens: 0, totalTokens: 0)
+        let response = TextResponse(
+            text: finalText,
+            finishReason: finalFinishReason,
+            usage: finalUsage,
+            messages: conversationMessages,
+            steps: normalizedSteps.isEmpty ? nil : normalizedSteps,
+            responseId: finalResponseId,
             modelId: model.modelId,
-            timestamp: Date(),
-            warnings: ["Reached maximum steps limit"],
+            timestamp: finalTimestamp,
+            warnings: nil,
             responseHeaders: nil
         )
 
-        return try await applyResponseMiddleware(finalResponse)
+        return try await applyResponseMiddleware(response)
     }
     
     /// Generate text from a simple string prompt.
@@ -294,5 +283,74 @@ public extension AIClient {
             // For other modes, use the basic method
             return try await generateText(model, messages: messages)
         }
+    }
+}
+
+// MARK: - Usage Helpers
+
+private func mergeUsage(_ existing: Usage?, with additional: Usage) -> Usage {
+    guard let existing else { return additional }
+    return Usage(
+        promptTokens: existing.promptTokens + additional.promptTokens,
+        completionTokens: existing.completionTokens + additional.completionTokens,
+        totalTokens: existing.totalTokens + additional.totalTokens,
+        promptCost: sumOptionals(existing.promptCost, additional.promptCost),
+        completionCost: sumOptionals(existing.completionCost, additional.completionCost),
+        totalCost: sumOptionals(existing.totalCost, additional.totalCost),
+        currency: existing.currency ?? additional.currency,
+        details: mergeDetails(existing.details, additional.details)
+    )
+}
+
+private func mergeToolOnlyContinuationSteps(_ steps: [GenerationStep]) -> [GenerationStep] {
+    return steps
+}
+
+private func stepContainsText(_ step: GenerationStep) -> Bool {
+    guard let messages = step.messages else { return false }
+    return messages.flatMap { $0.content }.contains { content in
+        if case .text(let value) = content {
+            return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return false
+    }
+}
+
+private func mergeMetadataDictionaries(_ lhs: [String: String]?, _ rhs: [String: String]?) -> [String: String]? {
+    switch (lhs, rhs) {
+    case let (l?, r?):
+        return l.merging(r) { _, new in new }
+    case (let l?, nil):
+        return l
+    case (nil, let r?):
+        return r
+    default:
+        return nil
+    }
+}
+
+private func sumOptionals(_ lhs: Double?, _ rhs: Double?) -> Double? {
+    switch (lhs, rhs) {
+    case let (l?, r?):
+        return l + r
+    case (let l?, nil):
+        return l
+    case (nil, let r?):
+        return r
+    default:
+        return nil
+    }
+}
+
+private func mergeDetails(_ lhs: [String: String]?, _ rhs: [String: String]?) -> [String: String]? {
+    switch (lhs, rhs) {
+    case let (l?, r?):
+        return l.merging(r, uniquingKeysWith: { _, new in new })
+    case (let l?, nil):
+        return l
+    case (nil, let r?):
+        return r
+    default:
+        return nil
     }
 }

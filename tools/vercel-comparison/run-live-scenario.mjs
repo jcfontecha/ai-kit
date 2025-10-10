@@ -250,6 +250,7 @@ async function runLiveScenario(name) {
     maxSteps: definition.maxSteps,
     toolChoice: definition.toolChoice,
     temperature: 0,
+    seed: parseInt(process.env.VERCEL_PARITY_SEED ?? '42', 10),
   });
 
   return {

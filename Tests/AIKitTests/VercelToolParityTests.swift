@@ -33,6 +33,11 @@ struct VercelToolParityTests {
     func testInterleavedImageToolsMatchesVercel() async throws {
         try await assertScenario(named: "interleaved-image-tools")
     }
+
+    @Test("Assistant preface text stays ahead of tool call")
+    func testPrefaceTextAndImageOrderingMatchesVercel() async throws {
+        try await assertScenario(named: "preface-text-and-image")
+    }
 }
 
 // MARK: - Assertion Helper

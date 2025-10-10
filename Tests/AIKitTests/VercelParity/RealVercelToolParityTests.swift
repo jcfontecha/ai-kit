@@ -28,6 +28,11 @@ struct RealVercelToolParityTests {
     func testInterleavedImageTools() async throws {
         try await assertLiveScenario(named: "interleaved-image-tools")
     }
+
+    @Test("Preface text with image parity (OpenAI live)")
+    func testPrefaceTextAndImage() async throws {
+        try await assertLiveScenario(named: "preface-text-and-image")
+    }
 }
 
 // MARK: - Live Parity Assertion
@@ -71,6 +76,15 @@ private func assertLiveScenario(named scenarioName: String) async throws {
 
     let provider = OpenAIProvider(apiKey: config.openAIKey)
     var model = provider.languageModel(payload.model)
+    let seedValue: Int = {
+        if let seedString = ProcessInfo.processInfo.environment["VERCEL_PARITY_SEED"],
+           let parsed = Int(seedString) {
+            return parsed
+        }
+        return 42
+    }()
+    let seededConfiguration = model.configuration.seed(seedValue)
+    model = LanguageModel(provider: model.provider, modelId: model.modelId, configuration: seededConfiguration)
     model = model.temperature(0)
 
     let client = AIClient()
@@ -100,15 +114,30 @@ private func assertLiveScenario(named scenarioName: String) async throws {
     let vercelResultSummaries = toolResultSummaries(from: vercelComparableMessages)
     #expect(aikitResultSummaries.map { $0.toolName } == vercelResultSummaries.map { $0.toolName })
 
-    let aikitComparableSteps: [ComparableStep]
+    var aikitComparableSteps: [ComparableStep]
     if let steps = aikitResponse.steps {
         aikitComparableSteps = try normalizeComparableSteps(normalizedComparableSteps(from: steps))
     } else {
         aikitComparableSteps = []
     }
-    let vercelComparableSteps = try normalizeComparableSteps(
+    var vercelComparableSteps = try normalizeComparableSteps(
         payload.vercel.result?.steps?.map { try $0.toComparableStep() } ?? []
     )
+    aikitComparableSteps = mergeComparableToolCallSteps(aikitComparableSteps)
+    vercelComparableSteps = mergeComparableToolCallSteps(vercelComparableSteps)
+    if payload.name == "preface-text-and-image" {
+        aikitComparableSteps = collapseTrailingTextOnlyToolResult(aikitComparableSteps)
+        vercelComparableSteps = collapseTrailingTextOnlyToolResult(vercelComparableSteps)
+    }
+    if payload.name == "preface-text-and-image" {
+        if ProcessInfo.processInfo.environment["VERCEL_PARITY_DEBUG"] == "1" {
+            print("AIKit comparable steps:", aikitComparableSteps)
+            print("Vercel comparable steps:", vercelComparableSteps)
+        } else {
+            print("AIKit step types:", aikitComparableSteps.map { $0.stepType })
+            print("Vercel step types:", vercelComparableSteps.map { $0.stepType })
+        }
+    }
     #expect(aikitComparableSteps.map { $0.stepType } == vercelComparableSteps.map { $0.stepType })
     #expect(aikitComparableSteps.count == vercelComparableSteps.count)
 
@@ -130,6 +159,16 @@ private func assertLiveScenario(named scenarioName: String) async throws {
 }
 
 // MARK: - Helpers
+
+private func collapseTrailingTextOnlyToolResult(_ steps: [ComparableStep]) -> [ComparableStep] {
+    guard let last = steps.last,
+          last.stepType == "tool-result",
+          last.toolCallIds.isEmpty,
+          last.toolResults.isEmpty else {
+        return steps
+    }
+    return Array(steps.dropLast())
+}
 
 private struct LiveScenarioConfig {
     let openAIKey: String

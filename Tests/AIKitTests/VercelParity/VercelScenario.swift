@@ -4,6 +4,86 @@ import Foundation
 // MARK: - Scenario Loading
 
 struct VercelToolScenario: Decodable, Sendable {
+    actor ToolResultRegistry {
+        private var byId: [String: ToolResult]
+        private var byArgs: [String: ToolResult]
+        private var byToolQueues: [String: [ToolResult]]
+        private var callIdToToolName: [String: String]
+        private var callIdToArgsKey: [String: String]
+
+        init(
+            byId: [String: ToolResult],
+            byArgs: [String: ToolResult],
+            byToolQueues: [String: [ToolResult]],
+            callIdToToolName: [String: String],
+            callIdToArgsKey: [String: String]
+        ) {
+            self.byId = byId
+            self.byArgs = byArgs
+            self.byToolQueues = byToolQueues
+            self.callIdToToolName = callIdToToolName
+            self.callIdToArgsKey = callIdToArgsKey
+        }
+
+        static func argsKey(toolName: String, canonicalArgs: String) -> String {
+            "\(toolName)|\(canonicalArgs)"
+        }
+
+        func takeResult(for toolCallId: String) -> ToolResult? {
+            guard let result = byId.removeValue(forKey: toolCallId) else {
+                return nil
+            }
+
+            if let argsKey = callIdToArgsKey.removeValue(forKey: toolCallId) {
+                byArgs.removeValue(forKey: argsKey)
+            }
+
+            if let toolName = callIdToToolName.removeValue(forKey: toolCallId) {
+                removeFromQueue(toolName: toolName, toolCallId: toolCallId)
+            }
+
+            return result
+        }
+
+        func takeResult(toolName: String, canonicalArgs: String?) -> ToolResult? {
+            if let canonicalArgs, !canonicalArgs.isEmpty {
+                let key = Self.argsKey(toolName: toolName, canonicalArgs: canonicalArgs)
+                if let result = byArgs.removeValue(forKey: key) {
+                    let callId = result.toolCallId
+                    byId.removeValue(forKey: callId)
+                    callIdToArgsKey.removeValue(forKey: callId)
+                    callIdToToolName.removeValue(forKey: callId)
+                    removeFromQueue(toolName: toolName, toolCallId: callId)
+                    return result
+                }
+            }
+
+            if var queue = byToolQueues[toolName], !queue.isEmpty {
+                let result = queue.removeFirst()
+                byToolQueues[toolName] = queue
+
+                let callId = result.toolCallId
+                byId.removeValue(forKey: callId)
+                if let argsKey = callIdToArgsKey.removeValue(forKey: callId) {
+                    byArgs.removeValue(forKey: argsKey)
+                }
+                callIdToToolName.removeValue(forKey: callId)
+
+                return result
+            }
+
+            return nil
+        }
+
+        private func removeFromQueue(toolName: String, toolCallId: String) {
+            guard var queue = byToolQueues[toolName] else { return }
+            if let index = queue.firstIndex(where: { $0.toolCallId == toolCallId }) {
+                queue.remove(at: index)
+                byToolQueues[toolName] = queue
+            }
+        }
+    }
+
     let name: String
     let description: String
     let config: ScenarioConfig
@@ -171,7 +251,7 @@ struct VercelToolScenario: Decodable, Sendable {
         toolName: String,
         toolCall: ToolCall,
         errorDescriptor: VercelError?,
-        recordedResults: [String: ToolResult]
+        recordedResults: ToolResultRegistry
     ) async throws -> ToolResult {
         if let errorDescriptor, errorDescriptor.toolCallId == toolCall.id {
             let underlying = ToolExecutionFixtureError(
@@ -188,15 +268,13 @@ struct VercelToolScenario: Decodable, Sendable {
 
         let parsedArgs = toolCall.function.parsedArguments ?? [:]
 
-        if let recorded = recordedResults[toolCall.id] {
-            return ToolResult(
-                toolCallId: toolCall.id,
-                result: recorded.result,
-                timestamp: Date(),
-                executionTime: recorded.executionTime,
-                isError: recorded.isError,
-                metadata: recorded.metadata
-            )
+        if let recorded = await recordedResults.takeResult(for: toolCall.id) {
+            return remappedToolResult(recorded, toolCallId: toolCall.id)
+        }
+
+        let canonicalArgs = canonicalJSONString(from: parsedArgs)
+        if let recorded = await recordedResults.takeResult(toolName: toolName, canonicalArgs: canonicalArgs) {
+            return remappedToolResult(recorded, toolCallId: toolCall.id)
         }
 
         return try fallbackToolResult(
@@ -205,6 +283,29 @@ struct VercelToolScenario: Decodable, Sendable {
             toolCall: toolCall,
             parsedArgs: parsedArgs
         )
+    }
+
+    private static func remappedToolResult(_ recorded: ToolResult, toolCallId: String) -> ToolResult {
+        ToolResult(
+            toolCallId: toolCallId,
+            result: recorded.result,
+            timestamp: recorded.timestamp,
+            executionTime: recorded.executionTime,
+            isError: recorded.isError,
+            metadata: recorded.metadata
+        )
+    }
+
+    private static func canonicalJSONString(from args: [String: JSONValue]) throws -> String {
+        try JSONValue.object(args).canonicalJSONString()
+    }
+
+    private static func canonicalJSONString(from dictionary: [String: Any]) -> String? {
+        guard JSONSerialization.isValidJSONObject(dictionary) else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: dictionary, options: [.sortedKeys]) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     private static func fallbackToolResult(
@@ -318,7 +419,7 @@ struct VercelToolScenario: Decodable, Sendable {
         }
     }
 
-    private func recordedToolResults() throws -> [String: ToolResult] {
+    private func recordedToolResults() throws -> ToolResultRegistry {
         try Self.buildRecordedToolResults(
             executions: toolExecutions,
             steps: vercel.result?.steps
@@ -328,23 +429,49 @@ struct VercelToolScenario: Decodable, Sendable {
     static func buildRecordedToolResults(
         executions: [ToolExecution],
         steps: [VercelStep]?
-    ) throws -> [String: ToolResult] {
-        var lookup: [String: ToolResult] = [:]
+    ) throws -> ToolResultRegistry {
+        var byId: [String: ToolResult] = [:]
+        var byArgs: [String: ToolResult] = [:]
+        var byToolQueues: [String: [ToolResult]] = [:]
+        var callIdToToolName: [String: String] = [:]
+        var callIdToArgsKey: [String: String] = [:]
 
         for execution in executions {
             guard let callId = execution.callId else { continue }
-            lookup[callId] = try execution.makeToolResult(toolCallId: callId)
+            let result = try execution.makeToolResult(toolCallId: callId)
+            byId[callId] = result
+            callIdToToolName[callId] = execution.toolName
+            byToolQueues[execution.toolName, default: []].append(result)
+
+            if let canonical = try? canonicalJSONString(from: execution.args) {
+                let key = ToolResultRegistry.argsKey(toolName: execution.toolName, canonicalArgs: canonical)
+                byArgs[key] = result
+                callIdToArgsKey[callId] = key
+            }
         }
 
         if let steps {
             for step in steps {
                 for result in step.toolResults ?? [] {
-                    lookup[result.toolCallId] = try result.toToolResult()
+                    let callId = result.toolCallId
+                    let toolResult = try result.toToolResult()
+                    byId[callId] = toolResult
+
+                    if callIdToToolName[callId] == nil {
+                        callIdToToolName[callId] = result.toolName
+                        byToolQueues[result.toolName, default: []].append(toolResult)
+                    }
                 }
             }
         }
 
-        return lookup
+        return ToolResultRegistry(
+            byId: byId,
+            byArgs: byArgs,
+            byToolQueues: byToolQueues,
+            callIdToToolName: callIdToToolName,
+            callIdToArgsKey: callIdToArgsKey
+        )
     }
 
     func inputMessages() throws -> [Message] {

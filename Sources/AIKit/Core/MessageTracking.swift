@@ -10,151 +10,137 @@ import Foundation
 @available(macOS 10.15, iOS 13.0, watchOS 6.0, tvOS 13.0, *)
 internal actor StreamingMessageTracker {
     
+    // MARK: - Types
+    
+    private struct Step {
+        var messageId: String
+        var text: String
+        var toolCalls: [ToolCall]
+        var toolResults: [ToolResult]
+        
+        var hasContent: Bool {
+            !text.isEmpty || !toolCalls.isEmpty || !toolResults.isEmpty
+        }
+    }
+    
     // MARK: - Properties
     
-    /// Accumulated text content
-    private var accumulatedText: String = ""
+    private let initialMessageId: String
+    private let generateMessageId: () -> String
     
-    /// Accumulated tool calls
-    private var accumulatedToolCalls: [ToolCall] = []
-    
-    /// Accumulated tool results
-    private var accumulatedToolResults: [ToolResult] = []
-    
-    /// Current message ID
-    private let messageId: String
-    
-    /// Whether an assistant message has been created
-    private var assistantMessageCreated: Bool = false
-    
-    /// The current assistant message being built
-    private var currentAssistantMessage: Message?
-    
-    /// All messages in this streaming session
-    private var messages: [Message] = []
+    private var committedSteps: [Step] = []
+    private var currentStep: Step?
+    private var pendingNewStep = false
     
     // MARK: - Initialization
     
-    init(messageId: String = UUID().uuidString) {
-        self.messageId = messageId
+    init(
+        messageId: String = UUID().uuidString,
+        generateMessageId: @escaping () -> String = { UUID().uuidString }
+    ) {
+        self.initialMessageId = messageId
+        self.generateMessageId = generateMessageId
     }
     
-    // MARK: - Text Accumulation
+    // MARK: - Step Management
     
-    /// Append text to the current assistant message
+    private func ensureCurrentStep() {
+        if pendingNewStep {
+            commitCurrentStep()
+            currentStep = Step(messageId: generateMessageId(), text: "", toolCalls: [], toolResults: [])
+            pendingNewStep = false
+        } else if currentStep == nil {
+            let id = committedSteps.isEmpty ? initialMessageId : generateMessageId()
+            currentStep = Step(messageId: id, text: "", toolCalls: [], toolResults: [])
+        }
+    }
+    
+    private func commitCurrentStep() {
+        guard let step = currentStep else { return }
+        if step.hasContent {
+            committedSteps.append(step)
+        }
+        currentStep = nil
+    }
+    
+    // MARK: - Event Handling
+    
     func appendText(_ text: String) {
-        accumulatedText += text
-        updateAssistantMessage()
+        guard !text.isEmpty else { return }
+        ensureCurrentStep()
+        currentStep?.text.append(text)
     }
     
-    // MARK: - Tool Management
-    
-    /// Add a tool call to the current assistant message
     func addToolCall(_ toolCall: ToolCall) {
-        accumulatedToolCalls.append(toolCall)
-        updateAssistantMessage()
+        ensureCurrentStep()
+        currentStep?.toolCalls.append(toolCall)
     }
     
-    /// Add a tool result
     func addToolResult(_ toolResult: ToolResult) {
-        accumulatedToolResults.append(toolResult)
-        
-        // Tool results become separate messages
-        let toolMessage = Message.tool(result: toolResult)
-        messages.append(toolMessage)
-    }
-    
-    // MARK: - Message Building
-    
-    /// Update the assistant message with current accumulated content
-    private func updateAssistantMessage() {
-        // Build content array
-        var content: [MessageContent] = []
-        
-        if !accumulatedText.isEmpty {
-            content.append(.text(accumulatedText))
-        }
-        
-        // Create or update the assistant message
-        if !assistantMessageCreated && (!content.isEmpty || !accumulatedToolCalls.isEmpty) {
-            // Create initial assistant message
-            currentAssistantMessage = Message(
-                role: .assistant,
-                content: content,
-                id: messageId,
-                toolCalls: accumulatedToolCalls.isEmpty ? nil : accumulatedToolCalls
-            )
-            assistantMessageCreated = true
-        } else if let _ = currentAssistantMessage {
-            // Update existing message
-            currentAssistantMessage = Message(
-                role: .assistant,
-                content: content,
-                id: messageId,
-                toolCalls: accumulatedToolCalls.isEmpty ? nil : accumulatedToolCalls
-            )
-        }
+        ensureCurrentStep()
+        currentStep?.toolResults.append(toolResult)
+        pendingNewStep = true
     }
     
     // MARK: - Message Retrieval
     
-    /// Get the current assistant message (if any)
-    var assistantMessage: Message? {
-        return currentAssistantMessage
-    }
-    
-    /// Get all messages generated during streaming
-    var allMessages: [Message] {
-        var result = messages
-        
-        // Add the assistant message if it exists and isn't already added
-        if let assistant = currentAssistantMessage,
-           !messages.contains(where: { $0.id == assistant.id }) {
-            result.insert(assistant, at: 0) // Assistant message comes before tool results
-        }
-        
-        return result
-    }
-    
-    /// Get only the response messages (assistant + tool results)
     var responseMessages: [Message] {
-        return allMessages
-    }
-    
-    // MARK: - State Management
-    
-    /// Check if any content has been accumulated
-    var hasContent: Bool {
-        return !accumulatedText.isEmpty || !accumulatedToolCalls.isEmpty || !accumulatedToolResults.isEmpty
-    }
-    
-    /// Check if tool calls are present
-    var hasToolCalls: Bool {
-        return !accumulatedToolCalls.isEmpty
-    }
-    
-    /// Get accumulated text
-    var text: String {
-        return accumulatedText
-    }
-    
-    /// Get tool calls
-    var toolCalls: [ToolCall] {
-        return accumulatedToolCalls
-    }
-    
-    /// Get tool results
-    var toolResults: [ToolResult] {
-        return accumulatedToolResults
-    }
-    
-    /// Finalize the message tracking
-    func finalize() {
-        // Ensure the assistant message is in the messages array
-        if let assistant = currentAssistantMessage,
-           !messages.contains(where: { $0.id == assistant.id }) {
-            messages.insert(assistant, at: 0)
+        var messages: [Message] = []
+        for step in committedSteps {
+            messages.append(contentsOf: StepMessageBuilder.buildMessages(
+                text: step.text,
+                toolCalls: step.toolCalls,
+                toolResults: step.toolResults,
+                messageId: step.messageId,
+                generateMessageId: generateMessageId
+            ))
         }
+        if let current = currentStep, current.hasContent {
+            messages.append(contentsOf: StepMessageBuilder.buildMessages(
+                text: current.text,
+                toolCalls: current.toolCalls,
+                toolResults: current.toolResults,
+                messageId: current.messageId,
+                generateMessageId: generateMessageId
+            ))
+        }
+        return messages
+    }
+    
+    var assistantMessage: Message? {
+        responseMessages.last { $0.role == .assistant }
+    }
+    
+    var allMessages: [Message] {
+        responseMessages
+    }
+    
+    // MARK: - State Queries
+    
+    var hasContent: Bool {
+        !committedSteps.isEmpty || currentStep?.hasContent == true
+    }
+    
+    var hasToolCalls: Bool {
+        committedSteps.contains { !$0.toolCalls.isEmpty } || (currentStep?.toolCalls.isEmpty == false)
+    }
+    
+    var text: String {
+        currentStep?.text ?? ""
+    }
+    
+    var toolCalls: [ToolCall] {
+        currentStep?.toolCalls ?? []
+    }
+    
+    var toolResults: [ToolResult] {
+        currentStep?.toolResults ?? []
+    }
+    
+    // MARK: - Finalization
+    
+    func finalize() {
+        commitCurrentStep()
     }
 }
 
@@ -168,21 +154,22 @@ internal struct StepMessageBuilder {
         text: String,
         toolCalls: [ToolCall],
         toolResults: [ToolResult],
-        messageId: String,
+        messageId: String = UUID().uuidString,
         generateMessageId: () -> String = { UUID().uuidString }
     ) -> [Message] {
         var messages: [Message] = []
-        
-        // Build content array for assistant message
+
         var content: [MessageContent] = []
-        
-        // Add text content if present
+
         if !text.isEmpty {
             content.append(.text(text))
         }
-        
-        // Create assistant message if there's content or tool calls
-        if !content.isEmpty || !toolCalls.isEmpty {
+
+        if !toolCalls.isEmpty {
+            content.append(contentsOf: toolCalls.map { MessageContent.toolCall($0) })
+        }
+
+        if !content.isEmpty {
             let assistantMessage = Message(
                 role: .assistant,
                 content: content,
@@ -191,12 +178,16 @@ internal struct StepMessageBuilder {
             )
             messages.append(assistantMessage)
         }
-        
-        // Add tool result messages
-        for toolResult in toolResults {
-            messages.append(.tool(result: toolResult))
+
+        if !toolResults.isEmpty {
+            let toolMessage = Message(
+                role: .tool,
+                content: toolResults.map { MessageContent.toolResult($0) },
+                id: generateMessageId()
+            )
+            messages.append(toolMessage)
         }
-        
+
         return messages
     }
 }

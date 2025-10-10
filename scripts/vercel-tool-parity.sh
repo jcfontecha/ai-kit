@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 tput sgr0 >/dev/null 2>&1 || true
 
-DEFAULT_SCENARIOS=(auto-single-tool-call multi-tool-handoff tool-json-result sequential-image-tools interleaved-image-tools)
+DEFAULT_SCENARIOS=(auto-single-tool-call multi-tool-handoff tool-json-result sequential-image-tools interleaved-image-tools preface-text-and-image)
 
 LIVE_MODE=false
 if [[ ${1:-} == "--live" ]]; then
@@ -39,6 +39,9 @@ if [[ "${LIVE_MODE}" == "true" ]]; then
       interleaved-image-tools)
         swift test --filter RealVercelToolParityTests/testInterleavedImageTools
         ;;
+      preface-text-and-image)
+        swift test --filter RealVercelToolParityTests/testPrefaceTextAndImage
+        ;;
       *)
         echo "[tool-parity] Skipping unsupported live scenario '${scenario}'" >&2
         ;;
@@ -67,6 +70,9 @@ else
         ;;
       interleaved-image-tools)
         testName=testInterleavedImageToolsMatchesVercel
+        ;;
+      preface-text-and-image)
+        testName=testPrefaceTextAndImageOrderingMatchesVercel
         ;;
       *)
         echo "[tool-parity] No offline test mapping for scenario '${scenario}'" >&2

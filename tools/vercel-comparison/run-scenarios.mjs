@@ -296,6 +296,7 @@ async function runScenario({
   name,
   definition,
   generateText,
+  seed,
 }) {
   const executedToolsLog = [];
   const tools = await buildTools(definition.tools, executedToolsLog);
@@ -311,6 +312,7 @@ async function runScenario({
       messages: convertMessages(definition.config),
       toolChoice: definition.toolChoice,
       maxSteps: definition.maxSteps,
+      seed,
     });
   } catch (err) {
     error = err;
@@ -362,6 +364,7 @@ async function main() {
       name,
       definition: scenarios[name],
       generateText,
+      seed: parseInt(process.env.VERCEL_PARITY_SEED ?? '42', 10),
     });
 
     const filePath = path.join(outputDir, `${name}.json`);

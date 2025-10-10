@@ -133,6 +133,10 @@ final class E2EMessageTrackingTests: XCTestCase {
             let toolMessages = response.messages.filter { $0.role == .tool }
             if response.toolResults.count > 0 {
                 XCTAssertFalse(toolMessages.isEmpty)
+                let assistantMessages = response.messages.filter { $0.role == .assistant }
+                XCTAssertGreaterThanOrEqual(assistantMessages.count, 2)
+                XCTAssertTrue(assistantMessages.first?.toolCalls?.isEmpty == false)
+                XCTAssertTrue((assistantMessages.last?.toolCalls?.isEmpty) ?? true)
             }
         }
     }

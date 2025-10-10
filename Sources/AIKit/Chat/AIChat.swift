@@ -267,8 +267,9 @@ public class AIChat: ObservableObject {
                 
                 // Create assistant message with ordered content
                 var assistantMessage = ChatMessage(role: .assistant, orderedContent: [])
-                let messageIndex = messages.count
+                var messageIndex = messages.count
                 messages.append(assistantMessage)
+                let initialAssistantIndex = messageIndex
                 
                 // Convert ChatMessage to CoreMessage
                 let coreMessages = messages.map { $0.toCoreMessage() }
@@ -289,6 +290,15 @@ public class AIChat: ObservableObject {
                     
                     // Add content in execution order, accumulating text deltas
                     if !chunk.delta.isEmpty {
+                        if needsPostToolTextMessage(for: assistantMessage) {
+                            let newMessage = ChatMessage(role: .assistant, orderedContent: [])
+                            let insertionPoint = min(messageIndex + 1, messages.count)
+                            messages.insert(newMessage, at: insertionPoint)
+                            messageIndex = insertionPoint
+                            assistantMessage = newMessage
+                            applyPendingAttachments(to: messages[messageIndex])
+                        }
+                        
                         assistantMessage.appendTextDelta(chunk.delta)
                         if messageIndex < messages.count {
                             messages[messageIndex] = assistantMessage
@@ -344,114 +354,30 @@ public class AIChat: ObservableObject {
                     )
                 }
 
-                if let canonicalAssistant = convertedMessages.first {
-                    if messageIndex < messages.count {
-                        var mergedAssistant = messages[messageIndex]
-                        let originalId = mergedAssistant.id
+                let primaryIndex = min(initialAssistantIndex, messages.count)
 
-                        let existingText = mergedAssistant.content
-                        let finalText = canonicalAssistant.content
-                        let addition: String
-                        if canonicalAssistant.toolCalls.isEmpty {
-                            addition = ""
-                        } else {
-                            addition = finalText.newContent(usingExistingPrefix: existingText)
-                        }
-                        if !addition.isEmpty {
-                            mergedAssistant.appendText(addition)
-                        }
-
-                        mergedAssistant.mergeToolCalls(from: canonicalAssistant)
-
-                        let toolCallIDs = Set(mergedAssistant.toolCalls.map { $0.id })
-                        let trailingContent = mergedAssistant.extractTrailingContentAfterLastToolCall()
-                        let finalizedAssistant = ChatMessage(
-                            id: canonicalAssistant.id,
-                            role: mergedAssistant.role,
-                            orderedContent: mergedAssistant.orderedContent,
-                            timestamp: canonicalAssistant.timestamp
-                        )
-
-                        messages[messageIndex] = finalizedAssistant
-
-                        if finalizedAssistant.id != originalId,
-                           let storedAttachments = messageAttachments.removeValue(forKey: originalId) {
-                            messageAttachments[finalizedAssistant.id] = storedAttachments
-                        }
-
-                        assistantMessage = finalizedAssistant
-
-                        if let trailing = trailingContent, !trailing.isEmpty {
-                            let trailingMessage = ChatMessage(
-                                id: canonicalAssistant.id + "-tail",
-                                role: .assistant,
-                                orderedContent: trailing,
-                                timestamp: canonicalAssistant.timestamp
-                            )
-                            var insertionIndex = messageIndex + 1
-                            while insertionIndex < messages.count {
-                                let candidate = messages[insertionIndex]
-                                guard candidate.role == .tool else { break }
-                                let containsRelevantTool = candidate.orderedContent.contains { content in
-                                    if case .toolResult(let result) = content {
-                                        return toolCallIDs.contains(result.toolCallId)
-                                    }
-                                    return false
-                                }
-                                if containsRelevantTool {
-                                    insertionIndex += 1
-                                } else {
-                                    break
-                                }
-                            }
-
-                            messages.insert(trailingMessage, at: insertionIndex)
-                        }
-                    } else {
-                        messages.append(canonicalAssistant)
-                        assistantMessage = canonicalAssistant
-                    }
-                } else if messageIndex < messages.count {
-                    messages.remove(at: messageIndex)
+                while primaryIndex < messages.count {
+                    let candidate = messages[primaryIndex]
+                    guard candidate.role == .assistant || candidate.role == .tool else { break }
+                    cleanupAttachments(for: candidate)
+                    messages.remove(at: primaryIndex)
                 }
 
-                if convertedMessages.count > 1 {
-                    var insertionIndex = min(messageIndex + 1, messages.count)
-                    for additional in convertedMessages.dropFirst() {
-                        if additional.role == .tool {
-                            let toolResults = additional.orderedContent.compactMap { content -> ToolResult? in
-                                if case .toolResult(let result) = content {
-                                    return result
-                                }
-                                return nil
-                            }
+                var insertionIndex = primaryIndex
+                var latestAssistantIndex: Int?
 
-                            if !toolResults.isEmpty {
-                                var allInlined = true
-                                for toolResult in toolResults {
-                                    if !inline(toolResult: toolResult, currentAssistantIndex: messageIndex, assistantMessage: &assistantMessage) {
-                                        allInlined = false
-                                    }
-                                }
-
-                                if allInlined {
-                                    continue
-                                }
-                            }
-                        }
-
-                        if let existingIndex = messages.firstIndex(where: { $0.id == additional.id }) {
-                            messages[existingIndex] = additional
-                            applyPendingAttachments(to: messages[existingIndex])
-                            if existingIndex >= insertionIndex {
-                                insertionIndex = existingIndex + 1
-                            }
-                        } else {
-                            messages.insert(additional, at: insertionIndex)
-                            applyPendingAttachments(to: messages[insertionIndex])
-                            insertionIndex += 1
-                        }
+                for newMessage in convertedMessages {
+                    messages.insert(newMessage, at: insertionIndex)
+                    applyPendingAttachments(to: messages[insertionIndex])
+                    if newMessage.role == .assistant {
+                        latestAssistantIndex = insertionIndex
                     }
+                    insertionIndex += 1
+                }
+
+                if let latestAssistantIndex {
+                    assistantMessage = messages[latestAssistantIndex]
+                    messageIndex = latestAssistantIndex
                 }
 
                 status = .ready
@@ -481,7 +407,17 @@ public class AIChat: ObservableObject {
     }
 }
 
-// MARK: - Supporting Types
+@available(iOS 16.0, macOS 13.0, *)
+private func needsPostToolTextMessage(for message: ChatMessage) -> Bool {
+    guard let last = message.orderedContent.last else { return false }
+    if case .toolCall = last {
+        return true
+    }
+    if case .toolResult = last {
+        return true
+    }
+    return false
+}
 
 /// The status of the chat
 @available(iOS 16.0, macOS 13.0, *)
@@ -656,70 +592,5 @@ private extension ChatMessage {
             orderedContent: orderedContent,
             timestamp: newTimestamp
         )
-    }
-
-    mutating func mergeToolCalls(from canonical: ChatMessage) {
-        let canonicalCalls = canonical.toolCalls
-        guard !canonicalCalls.isEmpty else { return }
-
-        var updatedContent: [MessageContent] = []
-        var handledIDs = Set<String>()
-
-        for content in orderedContent {
-            switch content {
-            case .toolCall(let call):
-                if let replacement = canonicalCalls.first(where: { $0.id == call.id }) {
-                    updatedContent.append(.toolCall(replacement))
-                    handledIDs.insert(replacement.id)
-                } else {
-                    updatedContent.append(content)
-                }
-            default:
-                updatedContent.append(content)
-            }
-        }
-
-        for call in canonicalCalls where !handledIDs.contains(call.id) {
-            updatedContent.append(.toolCall(call))
-        }
-
-        orderedContent = updatedContent
-    }
-
-    mutating func extractTrailingContentAfterLastToolCall() -> [MessageContent]? {
-        guard let lastToolIndex = orderedContent.lastIndex(where: { content in
-            if case .toolCall = content { return true }
-            return false
-        }) else {
-            return nil
-        }
-
-        let trailingStart = lastToolIndex + 1
-        guard trailingStart < orderedContent.count else {
-            return nil
-        }
-
-        let trailing = Array(orderedContent[trailingStart..<orderedContent.count])
-        if trailing.isEmpty {
-            return nil
-        }
-
-        orderedContent.removeSubrange(trailingStart..<orderedContent.count)
-        return trailing
-    }
-}
-
-private extension String {
-    func newContent(usingExistingPrefix existing: String) -> String {
-        guard !isEmpty else { return "" }
-        if existing.isEmpty { return self }
-
-        if let range = range(of: existing) {
-            let remainder = self[range.upperBound...]
-            let trimmed = remainder.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "" : String(remainder)
-        }
-
-        return self
     }
 }

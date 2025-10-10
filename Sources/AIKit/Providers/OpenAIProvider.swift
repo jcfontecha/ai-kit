@@ -154,7 +154,12 @@ public struct OpenAIProvider: AIProvider {
     public func generateTextRaw(_ request: ProviderRequest) async throws -> ProviderResponse {
         // Convert request to OpenAI format
         let openAIRequest = try convertToOpenAIRequest(request)
-        
+        if ProcessInfo.processInfo.environment["VERCEL_PARITY_DEBUG"] == "1" {
+            if let debugData = try? JSONEncoder().encode(openAIRequest),
+               let debugBody = String(data: debugData, encoding: .utf8) {
+                print("[AIKit] OpenAI request:", debugBody)
+            }
+        }
         // Create HTTP request
         let url = URL(string: "\(baseURL)/chat/completions")!
         var httpRequest = URLRequest(url: url)
@@ -527,13 +532,15 @@ private extension OpenAIProvider {
         case .regular(let requestTools, let requestToolChoice):
             // Regular tool calling - follow Vercel AI SDK pattern for tool_choice
             tools = try requestTools?.map { tool in
-                OpenAITool(
+                var parameters = try convertJSONSchemaToDict(tool.function.parameters)
+                parameters["$schema"] = "http://json-schema.org/draft-07/schema#"
+                return OpenAITool(
                     type: "function",
                     function: OpenAIFunction(
                         name: tool.function.name,
                         description: tool.function.description,
-                        parameters: try convertJSONSchemaToDict(tool.function.parameters, forStrictMode: supportsStructuredOutputs),
-                        strict: supportsStructuredOutputs ? true : nil
+                        parameters: parameters,
+                        strict: nil
                     )
                 )
             }
@@ -613,29 +620,31 @@ private extension OpenAIProvider {
     
     /// Convert SDK messages to OpenAI format.
     func convertMessages(_ messages: [Message]) throws -> [OpenAIMessage] {
-        return try messages.map { message in
+        var converted: [OpenAIMessage] = []
+
+        for message in messages {
             switch message.role {
             case .system:
-                return OpenAIMessage(
-                    role: "system", 
-                    content: .text(message.content.first?.textValue ?? "")
+                converted.append(
+                    OpenAIMessage(
+                        role: "system",
+                        content: .text(message.content.first?.textValue ?? "")
+                    )
                 )
+
             case .user:
-                // Check if we have image or file content
                 let hasImages = message.content.contains { $0.imageValue != nil }
                 let hasFiles = message.content.contains { $0.fileValue != nil }
-                
+
                 if hasImages || hasFiles {
-                    // Multi-part content with images
                     var parts: [OpenAIContentPart] = []
-                    
+
                     for content in message.content {
                         switch content {
                         case .text(let text):
                             parts.append(OpenAIContentPart(type: "text", text: text, imageUrl: nil, inputAudio: nil))
                         case .image(let imageContent):
                             if let imageUrl = imageContent.url {
-                                // URL-based image
                                 parts.append(OpenAIContentPart(
                                     type: "image_url",
                                     text: nil,
@@ -643,7 +652,6 @@ private extension OpenAIProvider {
                                     inputAudio: nil
                                 ))
                             } else if let imageData = imageContent.data {
-                                // Data-based image - convert to base64 data URL
                                 let base64String = imageData.base64EncodedString()
                                 let dataUrl = "data:\(imageContent.mimeType);base64,\(base64String)"
                                 parts.append(OpenAIContentPart(
@@ -654,13 +662,10 @@ private extension OpenAIProvider {
                                 ))
                             }
                         case .file(let fileContent):
-                            // Check if this looks like an audio file
                             let audioMimeTypes = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/m4a", "audio/mp4", "audio/aac", "audio/ogg", "audio/flac"]
                             if audioMimeTypes.contains(fileContent.mimeType) {
-                                // Only MP3 and WAV are supported by OpenAI
                                 if fileContent.mimeType == "audio/mpeg" || fileContent.mimeType == "audio/mp3" || fileContent.mimeType == "audio/wav" {
                                     if let audioData = fileContent.data {
-                                        // Convert audio to input_audio format for models like gpt-4o-audio-preview
                                         let base64String = audioData.base64EncodedString()
                                         let format = (fileContent.mimeType == "audio/wav") ? "wav" : "mp3"
                                         parts.append(OpenAIContentPart(
@@ -670,35 +675,27 @@ private extension OpenAIProvider {
                                             inputAudio: OpenAIInputAudio(data: base64String, format: format)
                                         ))
                                     } else if fileContent.url != nil {
-                                        // For URL-based audio, we'd need to download it first
                                         throw AIProviderError.unsupportedParameter("audio URL", "URL-based audio files are not yet supported. Please provide audio data directly.")
                                     }
                                 } else {
-                                    // Unsupported audio format
                                     throw AIProviderError.unsupportedParameter("audio format", "OpenAI only supports MP3 and WAV audio formats. Received: \(fileContent.mimeType). Please convert your audio to MP3 or WAV format.")
                                 }
                             }
-                            // Skip non-audio files for now
                         default:
-                            // Skip other content types for user messages
                             break
                         }
                     }
-                    
-                    return OpenAIMessage(role: "user", content: .array(parts))
+
+                    converted.append(OpenAIMessage(role: "user", content: .array(parts)))
                 } else {
-                    // Text-only content
                     let textContent = message.content.compactMap { $0.textValue }.joined(separator: "\n")
-                    return OpenAIMessage(role: "user", content: .text(textContent))
+                    converted.append(OpenAIMessage(role: "user", content: .text(textContent)))
                 }
+
             case .assistant:
                 let textContent = message.content.compactMap { $0.textValue }.joined(separator: "\n")
-                
-                // Convert tool calls if present
                 let openAIToolCalls = message.toolCalls?.map { toolCall in
-                    // Arguments are already a JSON string in our ToolCallFunction
                     let argumentsString = toolCall.function.arguments.isEmpty ? "{}" : toolCall.function.arguments
-                    
                     return OpenAIToolCall(
                         id: toolCall.id,
                         type: "function",
@@ -708,44 +705,71 @@ private extension OpenAIProvider {
                         )
                     )
                 }
-                
-                // Create assistant message with tool calls
-                // OpenAI accepts empty content with tool calls
-                return OpenAIMessage(
-                    role: "assistant",
-                    content: textContent.isEmpty ? .text("") : .text(textContent),
-                    toolCallId: nil,
-                    toolCalls: openAIToolCalls
+
+                converted.append(
+                    OpenAIMessage(
+                        role: "assistant",
+                        content: textContent.isEmpty ? .text("") : .text(textContent),
+                        toolCallId: nil,
+                        toolCalls: openAIToolCalls
+                    )
                 )
+
             case .tool:
-                // Handle tool results
-                if let toolResult = message.content.first {
-                    switch toolResult {
+                var appended = false
+
+                for content in message.content {
+                    switch content {
                     case .toolResult(let result):
-                        let resultText: String
-                        switch result.result {
-                        case .text(let text):
-                            resultText = text
-                        case .json(let data):
-                            resultText = String(data: data, encoding: .utf8) ?? "Invalid JSON"
-                        case .error(let error):
-                            resultText = "Error: \(error)"
-                        default:
-                            resultText = "Unsupported result type"
-                        }
-                        return OpenAIMessage(
+                        converted.append(OpenAIMessage(
                             role: "tool",
-                            content: .text(resultText),
+                            content: .text(text(for: result.result)),
                             toolCallId: result.toolCallId
-                        )
+                        ))
+                        appended = true
+                    case .text(let text):
+                        converted.append(OpenAIMessage(role: "tool", content: .text(text), toolCallId: message.toolCallId))
+                        appended = true
                     default:
-                        let textContent = toolResult.textValue ?? "Unknown tool result"
-                        return OpenAIMessage(role: "tool", content: .text(textContent))
+                        break
                     }
-                } else {
-                    return OpenAIMessage(role: "tool", content: .text("Empty tool result"))
+                }
+
+                if !appended {
+                    converted.append(OpenAIMessage(role: "tool", content: .text("Empty tool result")))
                 }
             }
+        }
+
+        return converted
+    }
+
+    private func text(for content: ToolResultContent) -> String {
+        switch content {
+        case .text(let text):
+            return text
+        case .json(let data):
+            return String(data: data, encoding: .utf8) ?? "Invalid JSON"
+        case .error(let error):
+            return "Error: \(error)"
+        case .image(let imageContent):
+            if let url = imageContent.url {
+                return url.absoluteString
+            }
+            if let data = imageContent.data {
+                return "data:\(imageContent.mimeType);base64,\(data.base64EncodedString())"
+            }
+            return "Image result"
+        case .file(let fileContent):
+            if let url = fileContent.url {
+                return url.absoluteString
+            }
+            if let data = fileContent.data {
+                return data.base64EncodedString()
+            }
+            return "File result"
+        case .data(let data, let mimeType):
+            return "data:\(mimeType);base64,\(data.base64EncodedString())"
         }
     }
     

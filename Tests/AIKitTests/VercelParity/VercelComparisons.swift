@@ -39,6 +39,8 @@ func normalizedComparableSteps(from steps: [GenerationStep]) throws -> [Comparab
 
     return try steps.enumerated().map { index, step in
         let toolResults = try step.toolResults?.map { try $0.toComparableContent(toolName: lookup[$0.toolCallId]) } ?? []
+        let rawText = step.concatenatedText()
+        let normalizedText = (rawText?.isEmpty ?? true) ? nil : rawText
         let normalizedType: String
         switch step.stepType {
         case .toolCall, .toolResult:
@@ -56,7 +58,7 @@ func normalizedComparableSteps(from steps: [GenerationStep]) throws -> [Comparab
             stepType: normalizedType,
             toolCallIds: step.toolCalls?.map { $0.id } ?? [],
             toolResults: toolResults,
-            text: step.concatenatedText()
+            text: normalizedText
         )
     }
 }
@@ -159,7 +161,8 @@ func normalizeComparableSteps(_ steps: [ComparableStep]) -> [ComparableStep] {
     }
 
     return steps.map { step in
-        ComparableStep(
+        let normalizedText = (step.text?.isEmpty ?? true) ? nil : step.text
+        return ComparableStep(
             stepType: step.stepType,
             toolCallIds: step.toolCallIds.map(mapId),
             toolResults: step.toolResults.map { content in
@@ -172,9 +175,45 @@ func normalizeComparableSteps(_ steps: [ComparableStep]) -> [ComparableStep] {
                     return content
                 }
             },
-            text: step.text
+            text: normalizedText
         )
     }
+}
+
+func mergeComparableToolCallSteps(_ steps: [ComparableStep]) -> [ComparableStep] {
+    guard !steps.isEmpty else { return steps }
+
+    var merged: [ComparableStep] = []
+
+    for step in steps {
+        if let lastIndex = merged.indices.last {
+            let previous = merged[lastIndex]
+            let canMerge = step.stepType == "tool-result"
+                && !step.toolCallIds.isEmpty
+                && (step.text == nil || step.text?.isEmpty == true)
+                && (previous.stepType == "initial" || previous.stepType == "tool-result")
+
+            if canMerge {
+                var combinedCallIds = previous.toolCallIds
+                combinedCallIds.append(contentsOf: step.toolCallIds)
+
+                var combinedResults = previous.toolResults
+                combinedResults.append(contentsOf: step.toolResults)
+
+                merged[lastIndex] = ComparableStep(
+                    stepType: previous.stepType,
+                    toolCallIds: combinedCallIds,
+                    toolResults: combinedResults,
+                    text: previous.text
+                )
+                continue
+            }
+        }
+
+        merged.append(step)
+    }
+
+    return merged
 }
 
 extension ToolResult {

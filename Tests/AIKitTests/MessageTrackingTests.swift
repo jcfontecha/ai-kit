@@ -120,6 +120,47 @@ final class MessageTrackingTests: XCTestCase {
         // Second message should be tool result
         XCTAssertEqual(messages[1].role, .tool)
     }
+
+    func testMessageTrackerCreatesNewAssistantStepAfterToolResult() async {
+        var counter = 0
+        let tracker = StreamingMessageTracker(
+            messageId: "msg-0",
+            generateMessageId: {
+                defer { counter += 1 }
+                return "msg-\(counter + 1)"
+            }
+        )
+
+        let toolCall = ToolCall(
+            id: "call-001",
+            function: ToolCallFunction(name: "generate_image", arguments: "{\"prompt\":\"dog\"}")
+        )
+        let toolResult = ToolResult(
+            toolCallId: "call-001",
+            result: .json(Data("{\"success\":true}".utf8))
+        )
+
+        await tracker.appendText("Idea: a dog on the beach.")
+        await tracker.addToolCall(toolCall)
+        await tracker.addToolResult(toolResult)
+        await tracker.appendText("Here is the image! Next idea: dog flying a kite.")
+        await tracker.finalize()
+
+        let messages = await tracker.responseMessages
+        XCTAssertEqual(messages.count, 3)
+        XCTAssertEqual(messages[0].role, .assistant)
+        XCTAssertEqual(messages[0].id, "msg-0")
+        XCTAssertEqual(messages[1].role, .tool)
+        XCTAssertEqual(messages[2].role, .assistant)
+        XCTAssertEqual(messages[2].id, "msg-1")
+
+        if case .text(let followUp)? = messages[2].content.first {
+            XCTAssertTrue(followUp.contains("Next idea"))
+            XCTAssertFalse(followUp.contains("Idea: a dog on the beach."))
+        } else {
+            XCTFail("Expected follow-up assistant text")
+        }
+    }
     
     // MARK: - StreamTextResult Tests
     

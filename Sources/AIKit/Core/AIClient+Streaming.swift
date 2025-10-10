@@ -242,14 +242,6 @@ public extension AIClient {
                         }
 
                         // Track accumulated content in message tracker
-                        if !stepText.isEmpty {
-                            await messageTracker.appendText(stepText)
-                        }
-
-                        for toolCall in toolCallsReceived {
-                            await messageTracker.addToolCall(toolCall)
-                        }
-
                         // Handle automatic tool execution if needed
                         if !toolCallsReceived.isEmpty && finishReason == .toolCalls {
                             // Increment step count BEFORE checking if we should continue

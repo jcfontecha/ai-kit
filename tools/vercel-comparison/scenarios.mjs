@@ -883,5 +883,211 @@ export function createScenarioDefinitions() {
         error: null,
       },
     },
+    'preface-text-and-image': {
+      description:
+        'Assistant offers descriptive text, triggers an image tool, then follows up with another suggestion.',
+      model: 'gpt-4o-mini',
+      config: {
+        type: 'messages',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text:
+                  'Please describe huskies pulling a sled in the snow, generate the image, then suggest a new scene.',
+              },
+            ],
+          },
+        ],
+      },
+      maxSteps: 4,
+      toolChoice: 'auto',
+      tools: [
+        {
+          name: 'generate_and_show_image',
+          description: 'Render an image and return an attachment identifier.',
+          schema: buildToolSchema({
+            description: 'Image generation parameters',
+            required: ['prompt'],
+            properties: {
+              prompt: {
+                type: 'string',
+                description: 'Description of the image to create',
+              },
+              num_images: {
+                type: 'integer',
+              },
+            },
+          }),
+          execute: ({ prompt, num_images = 1 }) => ({
+            type: 'json',
+            value: {
+              success: true,
+              count: num_images,
+              attachmentIds: ['attachment_husky_sled_image'],
+            },
+          }),
+        },
+      ],
+      modelResponses: [
+        baseResponse({
+          id: 'resp-preface-1',
+          index: 0,
+          text:
+            'Imagine the huskies charging across the glistening snow — I will fetch that image for you now.',
+          finishReason: 'tool-calls',
+          toolCalls: [
+            toolCall({
+              id: 'call-preface-image',
+              name: 'generate_and_show_image',
+              args: { prompt: 'Huskies pulling a sled through a snowy forest.', num_images: 1 },
+            }),
+          ],
+          usage: createUsage({ promptTokens: 46, completionTokens: 22 }),
+          rawPromptLabel: 'preface-step-1',
+        }),
+        baseResponse({
+          id: 'resp-preface-2',
+          index: 1,
+          text:
+            'How about we follow that with a malamute resting by a cozy fireplace?',
+          finishReason: 'stop',
+          usage: createUsage({ promptTokens: 20, completionTokens: 28 }),
+          rawPromptLabel: 'preface-step-2',
+        }),
+      ],
+      toolExecutions: [
+        {
+          toolName: 'generate_and_show_image',
+          callId: 'call-preface-image',
+          args: {
+            prompt: 'Huskies pulling a sled through a snowy forest.',
+            num_images: 1,
+          },
+          result: {
+            type: 'json',
+            value: {
+              success: true,
+              count: 1,
+              attachmentIds: ['attachment_husky_sled_image'],
+            },
+          },
+        },
+      ],
+      expectedVercel: {
+        result: {
+          text:
+            'How about we follow that with a malamute resting by a cozy fireplace?',
+          files: [],
+          reasoningDetails: [],
+          toolCalls: [],
+          toolResults: [],
+          finishReason: 'stop',
+          usage: {
+            promptTokens: 66,
+            completionTokens: 50,
+            totalTokens: 116,
+          },
+          response: {
+            id: 'resp-preface-2',
+            timestamp: '2024-01-01T00:00:02.000Z',
+            modelId: 'mock-model',
+            messages: [
+              {
+                role: 'assistant',
+                content: [
+                  {
+                    type: 'text',
+                    text:
+                      'Imagine the huskies charging across the glistening snow — I will fetch that image for you now.',
+                  },
+                  {
+                    type: 'tool-call',
+                    toolCallId: 'call-preface-image',
+                    toolName: 'generate_and_show_image',
+                    args: {
+                      prompt: 'Huskies pulling a sled through a snowy forest.',
+                      num_images: 1,
+                    },
+                  },
+                ],
+                id: 'msg-preface-step-1',
+              },
+              {
+                role: 'tool',
+                content: [
+                  {
+                    type: 'tool-result',
+                    toolCallId: 'call-preface-image',
+                    toolName: 'generate_and_show_image',
+                    result: {
+                      success: true,
+                      count: 1,
+                      attachmentIds: ['attachment_husky_sled_image'],
+                    },
+                  },
+                ],
+                id: 'msg-preface-tool',
+              },
+              {
+                role: 'assistant',
+                content: [
+                  {
+                    type: 'text',
+                    text:
+                      'How about we follow that with a malamute resting by a cozy fireplace?',
+                  },
+                ],
+                id: 'msg-preface-step-2',
+              },
+            ],
+          },
+          steps: [
+            {
+              stepType: 'initial',
+              toolCalls: [
+                {
+                  toolCallId: 'call-preface-image',
+                  toolName: 'generate_and_show_image',
+                  args: {
+                    prompt: 'Huskies pulling a sled through a snowy forest.',
+                    num_images: 1,
+                  },
+                },
+              ],
+              toolResults: [],
+              text:
+                'Imagine the huskies charging across the glistening snow — I will fetch that image for you now.',
+            },
+            {
+              stepType: 'tool-result',
+              toolCalls: [],
+              toolResults: [
+                {
+                  toolCallId: 'call-preface-image',
+                  toolName: 'generate_and_show_image',
+                  result: {
+                    success: true,
+                    count: 1,
+                    attachmentIds: ['attachment_husky_sled_image'],
+                  },
+                },
+              ],
+              text: null,
+            },
+            {
+              stepType: 'tool-result',
+              toolCalls: [],
+              toolResults: [],
+              text:
+                'How about we follow that with a malamute resting by a cozy fireplace?',
+            },
+          ],
+        },
+        error: null,
+      },
+    },
   };
 }
