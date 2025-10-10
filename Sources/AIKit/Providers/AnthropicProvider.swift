@@ -666,6 +666,11 @@ private extension AnthropicProvider {
                     text: resultText,
                     toolUseId: result.toolCallId
                 ))
+            case .reasoning,
+                 .redactedReasoning,
+                 .reasoningSignature,
+                 .annotation:
+                continue
             default:
                 // Handle other content types as text
                 if let textValue = item.textValue {

@@ -56,6 +56,10 @@ public enum MessageContent: Codable, Sendable {
     case file(FileContent)
     case toolCall(ToolCall)
     case toolResult(ToolResult)
+    case reasoning(ReasoningContent)
+    case redactedReasoning(ReasoningRedaction)
+    case reasoningSignature(ReasoningSignature)
+    case annotation(MessageAnnotation)
     
     public var textValue: String? {
         if case .text(let value) = self {
@@ -90,6 +94,100 @@ public enum MessageContent: Codable, Sendable {
             return value
         }
         return nil
+    }
+    
+    public var reasoningValue: ReasoningContent? {
+        if case .reasoning(let value) = self {
+            return value
+        }
+        return nil
+    }
+    
+    public var redactedReasoningValue: ReasoningRedaction? {
+        if case .redactedReasoning(let value) = self {
+            return value
+        }
+        return nil
+    }
+    
+    public var reasoningSignatureValue: ReasoningSignature? {
+        if case .reasoningSignature(let value) = self {
+            return value
+        }
+        return nil
+    }
+    
+    public var annotationValue: MessageAnnotation? {
+        if case .annotation(let value) = self {
+            return value
+        }
+        return nil
+    }
+}
+
+// MARK: - Reasoning & Annotation Content
+
+/// Reasoning trace emitted during streaming.
+public struct ReasoningContent: Codable, Sendable, CustomStringConvertible {
+    public let fragments: [String]
+    public let rawJSON: String?
+    
+    public init(fragments: [String], rawJSON: String? = nil) {
+        self.fragments = fragments
+        self.rawJSON = rawJSON
+    }
+    
+    public var description: String {
+        "ReasoningContent(fragments: \(fragments))"
+    }
+}
+
+/// Redacted reasoning payload emitted during streaming.
+public struct ReasoningRedaction: Codable, Sendable, CustomStringConvertible {
+    public let payload: [String: String]
+    public let rawJSON: String?
+    
+    public init(payload: [String: String], rawJSON: String? = nil) {
+        self.payload = payload
+        self.rawJSON = rawJSON
+    }
+    
+    public var description: String {
+        "ReasoningRedaction(payload: \(payload))"
+    }
+}
+
+/// Signature information accompanying reasoning traces.
+public struct ReasoningSignature: Codable, Sendable, CustomStringConvertible {
+    public let payload: [String: String]
+    public let rawJSON: String?
+    
+    public init(payload: [String: String], rawJSON: String? = nil) {
+        self.payload = payload
+        self.rawJSON = rawJSON
+    }
+    
+    public var signature: String? {
+        payload["signature"]
+    }
+    
+    public var description: String {
+        "ReasoningSignature(payload: \(payload))"
+    }
+}
+
+/// Message annotations emitted during streaming.
+public struct MessageAnnotation: Codable, Sendable, CustomStringConvertible {
+    public let values: [String]
+    public let rawJSON: String?
+    
+    public init(values: [String], rawJSON: String? = nil) {
+        self.values = values
+        self.rawJSON = rawJSON
+    }
+    
+    public var description: String {
+        "MessageAnnotation(values: \(values))"
     }
 }
 

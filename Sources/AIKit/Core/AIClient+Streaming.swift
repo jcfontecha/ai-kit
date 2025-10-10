@@ -54,6 +54,7 @@ public extension AIClient {
                         try Task.checkCancellation()
                         
                         accumulatedText += providerChunk.delta
+                        let parsedOutputs = ParsedAdditionalOutputs(outputs: providerChunk.additionalOutputs)
                         
                         // Transform ProviderChunk to TextChunk with tool call support
                         let textChunk = TextChunk(
@@ -72,12 +73,18 @@ public extension AIClient {
                                 )
                             },
                             toolCallDelta: providerChunk.toolCallDelta.map { delta in
-                                ToolCallDelta(
-                                    toolCallId: delta.toolCallId,
-                                    toolName: delta.toolName,
-                                    argsTextDelta: delta.argsTextDelta
-                                )
-                            }
+                                    ToolCallDelta(
+                                        toolCallId: delta.toolCallId,
+                                        toolName: delta.toolName,
+                                        argsTextDelta: delta.argsTextDelta
+                                    )
+                                },
+                            reasoning: parsedOutputs.reasoningOrNil,
+                            redactedReasoning: parsedOutputs.redactedReasoningOrNil,
+                            reasoningSignatures: parsedOutputs.reasoningSignaturesOrNil,
+                            messageAnnotations: parsedOutputs.annotationsOrNil,
+                            streamData: parsedOutputs.streamDataOrNil,
+                            rawAdditionalOutputs: providerChunk.additionalOutputs
                         )
                         
                         // 4. Apply chunk middleware and yield
@@ -211,6 +218,7 @@ public extension AIClient {
                             }
 
                             // Transform ProviderChunk to TextChunk with full tool call support
+                            let parsedOutputs = ParsedAdditionalOutputs(outputs: providerChunk.additionalOutputs)
                             let textChunk = TextChunk(
                                 delta: providerChunk.delta,
                                 snapshot: allAccumulatedText,
@@ -232,7 +240,13 @@ public extension AIClient {
                                         toolName: delta.toolName,
                                         argsTextDelta: delta.argsTextDelta
                                     )
-                                }
+                                },
+                                reasoning: parsedOutputs.reasoningOrNil,
+                                redactedReasoning: parsedOutputs.redactedReasoningOrNil,
+                                reasoningSignatures: parsedOutputs.reasoningSignaturesOrNil,
+                                messageAnnotations: parsedOutputs.annotationsOrNil,
+                                streamData: parsedOutputs.streamDataOrNil,
+                                rawAdditionalOutputs: providerChunk.additionalOutputs
                             )
 
                             // 4. Apply chunk middleware and yield
@@ -247,7 +261,7 @@ public extension AIClient {
                             // Increment step count BEFORE checking if we should continue
                             stepCount += 1
 
-                            if stepCount < maxSteps {
+                            if stepCount <= maxSteps {
                                 // Add assistant message with tool calls
                                 let assistantMessage = Message(
                                     role: .assistant,
@@ -573,5 +587,176 @@ public extension AIClient {
     private func applyChunkMiddleware<T>(_ chunk: T) async throws -> T {
         // In full implementation, this would apply middleware transformations
         return chunk
+    }
+}
+
+// MARK: - Additional Output Parsing
+
+private struct ParsedAdditionalOutputs {
+    let reasoning: [ReasoningContent]
+    let redactedReasoning: [ReasoningRedaction]
+    let reasoningSignatures: [ReasoningSignature]
+    let annotations: [MessageAnnotation]
+    let streamData: [[String: String]]
+    
+    init(outputs: [String: String]?) {
+        guard let outputs else {
+            reasoning = []
+            redactedReasoning = []
+            reasoningSignatures = []
+            annotations = []
+            streamData = []
+            return
+        }
+        
+        struct OpenRouterReasoningDetail: Decodable {
+            let text: String?
+            let type: String?
+            let thoughts: String?
+        }
+        
+        struct OpenRouterAnnotationDetail: Decodable {
+            let type: String?
+            let value: String?
+            let annotation: String?
+            let text: String?
+        }
+        
+        var reasoningAccumulated: [ReasoningContent] = []
+        var redactedAccumulated: [ReasoningRedaction] = []
+        var signaturesAccumulated: [ReasoningSignature] = []
+        var annotationsAccumulated: [MessageAnnotation] = []
+        var streamDataAccumulated: [[String: String]] = []
+        
+        let decoder = JSONDecoder()
+        
+        for (key, value) in outputs {
+            guard let data = value.data(using: .utf8) else { continue }
+            switch key {
+            case "stream.reasoning":
+                if let fragments = try? decoder.decode([String].self, from: data) {
+                    reasoningAccumulated.append(ReasoningContent(fragments: fragments, rawJSON: value))
+                } else if let fragmentDictionaries = try? decoder.decode([[String: String]].self, from: data) {
+                    let fragments = fragmentDictionaries.compactMap { $0["text"] }
+                    if !fragments.isEmpty {
+                        reasoningAccumulated.append(ReasoningContent(fragments: fragments, rawJSON: value))
+                    } else {
+                        reasoningAccumulated.append(ReasoningContent(fragments: [value], rawJSON: value))
+                    }
+                } else {
+                    reasoningAccumulated.append(ReasoningContent(fragments: [value], rawJSON: value))
+                }
+            case "stream.reasoning.redacted":
+                if let payload = try? decoder.decode([String: String].self, from: data) {
+                    redactedAccumulated.append(ReasoningRedaction(payload: payload, rawJSON: value))
+                } else {
+                    redactedAccumulated.append(ReasoningRedaction(payload: ["raw": value], rawJSON: value))
+                }
+            case "stream.reasoning_signature":
+                if let payload = try? decoder.decode([String: String].self, from: data) {
+                    signaturesAccumulated.append(ReasoningSignature(payload: payload, rawJSON: value))
+                } else {
+                    signaturesAccumulated.append(ReasoningSignature(payload: ["raw": value], rawJSON: value))
+                }
+            case "stream.message_annotations":
+                if let items = try? decoder.decode([String].self, from: data) {
+                    annotationsAccumulated.append(MessageAnnotation(values: items, rawJSON: value))
+                } else {
+                    annotationsAccumulated.append(MessageAnnotation(values: [value], rawJSON: value))
+                }
+            case "stream.data":
+                if let items = try? decoder.decode([[String: String]].self, from: data) {
+                    streamDataAccumulated.append(contentsOf: items)
+                } else if let single = try? decoder.decode([String: String].self, from: data) {
+                    streamDataAccumulated.append(single)
+                }
+            case "openrouter.reasoning", "openrouter.reasoning_delta":
+                let fragment = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !fragment.isEmpty else { continue }
+                reasoningAccumulated.append(ReasoningContent(fragments: [fragment], rawJSON: value))
+            case "openrouter.reasoning_details":
+                if let details = try? decoder.decode([OpenRouterReasoningDetail].self, from: data) {
+                    let fragments = details.compactMap { detail -> String? in
+                        detail.text ?? detail.thoughts
+                    }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    if !fragments.isEmpty {
+                        reasoningAccumulated.append(ReasoningContent(fragments: fragments, rawJSON: value))
+                    }
+                } else if let fragmentDicts = try? decoder.decode([[String: String]].self, from: data) {
+                    let fragments = fragmentDicts.compactMap { $0["text"] ?? $0["thoughts"] }
+                        .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                    if !fragments.isEmpty {
+                        reasoningAccumulated.append(ReasoningContent(fragments: fragments, rawJSON: value))
+                    }
+                } else {
+                    reasoningAccumulated.append(ReasoningContent(fragments: [value], rawJSON: value))
+                }
+            case "openrouter.annotations":
+                if let items = try? decoder.decode([String].self, from: data) {
+                    annotationsAccumulated.append(MessageAnnotation(values: items, rawJSON: value))
+                } else if let detailItems = try? decoder.decode([OpenRouterAnnotationDetail].self, from: data) {
+                    let values = detailItems.compactMap { detail -> String? in
+                        detail.value ?? detail.annotation ?? detail.text
+                    }.filter { !$0.isEmpty }
+                    if !values.isEmpty {
+                        annotationsAccumulated.append(MessageAnnotation(values: values, rawJSON: value))
+                    }
+                } else if let dictItems = try? decoder.decode([[String: String]].self, from: data) {
+                    let values = dictItems.compactMap { $0["value"] ?? $0["text"] }
+                    if !values.isEmpty {
+                        annotationsAccumulated.append(MessageAnnotation(values: values, rawJSON: value))
+                    }
+                } else {
+                    annotationsAccumulated.append(MessageAnnotation(values: [value], rawJSON: value))
+                }
+            case "openrouter.reasoning_signature":
+                if let payload = try? decoder.decode([String: String].self, from: data) {
+                    signaturesAccumulated.append(ReasoningSignature(payload: payload, rawJSON: value))
+                } else {
+                    signaturesAccumulated.append(ReasoningSignature(payload: ["raw": value], rawJSON: value))
+                }
+            case "openrouter.provider":
+                streamDataAccumulated.append([
+                    "type": "openrouter.provider",
+                    "value": value
+                ])
+            case "openrouter.images":
+                if let images = try? decoder.decode([[String: String]].self, from: data) {
+                    for image in images {
+                        var entry = image
+                        entry["type"] = "openrouter.image"
+                        streamDataAccumulated.append(entry)
+                    }
+                }
+            default:
+                continue
+            }
+        }
+        
+        reasoning = reasoningAccumulated
+        redactedReasoning = redactedAccumulated
+        reasoningSignatures = signaturesAccumulated
+        annotations = annotationsAccumulated
+        streamData = streamDataAccumulated
+    }
+    
+    var reasoningOrNil: [ReasoningContent]? {
+        reasoning.isEmpty ? nil : reasoning
+    }
+    
+    var redactedReasoningOrNil: [ReasoningRedaction]? {
+        redactedReasoning.isEmpty ? nil : redactedReasoning
+    }
+    
+    var reasoningSignaturesOrNil: [ReasoningSignature]? {
+        reasoningSignatures.isEmpty ? nil : reasoningSignatures
+    }
+    
+    var annotationsOrNil: [MessageAnnotation]? {
+        annotations.isEmpty ? nil : annotations
+    }
+    
+    var streamDataOrNil: [[String: String]]? {
+        streamData.isEmpty ? nil : streamData
     }
 }

@@ -14,12 +14,90 @@ internal actor StreamingMessageTracker {
     
     private struct Step {
         var messageId: String
-        var text: String
-        var toolCalls: [ToolCall]
+        var content: [MessageContent]
         var toolResults: [ToolResult]
         
         var hasContent: Bool {
-            !text.isEmpty || !toolCalls.isEmpty || !toolResults.isEmpty
+            !content.isEmpty || !toolResults.isEmpty
+        }
+        
+        var toolCalls: [ToolCall] {
+            content.compactMap { $0.toolCallValue }
+        }
+        
+        var textValue: String {
+            content.compactMap { $0.textValue }.joined()
+        }
+        
+        mutating func appendText(_ text: String) {
+            guard !text.isEmpty else { return }
+            if let lastIndex = content.indices.last,
+               case .text(let existing) = content[lastIndex] {
+                content[lastIndex] = .text(existing + text)
+            } else {
+                content.append(.text(text))
+            }
+        }
+        
+        mutating func appendContent(_ newContent: MessageContent) {
+            content.append(newContent)
+        }
+        
+        mutating func appendToolCall(_ toolCall: ToolCall) {
+            content.append(.toolCall(toolCall))
+        }
+        
+        mutating func appendToolResult(_ toolResult: ToolResult) {
+            toolResults.append(toolResult)
+        }
+    }
+    
+    private struct StreamingToolCallBuilder: Sendable {
+        var id: String
+        var name: String?
+        var arguments: String = ""
+        var type: ToolType = .function
+        var timestamp: Date?
+        var index: Int?
+        
+        mutating func registerStart(toolName: String) {
+            name = toolName
+            if timestamp == nil {
+                timestamp = Date()
+            }
+        }
+        
+        mutating func appendArguments(_ delta: String) {
+            arguments.append(delta)
+        }
+        
+        func merged(with toolCall: ToolCall) -> ToolCall {
+            if arguments.isEmpty {
+                return toolCall
+            }
+            let updatedFunction = ToolCallFunction(
+                name: toolCall.function.name,
+                arguments: arguments
+            )
+            return ToolCall(
+                id: toolCall.id,
+                type: toolCall.type,
+                function: updatedFunction,
+                timestamp: toolCall.timestamp,
+                index: toolCall.index
+            )
+        }
+        
+        func buildFallback() -> ToolCall? {
+            guard let name else { return nil }
+            let function = ToolCallFunction(name: name, arguments: arguments)
+            return ToolCall(
+                id: id,
+                type: type,
+                function: function,
+                timestamp: timestamp ?? Date(),
+                index: index
+            )
         }
     }
     
@@ -31,6 +109,7 @@ internal actor StreamingMessageTracker {
     private var committedSteps: [Step] = []
     private var currentStep: Step?
     private var pendingNewStep = false
+    private var streamingToolCallBuilders: [String: StreamingToolCallBuilder] = [:]
     
     // MARK: - Initialization
     
@@ -47,15 +126,16 @@ internal actor StreamingMessageTracker {
     private func ensureCurrentStep() {
         if pendingNewStep {
             commitCurrentStep()
-            currentStep = Step(messageId: generateMessageId(), text: "", toolCalls: [], toolResults: [])
+            currentStep = Step(messageId: generateMessageId(), content: [], toolResults: [])
             pendingNewStep = false
         } else if currentStep == nil {
             let id = committedSteps.isEmpty ? initialMessageId : generateMessageId()
-            currentStep = Step(messageId: id, text: "", toolCalls: [], toolResults: [])
+            currentStep = Step(messageId: id, content: [], toolResults: [])
         }
     }
     
     private func commitCurrentStep() {
+        flushStreamingToolCallsIntoCurrentStep()
         guard let step = currentStep else { return }
         if step.hasContent {
             committedSteps.append(step)
@@ -63,23 +143,103 @@ internal actor StreamingMessageTracker {
         currentStep = nil
     }
     
+    private func flushStreamingToolCallsIntoCurrentStep() {
+        guard !streamingToolCallBuilders.isEmpty else { return }
+        guard var step = currentStep else { return }
+        
+        for builder in streamingToolCallBuilders.values {
+            if builder.arguments.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                continue
+            }
+            if let toolCall = builder.buildFallback() {
+                step.appendToolCall(toolCall)
+            }
+        }
+        
+        currentStep = step
+        streamingToolCallBuilders.removeAll()
+    }
+    
     // MARK: - Event Handling
     
     func appendText(_ text: String) {
         guard !text.isEmpty else { return }
         ensureCurrentStep()
-        currentStep?.text.append(text)
+        if var step = currentStep {
+            step.appendText(text)
+            currentStep = step
+        }
     }
     
     func addToolCall(_ toolCall: ToolCall) {
         ensureCurrentStep()
-        currentStep?.toolCalls.append(toolCall)
+        var finalToolCall = toolCall
+        if var builder = streamingToolCallBuilders[toolCall.id] {
+            builder.registerStart(toolName: toolCall.function.name)
+            finalToolCall = builder.merged(with: toolCall)
+            streamingToolCallBuilders.removeValue(forKey: toolCall.id)
+        }
+        
+        if var step = currentStep {
+            step.appendToolCall(finalToolCall)
+            currentStep = step
+        }
+    }
+    
+    func addStreamingToolCallStart(_ start: ToolCallStreamingStart) {
+        ensureCurrentStep()
+        var builder = streamingToolCallBuilders[start.toolCallId] ?? StreamingToolCallBuilder(id: start.toolCallId)
+        builder.registerStart(toolName: start.toolName)
+        streamingToolCallBuilders[start.toolCallId] = builder
+    }
+    
+    func addStreamingToolCallDelta(_ delta: ToolCallDelta) {
+        ensureCurrentStep()
+        var builder = streamingToolCallBuilders[delta.toolCallId] ?? StreamingToolCallBuilder(id: delta.toolCallId)
+        builder.registerStart(toolName: delta.toolName)
+        builder.appendArguments(delta.argsTextDelta)
+        streamingToolCallBuilders[delta.toolCallId] = builder
     }
     
     func addToolResult(_ toolResult: ToolResult) {
         ensureCurrentStep()
-        currentStep?.toolResults.append(toolResult)
+        if var step = currentStep {
+            step.appendToolResult(toolResult)
+            currentStep = step
+        }
         pendingNewStep = true
+    }
+    
+    func addReasoning(_ reasoning: ReasoningContent) {
+        ensureCurrentStep()
+        if var step = currentStep {
+            step.appendContent(.reasoning(reasoning))
+            currentStep = step
+        }
+    }
+    
+    func addRedactedReasoning(_ redaction: ReasoningRedaction) {
+        ensureCurrentStep()
+        if var step = currentStep {
+            step.appendContent(.redactedReasoning(redaction))
+            currentStep = step
+        }
+    }
+    
+    func addReasoningSignature(_ signature: ReasoningSignature) {
+        ensureCurrentStep()
+        if var step = currentStep {
+            step.appendContent(.reasoningSignature(signature))
+            currentStep = step
+        }
+    }
+    
+    func addAnnotation(_ annotation: MessageAnnotation) {
+        ensureCurrentStep()
+        if var step = currentStep {
+            step.appendContent(.annotation(annotation))
+            currentStep = step
+        }
     }
     
     // MARK: - Message Retrieval
@@ -88,8 +248,7 @@ internal actor StreamingMessageTracker {
         var messages: [Message] = []
         for step in committedSteps {
             messages.append(contentsOf: StepMessageBuilder.buildMessages(
-                text: step.text,
-                toolCalls: step.toolCalls,
+                content: step.content,
                 toolResults: step.toolResults,
                 messageId: step.messageId,
                 generateMessageId: generateMessageId
@@ -97,8 +256,7 @@ internal actor StreamingMessageTracker {
         }
         if let current = currentStep, current.hasContent {
             messages.append(contentsOf: StepMessageBuilder.buildMessages(
-                text: current.text,
-                toolCalls: current.toolCalls,
+                content: current.content,
                 toolResults: current.toolResults,
                 messageId: current.messageId,
                 generateMessageId: generateMessageId
@@ -126,15 +284,21 @@ internal actor StreamingMessageTracker {
     }
     
     var text: String {
-        currentStep?.text ?? ""
+        let committed = committedSteps.map { $0.textValue }.joined()
+        let current = currentStep?.textValue ?? ""
+        return committed + current
     }
     
     var toolCalls: [ToolCall] {
-        currentStep?.toolCalls ?? []
+        let committed = committedSteps.flatMap { $0.toolCalls }
+        let current = currentStep?.toolCalls ?? []
+        return committed + current
     }
     
     var toolResults: [ToolResult] {
-        currentStep?.toolResults ?? []
+        let committed = committedSteps.flatMap { $0.toolResults }
+        let current = currentStep?.toolResults ?? []
+        return committed + current
     }
     
     // MARK: - Finalization
@@ -151,25 +315,14 @@ internal struct StepMessageBuilder {
     
     /// Build response messages from accumulated content
     static func buildMessages(
-        text: String,
-        toolCalls: [ToolCall],
+        content: [MessageContent],
         toolResults: [ToolResult],
         messageId: String = UUID().uuidString,
         generateMessageId: () -> String = { UUID().uuidString }
     ) -> [Message] {
         var messages: [Message] = []
-
-        var content: [MessageContent] = []
-
-        if !text.isEmpty {
-            content.append(.text(text))
-        }
-
-        if !toolCalls.isEmpty {
-            content.append(contentsOf: toolCalls.map { MessageContent.toolCall($0) })
-        }
-
         if !content.isEmpty {
+            let toolCalls = content.compactMap { $0.toolCallValue }
             let assistantMessage = Message(
                 role: .assistant,
                 content: content,

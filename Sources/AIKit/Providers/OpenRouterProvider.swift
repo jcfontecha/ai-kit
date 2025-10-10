@@ -529,6 +529,11 @@ public struct OpenRouterProvider: AIProvider {
                 continue
             case .toolResult:
                 continue
+            case .reasoning,
+                 .redactedReasoning,
+                 .reasoningSignature,
+                 .annotation:
+                continue
             }
         }
         return .object([

@@ -19,6 +19,24 @@ public struct TextChunk: Sendable, StreamChunk {
     public let toolCallStreamingStart: ToolCallStreamingStart?
     public let toolCallDelta: ToolCallDelta?
     
+    /// Streaming reasoning metadata emitted alongside the chunk.
+    public let reasoning: [ReasoningContent]?
+    
+    /// Redacted reasoning metadata associated with the chunk.
+    public let redactedReasoning: [ReasoningRedaction]?
+    
+    /// Reasoning signatures emitted with this chunk.
+    public let reasoningSignatures: [ReasoningSignature]?
+    
+    /// Message annotations emitted with this chunk.
+    public let messageAnnotations: [MessageAnnotation]?
+    
+    /// Stream data payloads emitted with this chunk.
+    public let streamData: [[String: String]]?
+    
+    /// Raw additional outputs from the provider chunk, if any.
+    public let rawAdditionalOutputs: [String: String]?
+    
     public init(
         delta: String,
         snapshot: String,
@@ -29,7 +47,13 @@ public struct TextChunk: Sendable, StreamChunk {
         stepId: String? = nil,
         toolCalls: [ToolCall]? = nil,
         toolCallStreamingStart: ToolCallStreamingStart? = nil,
-        toolCallDelta: ToolCallDelta? = nil
+        toolCallDelta: ToolCallDelta? = nil,
+        reasoning: [ReasoningContent]? = nil,
+        redactedReasoning: [ReasoningRedaction]? = nil,
+        reasoningSignatures: [ReasoningSignature]? = nil,
+        messageAnnotations: [MessageAnnotation]? = nil,
+        streamData: [[String: String]]? = nil,
+        rawAdditionalOutputs: [String: String]? = nil
     ) {
         self.delta = delta
         self.snapshot = snapshot
@@ -41,6 +65,12 @@ public struct TextChunk: Sendable, StreamChunk {
         self.toolCalls = toolCalls
         self.toolCallStreamingStart = toolCallStreamingStart
         self.toolCallDelta = toolCallDelta
+        self.reasoning = reasoning
+        self.redactedReasoning = redactedReasoning
+        self.reasoningSignatures = reasoningSignatures
+        self.messageAnnotations = messageAnnotations
+        self.streamData = streamData
+        self.rawAdditionalOutputs = rawAdditionalOutputs
     }
 }
 

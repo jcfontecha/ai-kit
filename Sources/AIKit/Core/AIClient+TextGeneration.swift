@@ -126,9 +126,16 @@ public extension AIClient {
                 }
             }
 
+            var stepContent: [MessageContent] = []
+            if !stepText.isEmpty {
+                stepContent.append(.text(stepText))
+            }
+            if !toolCalls.isEmpty {
+                stepContent.append(contentsOf: toolCalls.map { MessageContent.toolCall($0) })
+            }
+            
             let stepMessages = StepMessageBuilder.buildMessages(
-                text: stepText,
-                toolCalls: toolCalls,
+                content: stepContent,
                 toolResults: toolResults,
                 messageId: providerResponse.responseId ?? UUID().uuidString
             )

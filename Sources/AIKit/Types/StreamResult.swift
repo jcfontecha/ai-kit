@@ -30,13 +30,17 @@ public struct StreamTextResponse: Sendable {
     /// Tool results from execution.
     public let toolResults: [ToolResult]
     
+    /// Stream data payloads emitted during generation.
+    public let streamData: [[String: String]]
+    
     internal init(
         messages: [Message],
         text: String,
         usage: TokenUsage?,
         finishReason: FinishReason?,
         toolCalls: [ToolCall],
-        toolResults: [ToolResult]
+        toolResults: [ToolResult],
+        streamData: [[String: String]]
     ) {
         self.messages = messages
         self.text = text
@@ -44,6 +48,7 @@ public struct StreamTextResponse: Sendable {
         self.finishReason = finishReason
         self.toolCalls = toolCalls
         self.toolResults = toolResults
+        self.streamData = streamData
     }
 }
 
@@ -79,6 +84,9 @@ public final class StreamTextResult: Sendable {
     private let textActor = TextAccumulator()
     private let usageActor = UsageAccumulator()
     private let finishReasonActor = FinishReasonAccumulator()
+    
+    @MainActor
+    public private(set) var streamData: [[String: String]] = []
     
     // MARK: - Initialization
     
@@ -116,9 +124,47 @@ public final class StreamTextResult: Sendable {
                             await messageTracker.appendText(chunk.delta)
                         }
                         
+                        if let streamingStart = chunk.toolCallStreamingStart {
+                            await messageTracker.addStreamingToolCallStart(streamingStart)
+                        }
+                        
+                        if let streamingDelta = chunk.toolCallDelta {
+                            await messageTracker.addStreamingToolCallDelta(streamingDelta)
+                        }
+                        
                         if let toolCalls = chunk.toolCalls {
                             for toolCall in toolCalls {
                                 await messageTracker.addToolCall(toolCall)
+                            }
+                        }
+                        
+                        if let reasonings = chunk.reasoning {
+                            for reasoning in reasonings {
+                                await messageTracker.addReasoning(reasoning)
+                            }
+                        }
+                        
+                        if let redactions = chunk.redactedReasoning {
+                            for redaction in redactions {
+                                await messageTracker.addRedactedReasoning(redaction)
+                            }
+                        }
+                        
+                        if let signatures = chunk.reasoningSignatures {
+                            for signature in signatures {
+                                await messageTracker.addReasoningSignature(signature)
+                            }
+                        }
+                        
+                        if let annotations = chunk.messageAnnotations {
+                            for annotation in annotations {
+                                await messageTracker.addAnnotation(annotation)
+                            }
+                        }
+                        
+                        if let streamDataEntries = chunk.streamData, !streamDataEntries.isEmpty {
+                            await MainActor.run {
+                                self.streamData.append(contentsOf: streamDataEntries)
                             }
                         }
                         
@@ -182,6 +228,13 @@ public final class StreamTextResult: Sendable {
         }
     }
     
+    /// Aggregated stream data payloads emitted during streaming.
+    public var streamDataValues: [[String: String]] {
+        get async {
+            await MainActor.run { streamData }
+        }
+    }
+    
     /// The complete response object, matching Vercel AI SDK's pattern.
     ///
     /// This property provides access to the accumulated response data in a format
@@ -203,13 +256,15 @@ public final class StreamTextResult: Sendable {
     /// ```
     public var response: StreamTextResponse {
         get async {
-            StreamTextResponse(
+            let streamDataSnapshot = await MainActor.run { streamData }
+            return StreamTextResponse(
                 messages: await messageTracker.responseMessages,
                 text: await textActor.value,
                 usage: await usageActor.value,
                 finishReason: await finishReasonActor.value,
                 toolCalls: await messageTracker.toolCalls,
-                toolResults: await messageTracker.toolResults
+                toolResults: await messageTracker.toolResults,
+                streamData: streamDataSnapshot
             )
         }
     }

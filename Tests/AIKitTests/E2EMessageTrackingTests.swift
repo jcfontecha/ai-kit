@@ -105,22 +105,32 @@ final class E2EMessageTrackingTests: XCTestCase {
         // Consume the stream
         var fullText = ""
         var hasToolCalls = false
+        var observedToolCallStart = false
+        var observedToolCallDelta = false
         
         for try await chunk in result.textStream {
             fullText += chunk.delta
             if let toolCalls = chunk.toolCalls, !toolCalls.isEmpty {
                 hasToolCalls = true
             }
+            if chunk.toolCallStreamingStart != nil {
+                observedToolCallStart = true
+            }
+            if chunk.toolCallDelta != nil {
+                observedToolCallDelta = true
+            }
         }
         
         // Verify tool was called
         XCTAssertTrue(hasToolCalls || fullText.contains("weather") || fullText.contains("San Francisco"))
+        XCTAssertTrue(observedToolCallStart || observedToolCallDelta, "Expected OpenAI streaming tool call events to surface.")
         
         // Check response messages
         let response = await result.response
         
         // Should have at least one message
         XCTAssertFalse(response.messages.isEmpty)
+        XCTAssertTrue(response.messages.contains(where: { $0.role == .tool }), "Expected a tool role message in the response.")
         
         // If tool was called, verify message structure
         if !response.toolCalls.isEmpty {
@@ -139,6 +149,21 @@ final class E2EMessageTrackingTests: XCTestCase {
                 XCTAssertTrue((assistantMessages.last?.toolCalls?.isEmpty) ?? true)
             }
         }
+        
+        let recordedToolCalls = await result.toolCalls
+        XCTAssertEqual(recordedToolCalls.count, response.toolCalls.count)
+        if let arguments = recordedToolCalls.first?.function.arguments {
+            XCTAssertTrue(arguments.contains("San Francisco"))
+        }
+        
+        let recordedToolResults = await result.toolResults
+        XCTAssertEqual(recordedToolResults.count, response.toolResults.count)
+        if let firstResult = recordedToolResults.first?.result.textValue {
+            XCTAssertTrue(firstResult.contains("San Francisco") || firstResult.contains("weather"))
+        }
+        
+        let streamData = await result.streamDataValues
+        XCTAssertTrue(streamData.isEmpty, "OpenAI should not emit stream data for this scenario.")
     }
     
     func testMessageAccumulationConsistency() async throws {

@@ -677,14 +677,21 @@ private extension OpenAIProvider {
                                     } else if fileContent.url != nil {
                                         throw AIProviderError.unsupportedParameter("audio URL", "URL-based audio files are not yet supported. Please provide audio data directly.")
                                     }
-                                } else {
-                                    throw AIProviderError.unsupportedParameter("audio format", "OpenAI only supports MP3 and WAV audio formats. Received: \(fileContent.mimeType). Please convert your audio to MP3 or WAV format.")
-                                }
-                            }
-                        default:
-                            break
+                        } else {
+                            throw AIProviderError.unsupportedParameter("audio format", "OpenAI only supports MP3 and WAV audio formats. Received: \(fileContent.mimeType). Please convert your audio to MP3 or WAV format.")
                         }
                     }
+                    case .toolCall,
+                         .toolResult,
+                         .reasoning,
+                         .redactedReasoning,
+                         .reasoningSignature,
+                         .annotation:
+                        break
+                    default:
+                        break
+                    }
+                }
 
                     converted.append(OpenAIMessage(role: "user", content: .array(parts)))
                 } else {
