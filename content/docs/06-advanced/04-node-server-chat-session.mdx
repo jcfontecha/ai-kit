@@ -1,0 +1,362 @@
+---
+title: Node Server + iOS ChatSession
+description: Drive ChatSession from a Node Vercel AI SDK streamText SSE endpoint.
+---
+
+# Node Server + iOS ChatSession
+
+This pattern lets you keep model credentials and (optionally) server-executed tools on a Node backend, while your iOS app uses `ChatSession` to manage UI state and tool UX.
+
+At a high level:
+
+- **Node** runs the real Vercel AI SDK `streamText(...)` and returns an **SSE UI message stream** (`toUIMessageStreamResponse()`).
+- **iOS** opens the SSE stream, decodes it into `AIUIMessageStreamPart`, and feeds those parts into `ChatSession` via `ChatSessionInit.requestStream`.
+
+## Server (Node): streamText endpoint (AI SDK)
+
+The recommended wire protocol is the AI SDK UI message stream (SSE v1):
+
+- response header: `x-vercel-ai-ui-message-stream: v1`
+- content type: `text/event-stream`
+- stream ends with `data: [DONE]`
+
+## Endpoint contract (recommended)
+
+This is the concrete contract that `AIUIChatEndpointTransport` targets (mirrors AI SDK UI `HttpChatTransport` semantics):
+
+### `POST /api/chat` (send messages)
+
+- Request: JSON body containing:
+  - `id` (string): chat id
+  - `messages` (`UIMessage[]`): AI SDK UI messages
+  - `trigger` (`"submit-message"` | `"regenerate-message"`)
+  - `messageId` (string | undefined)
+  - any additional keys you want (e.g. `sessionId`, `metadata`, etc.)
+- Response: SSE stream (AI SDK UI message stream v1)
+  - header: `x-vercel-ai-ui-message-stream: v1`
+  - content type: `text/event-stream`
+  - stream ends with `data: [DONE]`
+
+Example request body:
+
+```json
+{
+  "id": "c123",
+  "messageId": "m123",
+  "trigger": "submit-message",
+  "messages": [
+    { "id": "m123", "role": "user", "parts": [{ "type": "text", "text": "Hello, world!" }] }
+  ],
+  "sessionId": "s1"
+}
+```
+
+### `GET /api/chat/:id/stream` (resume stream)
+
+- Response:
+  - `200 OK` + SSE v1 stream if there is an active stream for that `id`, or if you choose to replay from persistence.
+  - `204 No Content` if there is no active stream to resume (AI SDK UI `resumeStream()` semantics).
+
+### Next.js / Fetch-style endpoint
+
+```ts
+import { streamText, convertToModelMessages, type UIMessage } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+export async function POST(req: Request) {
+  const { id, messages }: { id: string; messages: UIMessage[] } = await req.json();
+
+  const result = streamText({
+    model: openai("gpt-4.1-mini"),
+    messages: await convertToModelMessages(messages),
+    // tools: { ... } // optional
+    // stopWhen: stepCountIs(5), // optional
+  });
+
+  // Returns SSE with `x-vercel-ai-ui-message-stream: v1`.
+  return result.toUIMessageStreamResponse();
+}
+```
+
+### Resume route shape (Next.js)
+
+You can implement the endpoint shape immediately (even if you start with no persistence):
+
+```ts
+export async function GET(req: Request, ctx: { params: { id: string } }) {
+  // If you don’t have an active stream for this chat id, return 204.
+  return new Response(null, { status: 204 });
+}
+```
+
+### Tools: server vs client
+
+You can mix these strategies:
+
+- **Server-executed tools**: define tools with `execute` on the server; the stream includes results.
+- **Client-executed tools / approvals**: omit `execute` (and/or use approvals); the server streams the tool call/approval request, then the client updates the transcript and **re-submits**.
+
+To support client-executed tools end-to-end, your endpoint needs to accept a message payload that can represent tool calls/results/approvals (not just plain text).
+
+## Client (iOS): ChatSession driven by a remote stream
+
+AIKit exposes:
+
+- `ChatSessionInit.requestStream` (a hook for `submit()` to use a remote `AsyncThrowingStream<AIUIMessageStreamPart, Error>`).
+- `AIUIChatEndpointTransport`:
+  - encodes `ChatMessage[]` → AI SDK `UIMessage[]`
+  - builds the HTTP request body (`id`, `messages`, `trigger`, `messageId`, plus merged body keys)
+  - validates `x-vercel-ai-ui-message-stream: v1`
+  - decodes SSE into `AIUIMessageStreamPart`
+
+### Minimal `HTTPTransport` for URLSession
+
+```swift
+import Foundation
+import AIKitProviders
+
+// AIKitProviders includes `URLSessionHTTPTransport` (uses `URLSession.shared`).
+```
+
+### ChatSession with `requestStream`
+
+```swift
+import Foundation
+import AIKit
+import AIKitProviders
+
+let serverURL = URL(string: "https://your-server.example.com/api/chat")!
+let endpoint = AIUIChatEndpointTransport(url: serverURL, httpTransport: URLSessionHTTPTransport())
+
+let session = ChatSession(.init(
+  model: nil, // required when `requestStream` is not provided
+  requestStream: endpoint.makeRequestStream(),
+  reconnectToStream: endpoint.makeReconnectToStream() // optional; enables `resumeStream()`
+))
+
+await session.send(.init(
+  role: .user,
+  parts: [.text(.init(id: "u1", text: "Hello!", state: .done))]
+))
+```
+
+### ChatSession with `ChatTransport` (recommended)
+
+AIKit also exposes a `ChatTransport` protocol mirroring the AI SDK UI transport interface.
+`AIUIChatEndpointTransport` conforms to it, so you can write:
+
+```swift
+import Foundation
+import AIKit
+import AIKitProviders
+
+let serverURL = URL(string: "https://your-server.example.com/api/chat")!
+let transport = AIUIChatEndpointTransport(url: serverURL, httpTransport: URLSessionHTTPTransport())
+
+let session = ChatSession(.init(
+  id: "c123",
+  transport: transport
+))
+```
+
+### Adding per-request body/headers (optional)
+
+```swift
+await session.send(
+  .init(role: .user, parts: [.text(.init(id: "u1", text: "Hello!", state: .done))]),
+  options: .init(
+    headers: ["x-client": "ios"],
+    body: .object(["sessionId": .string("s1")])
+  )
+)
+```
+
+### Adding transport-level body/headers (optional)
+
+If you have “global” headers/body keys you want on every request (mirrors AI SDK UI `HttpChatTransport`):
+
+```swift
+let endpoint = AIUIChatEndpointTransport(
+  url: serverURL,
+  httpTransport: URLSessionHTTPTransport(),
+  headers: ["Authorization": "Bearer <token>"],
+  body: .object(["sessionId": .string("s1")])
+)
+```
+
+### Resume (optional): `GET /api/chat/:id/stream`
+
+AI SDK `useChat` supports `resumeStream()` by doing a `GET` request to:
+
+- `GET /api/chat/:id/stream`
+- if the server replies `204 No Content`, there is no active stream to resume
+
+On iOS, call:
+
+```swift
+await session.resumeStream()
+```
+
+Implementing a resumable stream requires server-side state (at minimum: “is there an active stream for this `id`?”). AIKit assumes the AI SDK default endpoint shape + `204` behavior, but does not prescribe a persistence strategy.
+
+## Server persistence contract (recommended)
+
+AI SDK’s `HttpChatTransport.reconnectToStream()` is just a `GET` to `.../:id/stream` and expects either:
+
+- `204 No Content` (no active stream), or
+- `200 OK` + **the same UI message stream** (SSE v1) if the stream is still active.
+
+So the server needs a minimal “active stream registry” keyed by `chatId`.
+
+Important constraints:
+
+- This works best on a **stateful Node server** (or a single long-lived worker). On serverless/edge, you’ll need an external pub/sub or persistence layer to make “resume” meaningful.
+- The simplest contract is **no replay**: reconnect attaches to the active stream at “now”.
+
+### Reference implementation (Next.js / web streams fan-out)
+
+This is one clean way to implement “active stream lookup” without trying to re-consume a `ReadableStream` twice.
+
+`stream-registry.ts`
+
+```ts
+type Chunk = Uint8Array;
+
+class Fanout {
+  private subscribers = new Set<ReadableStreamDefaultController<Chunk>>();
+  private closed = false;
+
+  addStream(): ReadableStream<Chunk> {
+    return new ReadableStream<Chunk>({
+      start: controller => {
+        if (this.closed) {
+          controller.close();
+          return;
+        }
+        this.subscribers.add(controller);
+      },
+      cancel: () => {
+        // No-op: controller is removed on GC; best-effort cleanup.
+      },
+    });
+  }
+
+  push(chunk: Chunk) {
+    if (this.closed) return;
+    for (const c of this.subscribers) c.enqueue(chunk);
+  }
+
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    for (const c of this.subscribers) c.close();
+    this.subscribers.clear();
+  }
+}
+
+export type ActiveChatStream = { fanout: Fanout };
+
+const activeStreams = new Map<string, ActiveChatStream>();
+
+export function getActiveStream(chatId: string) {
+  return activeStreams.get(chatId) ?? null;
+}
+
+export function registerActiveStream(chatId: string) {
+  const existing = activeStreams.get(chatId);
+  if (existing) return existing;
+  const created: ActiveChatStream = { fanout: new Fanout() };
+  activeStreams.set(chatId, created);
+  return created;
+}
+
+export function removeActiveStream(chatId: string) {
+  activeStreams.delete(chatId);
+}
+```
+
+`POST /api/chat` (start + register)
+
+```ts
+import { streamText, convertToModelMessages, type UIMessage } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { registerActiveStream, removeActiveStream } from "./stream-registry";
+
+export async function POST(req: Request) {
+  const { id, messages }: { id: string; messages: UIMessage[] } = await req.json();
+
+  const result = streamText({
+    model: openai("gpt-4.1-mini"),
+    messages: await convertToModelMessages(messages),
+  });
+
+  const response = result.toUIMessageStreamResponse();
+  const body = response.body;
+  if (!body) return new Response("missing stream body", { status: 500 });
+
+  const active = registerActiveStream(id);
+  const streamForThisClient = active.fanout.addStream();
+
+  // Pump the AI SDK stream into the fan-out once.
+  // When the stream ends, close and remove it so reconnects return 204.
+  (async () => {
+    try {
+      const reader = body.getReader();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) active.fanout.push(value);
+      }
+    } finally {
+      active.fanout.close();
+      removeActiveStream(id);
+    }
+  })();
+
+  // Serve the fan-out stream to the POST caller.
+  // Preserve AI SDK’s headers (including `x-vercel-ai-ui-message-stream: v1`).
+  return new Response(streamForThisClient, { headers: response.headers });
+}
+```
+
+`GET /api/chat/:id/stream` (resume)
+
+```ts
+import { getActiveStream } from "./stream-registry";
+
+export async function GET(_req: Request, ctx: { params: { id: string } }) {
+  const active = getActiveStream(ctx.params.id);
+  if (!active) return new Response(null, { status: 204 });
+
+  // Attach to the currently active fan-out.
+  return new Response(active.fanout.addStream(), {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "x-vercel-ai-ui-message-stream": "v1",
+    },
+  });
+}
+```
+
+This satisfies AI SDK `resumeStream()` semantics (and AIKit `ChatSession.resumeStream()`):
+
+- while the stream is active: `GET .../:id/stream` returns a stream,
+- once finished: it returns `204`.
+
+## Recommended payload contract (for tools/approvals parity)
+
+If you want parity with AI SDK UI tool semantics (tool calls, tool results, approvals), standardize on an AI SDK-compatible `UIMessage[]` JSON contract between iOS and Node.
+
+At minimum, the request needs to be able to represent:
+
+- user/assistant text parts
+- tool invocation parts (toolCallId, toolName, input, state)
+- tool results / tool errors
+- approval requests / responses (if you use approvals)
+
+## Notes
+
+- `AIUIMessageStreamClient` requires `x-vercel-ai-ui-message-stream: v1` and fails early if it’s missing.
+- Unknown `type` events are surfaced as `.raw(JSONValue)` so you can add app-specific `data-*` parts later.

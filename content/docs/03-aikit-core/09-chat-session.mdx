@@ -1,0 +1,47 @@
+---
+title: ChatSession
+description: Manage chat state, streaming updates, and tool calling for UI.
+---
+
+# ChatSession
+
+`ChatSession` is an actor that manages a chat transcript and request lifecycle. It is designed for UI integration:
+
+- stores messages (`[ChatMessage]`)
+- exposes status updates (`ChatSessionSnapshot`)
+- can stream assistant messages into the transcript
+
+## Using ChatSession
+
+```swift
+let session = ChatSession(.init(
+  model: model,
+  tools: tools,
+  system: .instructions("You are helpful.")
+))
+
+await session.send(.init(
+  role: .user,
+  parts: [
+    .text(.init(id: "text-1", text: "Hello!", state: .done)),
+  ]
+))
+```
+
+## Combine/SwiftUI
+
+If you can import Combine, `AIKit` exposes `ChatSessionObservable` for SwiftUI-friendly state:
+
+```swift
+import AIKit
+
+@StateObject var obs = ChatSessionObservable(session: session)
+```
+
+See `Sources/AIKitCore/ChatSession/*` and `Sources/AIKit/ChatSessionObservable.swift` for details.
+
+## Node server streaming
+
+If you want to drive `ChatSession` from a server-side Vercel AI SDK `streamText` endpoint (SSE UI message stream), see:
+
+- [Node Server + iOS ChatSession](../06-advanced/04-node-server-chat-session.mdx)

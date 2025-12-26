@@ -1,0 +1,248 @@
+import Foundation
+import AIKitCore
+import AIKitProviders
+
+public struct ReplicateImageModelConfig: Sendable {
+  public var baseURL: String
+  public var headers: @Sendable () -> [String: String]
+  public var transport: HTTPTransport
+  public var currentDate: @Sendable () -> Date
+
+  public init(
+    baseURL: String,
+    headers: @escaping @Sendable () -> [String: String],
+    transport: HTTPTransport,
+    currentDate: @escaping @Sendable () -> Date = { Date() }
+  ) {
+    self.baseURL = baseURL
+    self.headers = headers
+    self.transport = transport
+    self.currentDate = currentDate
+  }
+}
+
+public struct ReplicateImageModel: ImageModel, Sendable {
+  public let id: String
+  let config: ReplicateImageModelConfig
+  private var isFlux2Model: Bool { id.hasPrefix("black-forest-labs/flux-2-") }
+
+  public init(modelId: String, config: ReplicateImageModelConfig) {
+    self.id = modelId
+    self.config = config
+  }
+
+  public func maxImagesPerCall() async -> Int? {
+    isFlux2Model ? 8 : 1
+  }
+
+  public func generate(_ request: ImageRequest) async throws -> ImageResponse {
+    var warnings: [CallWarning] = []
+
+    let (modelId, version) = splitModelId(id)
+    let now = config.currentDate()
+
+    let replicateOptions = request.providerOptions["replicate"] ?? [:]
+    let maxWaitTimeInSeconds: Double? = {
+      guard case .number(let value)? = replicateOptions["maxWaitTimeInSeconds"] else { return nil }
+      return value
+    }()
+
+    var inputOptions = replicateOptions
+    inputOptions.removeValue(forKey: "maxWaitTimeInSeconds")
+
+    var imageInputs: [String: JSONValue] = [:]
+    if let files = request.files, files.isEmpty == false {
+      if isFlux2Model {
+        let maxCount = 8
+        for i in 0..<min(files.count, maxCount) {
+          let key = i == 0 ? "input_image" : "input_image_\(i + 1)"
+          imageInputs[key] = .string(try convertFileToDataURI(files[i]))
+        }
+        if files.count > maxCount {
+          warnings.append(
+            .init(
+              message: "Flux-2 models support up to 8 input images. Additional images are ignored.",
+              code: "other"
+            )
+          )
+        }
+      } else {
+        imageInputs["image"] = .string(try convertFileToDataURI(files[0]))
+        if files.count > 1 {
+          warnings.append(
+            .init(
+              message: "This Replicate model only supports a single input image. Additional images are ignored.",
+              code: "other"
+            )
+          )
+        }
+      }
+    }
+
+    var maskInput: JSONValue?
+    if let mask = request.mask {
+      if isFlux2Model {
+        warnings.append(
+          .init(
+            message: "Flux-2 models do not support mask input. The mask will be ignored.",
+            code: "other"
+          )
+        )
+      } else {
+        maskInput = .string(try convertFileToDataURI(mask))
+      }
+    }
+
+    var input: [String: JSONValue] = [
+      "prompt": .string(request.prompt ?? ""),
+      "num_outputs": .number(Double(request.n)),
+    ]
+    if let aspectRatio = request.aspectRatio {
+      input["aspect_ratio"] = .string(aspectRatio)
+    }
+    if let size = request.size {
+      input["size"] = .string(size)
+    }
+    if let seed = request.seed {
+      input["seed"] = .number(Double(seed))
+    }
+
+    for (key, value) in imageInputs {
+      input[key] = value
+    }
+    if let maskInput {
+      input["mask"] = maskInput
+    }
+    for (key, value) in inputOptions {
+      input[key] = value
+    }
+
+    var body: [String: JSONValue] = [
+      "input": .object(input),
+    ]
+    if let version {
+      body["version"] = .string(version)
+    }
+
+    let prefer: [String: String] = {
+      if let maxWaitTimeInSeconds {
+        let formatted: String
+        if maxWaitTimeInSeconds.rounded(.down) == maxWaitTimeInSeconds {
+          formatted = String(Int(maxWaitTimeInSeconds))
+        } else {
+          formatted = String(maxWaitTimeInSeconds)
+        }
+        return ["prefer": "wait=\(formatted)"]
+      }
+      return ["prefer": "wait"]
+    }()
+
+    let urlString =
+      version != nil
+        ? "\(config.baseURL)/predictions"
+        : "\(config.baseURL)/models/\(modelId)/predictions"
+
+    var headers = combineHeaders([config.headers(), request.headers, prefer])
+    headers["content-type"] = "application/json"
+
+    var urlRequest = URLRequest(url: URL(string: urlString)!)
+    urlRequest.httpMethod = "POST"
+    for (key, value) in headers {
+      urlRequest.setValue(value, forHTTPHeaderField: key)
+    }
+    urlRequest.httpBody = try JSONEncoder().encode(JSONValue.object(body))
+
+    let (data, response) = try await config.transport.data(for: urlRequest)
+    if (200..<300).contains(response.statusCode) == false {
+      throw ReplicateAPIError(
+        message: parseReplicateErrorMessage(from: data) ?? "Unknown Replicate error",
+        statusCode: response.statusCode,
+        headers: flattenHeaders(response)
+      )
+    }
+
+    let responseJSON = try JSONDecoder().decode(JSONValue.self, from: data)
+    let outputURLs = try extractOutputURLs(from: responseJSON)
+
+    var images: [ImageResponse.ImageData] = []
+    images.reserveCapacity(outputURLs.count)
+    for url in outputURLs {
+      var getRequest = URLRequest(url: URL(string: url)!)
+      getRequest.httpMethod = "GET"
+      let (bytes, _) = try await config.transport.data(for: getRequest)
+      images.append(.data(bytes))
+    }
+
+    return ImageResponse(
+      images: images,
+      warnings: warnings,
+      response: .init(
+        timestamp: now,
+        modelID: id,
+        headers: flattenHeaders(response)
+      )
+    )
+  }
+}
+
+private struct ReplicateAPIError: Error, Sendable, Equatable {
+  var message: String
+  var statusCode: Int
+  var headers: [String: String]
+}
+
+private func splitModelId(_ modelId: String) -> (modelId: String, version: String?) {
+  let parts = modelId.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+  if parts.count == 2 {
+    return (String(parts[0]), String(parts[1]))
+  }
+  return (modelId, nil)
+}
+
+private func convertFileToDataURI(_ file: ImageRequest.File) throws -> String {
+  switch file {
+  case .url(let url):
+    return url.absoluteString
+  case .file(let data, let mediaType):
+    let base64 = data.base64EncodedString()
+    return "data:\(mediaType);base64,\(base64)"
+  }
+}
+
+private func extractOutputURLs(from json: JSONValue) throws -> [String] {
+  guard case .object(let obj) = json else {
+    throw AIKitError.invalidConfiguration("Invalid Replicate response.")
+  }
+  guard let output = obj["output"] else {
+    throw AIKitError.invalidConfiguration("Invalid Replicate response: missing output.")
+  }
+  switch output {
+  case .string(let value):
+    return [value]
+  case .array(let values):
+    return values.compactMap { value in
+      if case .string(let s) = value { return s }
+      return nil
+    }
+  default:
+    throw AIKitError.invalidConfiguration("Invalid Replicate response: invalid output type.")
+  }
+}
+
+private func parseReplicateErrorMessage(from data: Data) -> String? {
+  guard let json = try? JSONDecoder().decode(JSONValue.self, from: data),
+        case .object(let obj) = json else { return nil }
+  if case .string(let detail)? = obj["detail"] { return detail }
+  if case .string(let error)? = obj["error"] { return error }
+  return nil
+}
+
+private func flattenHeaders(_ response: HTTPURLResponse) -> [String: String] {
+  var headers: [String: String] = [:]
+  for (key, value) in response.allHeaderFields {
+    let keyString = String(describing: key).lowercased()
+    let valueString = String(describing: value)
+    headers[keyString] = valueString
+  }
+  return headers
+}

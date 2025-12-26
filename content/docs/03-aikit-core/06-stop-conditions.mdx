@@ -1,0 +1,23 @@
+---
+title: Stop conditions
+description: Control multi-step loops with StopCondition.
+---
+
+# Stop conditions
+
+Tool loops can run for multiple steps. Stop conditions are expressed as `[StopCondition]` and passed to:
+
+- `generateText(..., stopWhen: ...)`
+- `streamText(..., stopWhen: ...)`
+- `ToolLoopAgent(stopWhen: ...)`
+
+By default, `generateText` and `streamText` run a single step (`Stop.stepCountIs(1)`).
+
+If you enable tools and want iterative behavior, increase the step count:
+
+```swift
+stopWhen: [Stop.stepCountIs(10)]
+```
+
+See `Sources/AIKitCore/ControlFlow/StopConditions.swift` for the available stop conditions.
+

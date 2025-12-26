@@ -1,0 +1,36 @@
+---
+title: OpenRouter
+description: Use OpenRouter as a provider for chat/completions/embeddings.
+---
+
+# OpenRouter provider
+
+The OpenRouter provider lives in `AIKitOpenRouter`.
+
+## Create a client
+
+```swift
+import AIKitOpenRouter
+
+let openrouter = createOpenRouter(.init(apiKey: "<OPENROUTER_API_KEY>"))
+```
+
+## Select a model
+
+OpenRouter model IDs are strings:
+
+```swift
+let model = openrouter.chat("openai/gpt-4o-mini")
+```
+
+## Provider settings
+
+`OpenRouterProviderSettings` supports:
+
+- `apiKey` and `headers`
+- `baseURL` / `baseUrl`
+- `compatibility` (`.strict` or `.compatible`)
+- `transport` (custom HTTP transport)
+- `extraBody` and `apiKeys` (OpenRouter provider passthrough)
+
+See `Sources/AIKitOpenRouter/OpenRouterProvider.swift`.

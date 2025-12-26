@@ -1,0 +1,53 @@
+---
+title: Outputs and OutputSpec
+description: Parse responses into text, JSON, or strongly typed objects.
+---
+
+# Outputs and `OutputSpec`
+
+AIKit models “what you want back” via `OutputSpec`:
+
+- `Complete`: the final output type
+- `Partial`: the partial output type (used by `partialOutputStream`)
+- `responseFormat`: provider-facing hint (`ResponseFormat`)
+- parsing hooks: `parseComplete` / `parsePartial`
+
+## Built-in outputs
+
+AIKitCore ships a small set of outputs under `Output`:
+
+- `Output.text()` → `String`
+- `Output.json()` → `JSONValue`
+- `Output.object(_:schema:)` → decode JSON into your `Codable` type
+- `Output.typedObject(_:)` → decode using `SchemaProviding` (macro-friendly)
+- `Output.array(_:elementSchema:)` → `[Element]` with AI SDK-compatible wrapper shape
+- `Output.choice(options:)` → `String` choice
+
+## Typed objects with one schema representation
+
+AIKit’s canonical schema container is `ObjectSchema<T>`, which wraps provider-facing `JSONSchema`.
+
+The preferred authoring path is macros (`@AIModel`), which generate `SchemaProviding` and `ObjectSchema<T>` for a type. See [Schemas and macros](../02-foundations/04-schemas-and-macros.mdx).
+
+Manual schema:
+
+```swift
+struct Person: Codable, Sendable { let name: String }
+
+let schema = ObjectSchema<Person>.manual(
+  jsonSchema: .object(
+    properties: ["name": .string()],
+    required: ["name"],
+    additionalProperties: false
+  ),
+  name: "Person"
+)
+
+let result = try await generateText(
+  model: model,
+  prompt: "Return {\"name\":\"…\"}.",
+  output: Output.object(Person.self, schema: schema)
+)
+
+let person = try result.output
+```

@@ -1,0 +1,49 @@
+---
+title: Tool approvals
+description: Pause/resume the tool loop when a tool needs user approval.
+---
+
+# Tool approvals
+
+Tools can request approval before execution via `ToolSpec.needsApproval`.
+
+If approval is required, AIKit emits a `ToolApprovalRequest` and waits for a `ToolApprovalResponse` before continuing.
+
+## Mark a tool as needing approval
+
+```swift
+tools.register(
+  ToolID<WeatherInput, String>("weather"),
+  ToolSpec(
+    inputSchema: schema,
+    needsApproval: { input, _ in
+      // Example: require approval for any networked lookup.
+      input.city.isEmpty == false
+    },
+    execute: { input, _ in .final("…") }
+  )
+)
+```
+
+## Supplying approvals
+
+Approvals are supplied by including `ModelMessagePart.toolApprovalResponse(...)` in the next call’s `messages` (or by continuing the multi-step loop in an agent/chat session).
+
+In its simplest form, you add a `.tool` message:
+
+```swift
+let response = ToolApprovalResponse(approvalID: request.approvalID, approved: true)
+
+let approvalMessage = ModelMessage(
+  role: .tool,
+  content: [.toolApprovalResponse(response)]
+)
+```
+
+Because approval messages are part of the tool loop semantics, the exact message shape is handled by AIKitCore. In practice, the easiest way to integrate approvals is:
+
+- consume `stream.fullStream`
+- when you receive `.toolApprovalRequest(...)`, present UI
+- then resume with a follow-up call that includes the appropriate approval response messages
+
+See `Tests/AIKitCoreTests/GenerateText/CollectToolApprovalsTests.swift` for concrete scenarios.

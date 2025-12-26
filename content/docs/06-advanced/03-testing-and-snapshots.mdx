@@ -1,0 +1,23 @@
+---
+title: Testing and snapshots
+description: How AIKit tests streaming/tool loops and records snapshots.
+---
+
+# Testing and snapshots
+
+AIKit uses snapshot-style assertions for complex streaming sequences.
+
+## Run tests
+
+```sh
+swift test
+```
+
+## Record snapshots
+
+```sh
+AIKIT_SNAPSHOT_RECORD=1 swift test
+```
+
+Snapshots are stored under `Tests/__Snapshots__/`. Snapshot utilities live in `Sources/AIKitTestKit/SnapshotTesting.swift`.
+

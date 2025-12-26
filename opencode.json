@@ -1,0 +1,6 @@
+{
+  "plugin": [
+    "opencode-openai-codex-auth"
+  ],
+  "$schema": "https://opencode.ai/config.json"
+}

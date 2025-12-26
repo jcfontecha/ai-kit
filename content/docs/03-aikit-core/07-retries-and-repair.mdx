@@ -1,0 +1,18 @@
+---
+title: Retries and repair
+description: maxRetries and tool call repair for malformed tool inputs.
+---
+
+# Retries and repair
+
+AIKitCore supports:
+
+- `maxRetries`: retry model calls (provider/network failures)
+- `repairToolCall`: attempt recovery when a tool call cannot be parsed/decoded
+
+Both are available on `generateText` and `streamText`, and on `ToolLoopAgent` defaults.
+
+Tool call repair is intended to match AI SDK semantics: when parsing fails, you can supply a function that tries to convert the failing tool call into a valid one (e.g. by fixing JSON).
+
+See `Tests/AIKitCoreTests/GenerateText/ParseToolCallTests.swift` and `Sources/AIKitCore/Generation/ToolCallRepair.swift`.
+

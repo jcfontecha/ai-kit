@@ -1,70 +1,78 @@
-// swift-tools-version: 6.1
-// The swift-tools-version declares the minimum version of Swift required to build this package.
-
+// swift-tools-version: 5.10
 import PackageDescription
-import CompilerPluginSupport
 
 let package = Package(
-    name: "AIKit",
-    platforms: [
-        .iOS(.v13),
-        .macOS(.v10_15),
-        .watchOS(.v6),
-        .tvOS(.v13)
-    ],
-    products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
-        .library(
-            name: "AIKit",
-            targets: ["AIKit"]),
-        .library(
-            name: "AIKitMacro",
-            targets: ["AIKitMacro"]),
-    ],
-    dependencies: [
-        // SwiftSyntax for macro implementation
-        .package(url: "https://github.com/apple/swift-syntax.git", from: "510.0.0")
-    ],
-    targets: [
-        // Macro implementation
-        .macro(
-            name: "AIKitMacros",
-            dependencies: [
-                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-                .product(name: "SwiftCompilerPlugin", package: "swift-syntax")
-            ]
-        ),
-        
-        // Main library target without macro dependency
-        .target(
-            name: "AIKit"
-        ),
-        
-        // Separate target that provides macro functionality
-        .target(
-            name: "AIKitMacro",
-            dependencies: ["AIKit", "AIKitMacros"]
-        ),
-        
-        // Test targets
-        .testTarget(
-            name: "AIKitTests",
-            dependencies: ["AIKit"],
-            resources: [
-                .copy("sample_image.jpg"),
-                .copy("sample_image_2.jpg"),
-                .copy("sample_audio.m4a"),
-                .copy("sample_audio.mp3")
-            ]
-        ),
-        
-        .testTarget(
-            name: "AIKitMacroTests",
-            dependencies: [
-                "AIKitMacro",
-                "AIKitMacros",
-                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax")
-            ]
-        ),
-    ]
+  name: "AIKit",
+  platforms: [
+    .iOS(.v15),
+    .macOS(.v12),
+  ],
+  products: [
+    .library(name: "AIKit", targets: ["AIKit"]),
+    .library(name: "AIKitCore", targets: ["AIKitCore"]),
+    .library(name: "AIKitProviders", targets: ["AIKitProviders"]),
+    .library(name: "AIKitOpenAI", targets: ["AIKitOpenAI"]),
+    .library(name: "AIKitOpenRouter", targets: ["AIKitOpenRouter"]),
+    .library(name: "AIKitReplicate", targets: ["AIKitReplicate"]),
+    .library(name: "AIKitFal", targets: ["AIKitFal"]),
+    .executable(name: "aikit-codegen", targets: ["AIKitCodegen"]),
+  ],
+  targets: [
+    .target(
+      name: "AIKitProviders"
+    ),
+    .target(
+      name: "AIKitCore",
+      dependencies: ["AIKitProviders"]
+    ),
+    .target(
+      name: "AIKit",
+      dependencies: ["AIKitCore", "AIKitProviders"]
+    ),
+    .target(
+      name: "AIKitOpenAI",
+      dependencies: ["AIKitCore", "AIKitProviders"]
+    ),
+    .target(
+      name: "AIKitOpenRouter",
+      dependencies: ["AIKitCore", "AIKitProviders"]
+    ),
+    .target(
+      name: "AIKitReplicate",
+      dependencies: ["AIKitCore", "AIKitProviders"]
+    ),
+    .target(
+      name: "AIKitFal",
+      dependencies: ["AIKitCore", "AIKitProviders"]
+    ),
+    // Internal test utilities (not shipped as a product).
+    .target(
+      name: "AIKitTestKit",
+      dependencies: ["AIKitCore", "AIKitProviders"]
+    ),
+    .executableTarget(
+      name: "AIKitCodegen",
+      dependencies: []
+    ),
+    .testTarget(
+      name: "AIKitCoreTests",
+      dependencies: ["AIKitCore", "AIKitTestKit"]
+    ),
+    .testTarget(
+      name: "AIKitProvidersTests",
+      dependencies: ["AIKitProviders", "AIKitTestKit"]
+    ),
+    .testTarget(
+      name: "AIKitOpenRouterTests",
+      dependencies: ["AIKitOpenRouter", "AIKitCore", "AIKitProviders", "AIKitTestKit"]
+    ),
+    .testTarget(
+      name: "AIKitReplicateTests",
+      dependencies: ["AIKitReplicate", "AIKitProviders"]
+    ),
+    .testTarget(
+      name: "AIKitFalTests",
+      dependencies: ["AIKitFal", "AIKitProviders"]
+    ),
+  ]
 )

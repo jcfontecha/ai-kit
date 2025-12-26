@@ -1,11 +1,16 @@
+# SwiftPM / Xcode
 .DS_Store
-/.build
-/Packages
-xcuserdata/
+.swiftpm/
+.build/
+Packages/
 DerivedData/
-.swiftpm/configuration/registries.json
-.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
-.netrc
-openrouter-provider/
+xcuserdata/
+*.xcodeproj
+*.xcworkspace
 
-Config.plist
+# Node (in case tools/examples add it)
+**/node_modules/
+
+# Repo-local analysis artifacts / upstream vendor
+ai-sdk/
+openrouter-provider/

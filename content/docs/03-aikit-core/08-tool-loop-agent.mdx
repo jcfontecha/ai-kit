@@ -1,0 +1,29 @@
+---
+title: ToolLoopAgent
+description: Reusable multi-step agent wrapper around generateText/streamText.
+---
+
+# ToolLoopAgent
+
+`ToolLoopAgent` is a reusable wrapper for multi-step calls that:
+
+- holds defaults (model, tools, stop conditions, etc.)
+- exposes `generate(prompt:)` and `stream(prompt:)`
+- supports `prepareCall` to mutate per-call parameters
+
+## Example
+
+```swift
+let agent = ToolLoopAgent(
+  model: model,
+  instructions: .instructions("You are a helpful assistant."),
+  tools: tools,
+  stopWhen: [Stop.stepCountIs(20)],
+  output: Output.text()
+)
+
+let result = try await agent.generate(prompt: "Plan a weekend trip, then call tools for details.")
+print(result.text)
+```
+
+For a streaming agent loop, use `await agent.stream(prompt:)` and consume `fullStream`.

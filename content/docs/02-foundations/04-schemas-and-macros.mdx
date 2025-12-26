@@ -1,0 +1,88 @@
+---
+title: Schemas and macros
+description: Preferred schema authoring with @AIModel and @Field.
+---
+
+# Schemas and macros
+
+AIKit’s canonical schema representation is `ObjectSchema<T>` (wrapping provider-facing `JSONSchema`). The **preferred** way to author schemas is via Swift macros that generate `SchemaProviding` conformance and a single canonical `schema`.
+
+## Add the macros package
+
+Macros live in the separate Swift package at `AIKitMacros/`. It exposes a library product named `AIKitMacro`.
+
+- Add `AIKitMacros/` as a Swift package dependency to your app/workspace.
+- Import `AIKitMacro` in the file where you declare your schema types.
+
+```swift
+import AIKit
+import AIKitMacro
+```
+
+## `@AIModel`
+
+Annotate a `struct` or `class` with `@AIModel()` to generate:
+
+- `extension YourType: SchemaProviding`
+- `static var schema: ObjectSchema<YourType>`
+- `struct Partial: Codable, Sendable` (all fields optional; used for partial output streaming)
+
+```swift
+@AIModel
+struct Person: Codable, Sendable {
+  var name: String
+  var age: Int?
+}
+```
+
+You can now use the type directly with `Output.typedObject`:
+
+```swift
+let result = try await generateText(
+  model: model,
+  prompt: "Return a JSON object for a person.",
+  output: Output.typedObject(Person.self)
+)
+
+let person = try result.output
+```
+
+## `@Field(...)`
+
+Use `@Field` to attach metadata/constraints to a stored property. This affects the generated JSON Schema.
+
+Supported parameters (see `AIKitMacros/Sources/AIKitMacro/AIModelMacro.swift`):
+
+- `description` (first unlabeled argument)
+- `minLength`, `maxLength`, `pattern`, `format`, `enum` (strings)
+- `range` (numbers; closed range)
+- `minItems`, `maxItems` (arrays)
+
+Example:
+
+```swift
+@AIModel
+struct SearchRequest: Codable, Sendable {
+  @Field("What to search for", minLength: 1, maxLength: 200)
+  var query: String
+
+  @Field("How many results", range: 1...20)
+  var limit: Int
+}
+```
+
+## Supported property types
+
+The macro maps Swift property types to JSON Schema using `JSONSchema` builders.
+
+Built-in mappings include:
+
+- `String`, `Int`, `Double`/`Float`, `Bool`
+- `Date` → string with `format: "date-time"`
+- `URL` → string with `format: "uri"`
+- `UUID` → string with `format: "uuid"`
+- arrays (`[T]` / `Array<T>`) where `T` is a supported scalar or a nested `SchemaProviding` type
+- nested `SchemaProviding` types via `NestedType.schema.jsonSchema`
+
+Optional properties (`T?` / `Optional<T>`) are treated as not-required in the generated object schema.
+

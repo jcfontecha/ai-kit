@@ -1,0 +1,42 @@
+---
+title: Messages
+description: ModelMessage, roles, and content parts.
+---
+
+# Messages
+
+AIKit uses a normalized message model so providers can map their wire formats into a single internal representation.
+
+## Roles
+
+`ModelMessage` is the canonical message type passed into `generateText` / `streamText`:
+
+- `.system(...)`
+- `.user(...)`
+- `.assistant(...)`
+- `.tool(...)`
+
+If you start from a plain prompt string, AIKit converts it to a single user message.
+
+## Parts
+
+Each message contains `[ModelMessagePart]` (text, reasoning, images/files, tool calls/results, approvals, etc.).
+
+Convenience constructors exist for the common cases:
+
+```swift
+let messages: [ModelMessage] = [
+  .system("You are concise."),
+  .user("Say hello."),
+]
+```
+
+## Content parts
+
+Assistant responses are represented as a list of `ContentPart` (text, reasoning, tool calls, sources, files, etc.). In most cases you’ll use conveniences like:
+
+- `GenerateTextResult.text`
+- `GenerateTextResult.toolCalls`
+- `GenerateTextResult.files`
+
+For streaming, use `TextStreamPart` to receive deltas and boundaries (see [Streaming events](../06-advanced/01-streaming-events.mdx)).

@@ -1,0 +1,21 @@
+---
+title: Call settings
+description: Tuning model calls with CallSettings, headers, and providerOptions.
+---
+
+# Call settings
+
+Every call supports:
+
+- `settings: CallSettings` (sampling and other common options)
+- `headers: [String: String]?` (per-call HTTP headers, if the provider supports it)
+- `providerOptions: ProviderOptions?` (provider-specific payload extensions)
+
+These settings are available on:
+
+- `generateText(...)` / `GenerateTextOptions`
+- `streamText(...)` / `StreamTextOptions`
+- `ToolLoopAgent` (defaults for each call)
+
+Because providers have different feature sets, some fields may have no effect depending on the provider/model.
+
