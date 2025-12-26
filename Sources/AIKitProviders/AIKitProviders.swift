@@ -1,1 +1,1 @@
-public enum AIKitProviders {}
+enum AIKitProviders {}

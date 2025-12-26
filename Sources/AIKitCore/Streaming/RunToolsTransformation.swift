@@ -1,16 +1,16 @@
 import Foundation
 import AIKitProviders
 
-public struct RunToolsTransformationOptions: Sendable {
-  public var generateID: @Sendable () -> String
-  public var generatorStream: AsyncThrowingStream<ModelStreamPart, Error>
-  public var tools: ToolRegistry?
-  public var messages: [ModelMessage]
-  public var system: SystemPrompt?
-  public var repairToolCall: ToolCallRepairFunction?
-  public var experimentalContext: AnySendable?
+struct RunToolsTransformationOptions: Sendable {
+  var generateID: @Sendable () -> String
+  var generatorStream: AsyncThrowingStream<ModelStreamPart, Error>
+  var tools: ToolRegistry?
+  var messages: [ModelMessage]
+  var system: SystemPrompt?
+  var repairToolCall: ToolCallRepairFunction?
+  var experimentalContext: AnySendable?
 
-  public init(
+  init(
     generateID: @escaping @Sendable () -> String,
     generatorStream: AsyncThrowingStream<ModelStreamPart, Error>,
     tools: ToolRegistry?,
@@ -29,7 +29,7 @@ public struct RunToolsTransformationOptions: Sendable {
   }
 }
 
-public func runToolsTransformation(
+func runToolsTransformation(
   _ options: RunToolsTransformationOptions
 ) -> AsyncThrowingStream<TextStreamPart, Error> {
   AsyncThrowingStream(TextStreamPart.self) { continuation in

@@ -2,14 +2,14 @@ import Foundation
 import AIKitCore
 import AIKitProviders
 
-public struct FalImageModelConfig: Sendable {
-  public var baseURL: String
-  public var apiKey: String?
-  public var headers: @Sendable () -> [String: String]
-  public var transport: HTTPTransport
-  public var currentDate: @Sendable () -> Date
+struct FalImageModelConfig: Sendable {
+  var baseURL: String
+  var apiKey: String?
+  var headers: @Sendable () -> [String: String]
+  var transport: HTTPTransport
+  var currentDate: @Sendable () -> Date
 
-  public init(
+  init(
     baseURL: String,
     apiKey: String?,
     headers: @escaping @Sendable () -> [String: String],
@@ -24,18 +24,18 @@ public struct FalImageModelConfig: Sendable {
   }
 }
 
-public struct FalImageModel: ImageModel, Sendable {
-  public let id: String
+struct FalImageModel: ImageModel, Sendable {
+  let id: String
   let config: FalImageModelConfig
 
-  public init(modelId: String, config: FalImageModelConfig) {
+  init(modelId: String, config: FalImageModelConfig) {
     self.id = modelId
     self.config = config
   }
 
-  public func maxImagesPerCall() async -> Int? { 1 }
+  func maxImagesPerCall() async -> Int? { 1 }
 
-  public func generate(_ request: ImageRequest) async throws -> ImageResponse {
+  func generate(_ request: ImageRequest) async throws -> ImageResponse {
     var warnings: [CallWarning] = []
 
     var requestBody: [String: JSONValue] = [

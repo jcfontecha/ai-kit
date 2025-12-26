@@ -1,4 +1,3 @@
-public enum FalVersion {
-  public static let current = "0.0.0-test"
+enum FalVersion {
+  static let current = "0.0.0-test"
 }
-

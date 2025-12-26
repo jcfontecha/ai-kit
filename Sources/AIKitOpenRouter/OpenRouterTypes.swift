@@ -5,37 +5,37 @@ public typealias OpenRouterChatModelID = String
 public typealias OpenRouterCompletionModelID = String
 public typealias OpenRouterEmbeddingModelID = String
 
-public struct OpenRouterUsageAccounting: Sendable, Codable, Equatable {
-  public var promptTokens: Int
-  public var promptTokensDetails: PromptTokensDetails?
-  public var completionTokens: Int
-  public var completionTokensDetails: CompletionTokensDetails?
-  public var totalTokens: Int
-  public var cost: Double?
-  public var costDetails: CostDetails?
+struct OpenRouterUsageAccounting: Sendable, Codable, Equatable {
+  var promptTokens: Int
+  var promptTokensDetails: PromptTokensDetails?
+  var completionTokens: Int
+  var completionTokensDetails: CompletionTokensDetails?
+  var totalTokens: Int
+  var cost: Double?
+  var costDetails: CostDetails?
 
-  public struct PromptTokensDetails: Sendable, Codable, Equatable {
-    public var cachedTokens: Int
-    public init(cachedTokens: Int) {
+  struct PromptTokensDetails: Sendable, Codable, Equatable {
+    var cachedTokens: Int
+    init(cachedTokens: Int) {
       self.cachedTokens = cachedTokens
     }
   }
 
-  public struct CompletionTokensDetails: Sendable, Codable, Equatable {
-    public var reasoningTokens: Int
-    public init(reasoningTokens: Int) {
+  struct CompletionTokensDetails: Sendable, Codable, Equatable {
+    var reasoningTokens: Int
+    init(reasoningTokens: Int) {
       self.reasoningTokens = reasoningTokens
     }
   }
 
-  public struct CostDetails: Sendable, Codable, Equatable {
-    public var upstreamInferenceCost: Double
-    public init(upstreamInferenceCost: Double) {
+  struct CostDetails: Sendable, Codable, Equatable {
+    var upstreamInferenceCost: Double
+    init(upstreamInferenceCost: Double) {
       self.upstreamInferenceCost = upstreamInferenceCost
     }
   }
 
-  public init(
+  init(
     promptTokens: Int,
     promptTokensDetails: PromptTokensDetails? = nil,
     completionTokens: Int,

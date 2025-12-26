@@ -10,10 +10,10 @@ struct OpenRouterCompletionConfig: Sendable {
   var extraBody: [String: JSONValue]?
 }
 
-public struct OpenRouterCompletionLanguageModel: LanguageModel, Sendable {
-  public let id: String
-  public let capabilities: ModelCapabilities = []
-  public let supportedURLs: SupportedURLPatterns = [
+struct OpenRouterCompletionLanguageModel: LanguageModel, Sendable {
+  let id: String
+  let capabilities: ModelCapabilities = []
+  let supportedURLs: SupportedURLPatterns = [
     "image/*": [
       URLPattern("^data:image/[a-zA-Z]+;base64,"),
       URLPattern("^https?://.+\\.(jpg|jpeg|png|gif|webp)$", options: .caseInsensitive),
@@ -39,7 +39,7 @@ public struct OpenRouterCompletionLanguageModel: LanguageModel, Sendable {
     self.id = modelId
   }
 
-  public func generate(_ request: ModelRequest) async throws -> ModelResponse {
+  func generate(_ request: ModelRequest) async throws -> ModelResponse {
     let args = try buildArgs(from: request)
     let bodyValue = JSONValue.object(args)
     let data = try OpenRouterJSON.encodeToData(bodyValue)
@@ -91,7 +91,7 @@ public struct OpenRouterCompletionLanguageModel: LanguageModel, Sendable {
     )
   }
 
-  public func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelStreamPart, Error> {
+  func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelStreamPart, Error> {
     AsyncThrowingStream(ModelStreamPart.self) { continuation in
       Task {
         do {

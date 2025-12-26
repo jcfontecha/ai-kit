@@ -9,8 +9,8 @@ struct OpenRouterEmbeddingConfig: Sendable {
   var extraBody: [String: JSONValue]?
 }
 
-public struct OpenRouterEmbeddingModel: EmbeddingModel, Sendable {
-  public let id: String
+struct OpenRouterEmbeddingModel: EmbeddingModel, Sendable {
+  let id: String
   let modelId: OpenRouterEmbeddingModelID
   let settings: OpenRouterEmbeddingSettings
   let config: OpenRouterEmbeddingConfig
@@ -22,7 +22,7 @@ public struct OpenRouterEmbeddingModel: EmbeddingModel, Sendable {
     self.id = modelId
   }
 
-  public func embed(_ request: EmbeddingRequest) async throws -> EmbeddingResponse {
+  func embed(_ request: EmbeddingRequest) async throws -> EmbeddingResponse {
     var args: [String: JSONValue] = [
       "model": .string(modelId),
       "input": OpenRouterJSON.encodeToJSONValue(request.input) ?? .array([]),

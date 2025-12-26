@@ -1,2 +1,1 @@
-public enum AIKitCore {}
-
+enum AIKitCore {}

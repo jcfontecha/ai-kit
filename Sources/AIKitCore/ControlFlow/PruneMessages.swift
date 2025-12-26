@@ -1,38 +1,38 @@
 import Foundation
 import AIKitProviders
 
-public enum ReasoningPruneMode: Sendable, Equatable {
+enum ReasoningPruneMode: Sendable, Equatable {
   case all
   case beforeLastMessage
 }
 
-public enum ToolCallsPruneMode: Sendable, Equatable {
+enum ToolCallsPruneMode: Sendable, Equatable {
   case all
   case beforeLastMessage
   case beforeLast2Messages
 }
 
-public struct ToolCallsPruneSetting: Sendable, Equatable {
-  public var mode: ToolCallsPruneMode
-  public var tools: [String]
+struct ToolCallsPruneSetting: Sendable, Equatable {
+  var mode: ToolCallsPruneMode
+  var tools: [String]
 
-  public init(mode: ToolCallsPruneMode, tools: [String]) {
+  init(mode: ToolCallsPruneMode, tools: [String]) {
     self.mode = mode
     self.tools = tools
   }
 }
 
-public enum ToolCallsPrune: Sendable, Equatable {
+enum ToolCallsPrune: Sendable, Equatable {
   case mode(ToolCallsPruneMode)
   case settings([ToolCallsPruneSetting])
 }
 
-public struct PruneMessagesOptions: Sendable, Equatable {
-  public var messages: [ModelMessage]
-  public var reasoning: ReasoningPruneMode?
-  public var toolCalls: ToolCallsPrune?
+struct PruneMessagesOptions: Sendable, Equatable {
+  var messages: [ModelMessage]
+  var reasoning: ReasoningPruneMode?
+  var toolCalls: ToolCallsPrune?
 
-  public init(
+  init(
     messages: [ModelMessage],
     reasoning: ReasoningPruneMode? = nil,
     toolCalls: ToolCallsPrune? = nil
@@ -43,7 +43,7 @@ public struct PruneMessagesOptions: Sendable, Equatable {
   }
 }
 
-public func pruneMessages(_ options: PruneMessagesOptions) -> [ModelMessage] {
+func pruneMessages(_ options: PruneMessagesOptions) -> [ModelMessage] {
   var messages = options.messages
 
   if let reasoning = options.reasoning {

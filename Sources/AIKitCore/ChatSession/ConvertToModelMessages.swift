@@ -1,17 +1,17 @@
 import Foundation
 import AIKitProviders
 
-public struct ConvertToModelMessagesOptions: Sendable {
-  public enum ConvertedDataPart: Sendable {
+struct ConvertToModelMessagesOptions: Sendable {
+  enum ConvertedDataPart: Sendable {
     case text(MessageTextPart)
     case file(FileContent)
   }
 
-  public var tools: ToolRegistry?
-  public var ignoreIncompleteToolCalls: Bool
-  public var convertDataPart: (@Sendable (_ part: ChatDataPart) -> ConvertedDataPart?)?
+  var tools: ToolRegistry?
+  var ignoreIncompleteToolCalls: Bool
+  var convertDataPart: (@Sendable (_ part: ChatDataPart) -> ConvertedDataPart?)?
 
-  public init(
+  init(
     tools: ToolRegistry? = nil,
     ignoreIncompleteToolCalls: Bool = false,
     convertDataPart: (@Sendable (_ part: ChatDataPart) -> ConvertedDataPart?)? = nil
@@ -22,7 +22,7 @@ public struct ConvertToModelMessagesOptions: Sendable {
   }
 }
 
-public func convertToModelMessages(
+func convertToModelMessages(
   _ messages: [ChatMessage],
   options: ConvertToModelMessagesOptions
 ) async throws -> [ModelMessage] {

@@ -1,18 +1,18 @@
 import Foundation
 import AIKitProviders
 
-public struct ParsedToolCall: Sendable, Equatable {
-  public var toolCallID: String
-  public var toolName: String
-  public var input: JSONValue
-  public var providerExecuted: Bool?
-  public var dynamic: Bool?
-  public var title: String?
-  public var providerMetadata: ProviderMetadata?
-  public var invalid: Bool
-  public var error: ToolCallError?
+struct ParsedToolCall: Sendable, Equatable {
+  var toolCallID: String
+  var toolName: String
+  var input: JSONValue
+  var providerExecuted: Bool?
+  var dynamic: Bool?
+  var title: String?
+  var providerMetadata: ProviderMetadata?
+  var invalid: Bool
+  var error: ToolCallError?
 
-  public init(
+  init(
     toolCallID: String,
     toolName: String,
     input: JSONValue,
@@ -35,14 +35,14 @@ public struct ParsedToolCall: Sendable, Equatable {
   }
 }
 
-public struct ParseToolCallOptions: Sendable {
-  public var toolCall: ToolCall
-  public var tools: ToolRegistry?
-  public var repairToolCall: ToolCallRepairFunction?
-  public var messages: [ModelMessage]
-  public var system: SystemPrompt?
+struct ParseToolCallOptions: Sendable {
+  var toolCall: ToolCall
+  var tools: ToolRegistry?
+  var repairToolCall: ToolCallRepairFunction?
+  var messages: [ModelMessage]
+  var system: SystemPrompt?
 
-  public init(
+  init(
     toolCall: ToolCall,
     tools: ToolRegistry?,
     repairToolCall: ToolCallRepairFunction?,
@@ -57,7 +57,7 @@ public struct ParseToolCallOptions: Sendable {
   }
 }
 
-public func parseToolCall(_ options: ParseToolCallOptions) async -> ParsedToolCall {
+func parseToolCall(_ options: ParseToolCallOptions) async -> ParsedToolCall {
   return await parseToolCall(options, allowRepair: true)
 }
 

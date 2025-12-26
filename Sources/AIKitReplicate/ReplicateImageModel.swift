@@ -2,13 +2,13 @@ import Foundation
 import AIKitCore
 import AIKitProviders
 
-public struct ReplicateImageModelConfig: Sendable {
-  public var baseURL: String
-  public var headers: @Sendable () -> [String: String]
-  public var transport: HTTPTransport
-  public var currentDate: @Sendable () -> Date
+struct ReplicateImageModelConfig: Sendable {
+  var baseURL: String
+  var headers: @Sendable () -> [String: String]
+  var transport: HTTPTransport
+  var currentDate: @Sendable () -> Date
 
-  public init(
+  init(
     baseURL: String,
     headers: @escaping @Sendable () -> [String: String],
     transport: HTTPTransport,
@@ -21,21 +21,21 @@ public struct ReplicateImageModelConfig: Sendable {
   }
 }
 
-public struct ReplicateImageModel: ImageModel, Sendable {
-  public let id: String
+struct ReplicateImageModel: ImageModel, Sendable {
+  let id: String
   let config: ReplicateImageModelConfig
   private var isFlux2Model: Bool { id.hasPrefix("black-forest-labs/flux-2-") }
 
-  public init(modelId: String, config: ReplicateImageModelConfig) {
+  init(modelId: String, config: ReplicateImageModelConfig) {
     self.id = modelId
     self.config = config
   }
 
-  public func maxImagesPerCall() async -> Int? {
+  func maxImagesPerCall() async -> Int? {
     isFlux2Model ? 8 : 1
   }
 
-  public func generate(_ request: ImageRequest) async throws -> ImageResponse {
+  func generate(_ request: ImageRequest) async throws -> ImageResponse {
     var warnings: [CallWarning] = []
 
     let (modelId, version) = splitModelId(id)

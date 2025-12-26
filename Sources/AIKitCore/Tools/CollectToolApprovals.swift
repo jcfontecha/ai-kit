@@ -1,12 +1,12 @@
 import Foundation
 import AIKitProviders
 
-public struct ToolApprovalResult: Sendable, Equatable {
-  public var approvalRequest: ToolApprovalRequest
-  public var approvalResponse: ToolApprovalResponse
-  public var toolCall: ToolCall
+struct ToolApprovalResult: Sendable, Equatable {
+  var approvalRequest: ToolApprovalRequest
+  var approvalResponse: ToolApprovalResponse
+  var toolCall: ToolCall
 
-  public init(
+  init(
     approvalRequest: ToolApprovalRequest,
     approvalResponse: ToolApprovalResponse,
     toolCall: ToolCall
@@ -17,11 +17,11 @@ public struct ToolApprovalResult: Sendable, Equatable {
   }
 }
 
-public struct ToolApprovalsCollection: Sendable, Equatable {
-  public var approvedToolApprovals: [ToolApprovalResult]
-  public var deniedToolApprovals: [ToolApprovalResult]
+struct ToolApprovalsCollection: Sendable, Equatable {
+  var approvedToolApprovals: [ToolApprovalResult]
+  var deniedToolApprovals: [ToolApprovalResult]
 
-  public init(
+  init(
     approvedToolApprovals: [ToolApprovalResult] = [],
     deniedToolApprovals: [ToolApprovalResult] = []
   ) {
@@ -30,12 +30,12 @@ public struct ToolApprovalsCollection: Sendable, Equatable {
   }
 }
 
-public struct ToolApprovalCollectionError: Error, Sendable, Equatable {
-  public var message: String
-  public init(_ message: String) { self.message = message }
+struct ToolApprovalCollectionError: Error, Sendable, Equatable {
+  var message: String
+  init(_ message: String) { self.message = message }
 }
 
-public func collectToolApprovals(messages: [ModelMessage]) throws -> ToolApprovalsCollection {
+func collectToolApprovals(messages: [ModelMessage]) throws -> ToolApprovalsCollection {
   guard let last = messages.last, last.role == .tool else {
     return .init()
   }
@@ -114,4 +114,3 @@ public func collectToolApprovals(messages: [ModelMessage]) throws -> ToolApprova
 
   return .init(approvedToolApprovals: approved, deniedToolApprovals: denied)
 }
-

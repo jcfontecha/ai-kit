@@ -1,14 +1,14 @@
 import Foundation
 import AIKitProviders
 
-public struct OpenRouterURLSessionTransport: HTTPTransport, Sendable {
-  public var session: URLSession
+struct OpenRouterURLSessionTransport: HTTPTransport, Sendable {
+  var session: URLSession
 
-  public init(session: URLSession = .shared) {
+  init(session: URLSession = .shared) {
     self.session = session
   }
 
-  public func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+  func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
     let (data, response) = try await session.data(for: request)
     guard let http = response as? HTTPURLResponse else {
       throw OpenRouterInvalidResponseError(message: "Missing HTTPURLResponse.")
@@ -16,7 +16,7 @@ public struct OpenRouterURLSessionTransport: HTTPTransport, Sendable {
     return (data, http)
   }
 
-  public func bytes(for request: URLRequest) async throws -> (AsyncThrowingStream<UInt8, Error>, HTTPURLResponse) {
+  func bytes(for request: URLRequest) async throws -> (AsyncThrowingStream<UInt8, Error>, HTTPURLResponse) {
     let (bytes, response) = try await session.bytes(for: request)
     guard let http = response as? HTTPURLResponse else {
       throw OpenRouterInvalidResponseError(message: "Missing HTTPURLResponse.")
