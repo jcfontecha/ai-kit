@@ -11,6 +11,7 @@ let package = Package(
     .library(name: "AIKit", targets: ["AIKit"]),
     .library(name: "AIKitCore", targets: ["AIKitCore"]),
     .library(name: "AIKitProviders", targets: ["AIKitProviders"]),
+    .library(name: "AIKitElements", targets: ["AIKitElements"]),
     .library(name: "AIKitOpenAI", targets: ["AIKitOpenAI"]),
     .library(name: "AIKitOpenRouter", targets: ["AIKitOpenRouter"]),
     .library(name: "AIKitReplicate", targets: ["AIKitReplicate"]),
@@ -24,6 +25,10 @@ let package = Package(
     .target(
       name: "AIKitCore",
       dependencies: ["AIKitProviders"]
+    ),
+    .target(
+      name: "AIKitElements",
+      dependencies: ["AIKit"]
     ),
     .target(
       name: "AIKit",

@@ -8,9 +8,19 @@ xcuserdata/
 *.xcodeproj
 *.xcworkspace
 
+# Commit demo apps (component gallery) under Examples/
+!Examples/**/*.xcodeproj
+!Examples/**/*.xcodeproj/**
+!Examples/**/*.xcworkspace
+!Examples/**/*.xcworkspace/**
+
+# Codex (agent) local config (keep skills tracked; ignore local settings)
+.codex/settings.local.json
+
 # Node (in case tools/examples add it)
 **/node_modules/
 
 # Repo-local analysis artifacts / upstream vendor
 ai-sdk/
 openrouter-provider/
+ai-elements/

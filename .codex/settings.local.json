@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xcodebuild:*)",
+      "WebSearch",
+      "WebFetch(domain:ashishkakkad.com)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:levelup.gitconnected.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:appcircle.io)",
+      "WebFetch(domain:fatbobman.com)",
+      "WebFetch(domain:www.createwithswift.com)",
+      "Bash(git mv:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

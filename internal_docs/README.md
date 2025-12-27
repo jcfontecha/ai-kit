@@ -3,6 +3,7 @@
 ## Design + architecture notes
 
 - Proposal: `docs/notes/proposals/AIKIT_PROPOSAL.md`
+- AIKit Elements proposal: `internal_docs/notes/proposals/AIKIT_ELEMENTS_PROPOSAL.md`
 - Apple-like API façades proposal: `docs/notes/proposals/AIKIT_APPLELIKE_API_PROPOSAL.md`
 - useChat ramp-up + proposal: `docs/notes/proposals/AIKIT_USECHAT_RAMPUP_AND_PROPOSAL.md`
 - useChat translation notes: `docs/notes/translation/AIKIT_USECHAT_TRANSLATION.md`
