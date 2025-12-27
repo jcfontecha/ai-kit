@@ -151,7 +151,7 @@ private struct PromptInputBottomBarModifier: ViewModifier {
         PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop)
           .padding(.horizontal, 12)
           .padding(.top, 12)
-          .padding(.bottom, 12)
+          .padding(.bottom, 8)
           .background {
             GeometryReader { proxy in
               Color.clear.preference(key: PromptInputHeightKey.self, value: proxy.size.height)
