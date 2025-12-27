@@ -1,4 +1,5 @@
 import SwiftUI
+import AIKitElements
 
 struct ConfirmationDemoView: View {
   @State private var state: ApprovalState = .requested
@@ -63,4 +64,3 @@ private struct ApprovalBanner: View {
     )
   }
 }
-

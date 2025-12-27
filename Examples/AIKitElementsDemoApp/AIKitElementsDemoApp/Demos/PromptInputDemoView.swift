@@ -1,4 +1,6 @@
 import SwiftUI
+import AIKitCore
+import AIKitElements
 
 struct PromptInputDemoView: View {
   enum Mode: String, CaseIterable, Identifiable {
@@ -18,43 +20,12 @@ struct PromptInputDemoView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      HStack(alignment: .bottom, spacing: 10) {
-        TextField("Message", text: $text, axis: .vertical)
-          .textFieldStyle(.plain)
-          .lineLimit(1...5)
-          .disabled(mode == .streaming)
-
-        HStack(spacing: 8) {
-          Button {
-          } label: {
-            Image(systemName: "paperclip")
-              .frame(width: 34, height: 34)
-          }
-          .buttonStyle(.plain)
-          .glassSurface(cornerRadius: 17, interactive: true)
-
-          if mode == .streaming {
-            Button {
-            } label: {
-              Image(systemName: "stop.fill")
-                .frame(width: 34, height: 34)
-            }
-            .buttonStyle(.plain)
-            .glassSurface(cornerRadius: 17, interactive: true, tint: Color.red.opacity(0.12))
-          } else {
-            Button {
-            } label: {
-              Image(systemName: "arrow.up")
-                .frame(width: 34, height: 34)
-            }
-            .buttonStyle(.plain)
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .glassSurface(cornerRadius: 17, interactive: true)
-          }
-        }
-      }
-      .padding(12)
-      .glassSurface(cornerRadius: 24, interactive: false)
+      PromptInput(
+        text: $text,
+        status: mode == .streaming ? .streaming : .ready,
+        onSend: { _ in },
+        onStop: { }
+      )
       .onAppear {
         switch mode {
         case .idle:
@@ -69,4 +40,3 @@ struct PromptInputDemoView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
-

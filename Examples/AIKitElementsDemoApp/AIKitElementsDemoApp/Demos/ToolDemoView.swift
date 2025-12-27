@@ -1,4 +1,5 @@
 import SwiftUI
+import AIKitElements
 
 struct ToolDemoView: View {
   var body: some View {

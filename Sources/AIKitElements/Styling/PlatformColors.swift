@@ -7,7 +7,7 @@ import AppKit
 import SwiftUI
 
 extension Color {
-  static var aiKitPlatformBackground: Color {
+  static var platformBackground: Color {
     #if os(iOS) || os(tvOS) || os(visionOS)
     Color(uiColor: .systemBackground)
     #elseif os(macOS)
@@ -17,4 +17,3 @@ extension Color {
     #endif
   }
 }
-

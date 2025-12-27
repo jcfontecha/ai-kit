@@ -107,6 +107,8 @@ Recommended incremental implementation order:
 
 - Run tests: `swift test`
 - Record snapshots: `AIKIT_SNAPSHOT_RECORD=1 swift test`
+- Build non-UI targets (AIKit framework/packages): `swift build`
+- Build UI-dependent targets (e.g. demo apps): `xcb <target>` (example: `xcb AIKitElementsDemoApp`)
 
 ## House rules
 
