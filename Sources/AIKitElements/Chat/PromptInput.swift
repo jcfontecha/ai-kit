@@ -6,7 +6,15 @@ public struct PromptInput: View {
   public var status: ChatSessionStatus
   public var onSend: (String) -> Void
   public var onStop: () -> Void
-  private let controlSize: CGFloat = 14
+
+  // Tuning knobs
+  private let cornerRadius: CGFloat = 24
+  private let pillContentLeadingPadding: CGFloat = 10
+  private let pillContentVerticalPadding: CGFloat = 5
+  private let pillToControlPadding: CGFloat = 7
+  private let trailingControlInset: CGFloat = 6
+  private let controlIconSize: CGFloat = 16
+  private let controlIconPadding: CGFloat = 10
 
   public init(
     text: Binding<String>,
@@ -21,46 +29,70 @@ public struct PromptInput: View {
   }
 
   public var body: some View {
-    HStack(alignment: .bottom, spacing: 4) {
+    ZStack(alignment: .bottomTrailing) {
       composerField
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .disabled(status == .streaming || status == .submitted)
+        // Reserve space so multi-line text doesn't flow under the trailing control.
+        .padding(.trailing, trailingControlWidth + trailingControlInset)
+        .padding(.leading, pillContentLeadingPadding)
+        .padding(.vertical, pillContentVerticalPadding)
+        .padding(.bottom, pillContentVerticalPadding + 3)
 
-      if status == .streaming || status == .submitted {
-        Button(action: onStop) {
-          Image(systemName: "stop.fill")
-            .frame(width: controlSize, height: controlSize)
-        }
-        .buttonStyle(.plain)
-      } else {
-        Button {
-          let msg = text
-          text = ""
-          onSend(msg)
-        } label: {
-          Image(systemName: "arrow.up")
-            .frame(width: controlSize, height: controlSize)
-            .padding(6)
-            .foregroundStyle(sendEnabled ? Color.platformBackground : Color.platformBackground.opacity(0.55))
-            .background {
-              Circle()
-                .fill(sendEnabled ? Color.primary : Color.primary.opacity(0.30))
-            }
-            .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .disabled(sendEnabled == false)
-        .accessibilityLabel("Send")
-      }
+      trailingControl
+            .padding([.trailing, .top, .bottom], pillToControlPadding)
     }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 8)
-    .glassSurface(cornerRadius: 24)
+    .background {
+      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+        .fill(Color.clear)
+        .glassSurface(cornerRadius: cornerRadius)
+    }
   }
 
   private var sendEnabled: Bool {
     text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+  }
+
+  private var trailingControlWidth: CGFloat {
+    controlIconSize + (controlIconPadding * 2)
+  }
+
+  @ViewBuilder
+  private var trailingControl: some View {
+    if status == .streaming || status == .submitted {
+      Button(action: onStop) {
+        Image(systemName: "stop.fill")
+          .frame(width: controlIconSize, height: controlIconSize)
+          .padding(controlIconPadding)
+          .foregroundStyle(Color.platformBackground)
+          .background {
+            Circle().fill(Color.primary)
+          }
+          .contentShape(Circle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Stop")
+    } else {
+      Button {
+        let msg = text
+        text = ""
+        onSend(msg)
+      } label: {
+        Image(systemName: "arrow.up")
+          .frame(width: controlIconSize, height: controlIconSize)
+          .padding(controlIconPadding)
+          .foregroundStyle(sendEnabled ? Color.platformBackground : Color.platformBackground.opacity(0.55))
+          .background {
+            Circle()
+              .fill(sendEnabled ? Color.primary : Color.primary.opacity(0.30))
+          }
+          .contentShape(Circle())
+      }
+      .buttonStyle(.plain)
+      .disabled(sendEnabled == false)
+      .accessibilityLabel("Send")
+    }
   }
 
   @ViewBuilder
