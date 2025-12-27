@@ -124,6 +124,7 @@
 					0D697E832EFFDD960010CF71 /* AIKit */,
 					0D697E852EFFDD960010CF71 /* AIKitElements */,
 					0D697E872EFFDD960010CF71 /* AIKitOpenRouter */,
+					0D69AA122F00F5E10010CF71 /* MarkdownUI */,
 				);
 				productName = AIKitElementsDemoApp;
 				productReference = 0D697E3F2EFF8E440010CF71 /* AIKitElementsDemoApp.app */;
@@ -207,9 +208,10 @@
 			);
 			mainGroup = 0D697E362EFF8E440010CF71;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */,
-			);
+				packageReferences = (
+					0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */,
+					0D69AA112F00F5E10010CF71 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+				);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0D697E402EFF8E440010CF71 /* Products */;
 			projectDirPath = "";
@@ -636,19 +638,35 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../../../ai-kit";
 		};
-/* End XCLocalSwiftPackageReference section */
+	/* End XCLocalSwiftPackageReference section */
 
-/* Begin XCSwiftPackageProductDependency section */
-		0D697E832EFFDD960010CF71 /* AIKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */;
-			productName = AIKit;
-		};
-		0D697E852EFFDD960010CF71 /* AIKitElements */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */;
-			productName = AIKitElements;
-		};
+	/* Begin XCRemoteSwiftPackageReference section */
+			0D69AA112F00F5E10010CF71 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+				isa = XCRemoteSwiftPackageReference;
+				repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui.git";
+				requirement = {
+					kind = upToNextMajorVersion;
+					minimumVersion = 2.4.1;
+				};
+			};
+	/* End XCRemoteSwiftPackageReference section */
+	
+	/* Begin XCSwiftPackageProductDependency section */
+			0D697E832EFFDD960010CF71 /* AIKit */ = {
+				isa = XCSwiftPackageProductDependency;
+				package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */;
+				productName = AIKit;
+			};
+			0D69AA122F00F5E10010CF71 /* MarkdownUI */ = {
+				isa = XCSwiftPackageProductDependency;
+				package = 0D69AA112F00F5E10010CF71 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+				productName = MarkdownUI;
+			};
+			0D697E852EFFDD960010CF71 /* AIKitElements */ = {
+				isa = XCSwiftPackageProductDependency;
+				package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */;
+				productName = AIKitElements;
+			};
 		0D697E872EFFDD960010CF71 /* AIKitOpenRouter */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */;

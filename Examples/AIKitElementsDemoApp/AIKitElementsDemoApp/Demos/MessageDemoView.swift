@@ -1,13 +1,32 @@
 import SwiftUI
+import MarkdownUI
 
 struct MessageDemoView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
-      MessageBubble(role: .assistant, text: "Hello! I'm the assistant. This is a normal, readable bubble.")
       MessageBubble(role: .user, text: "And I'm the user. Bubbles should not be glass by default.")
-      MessageBubble(role: .assistant, text: "Markdown/code should render on a non-glass surface for legibility.")
+      AssistantMarkdownMessage(markdown: assistantMarkdown)
+      AssistantMarkdownMessage(markdown: "Assistant messages should be **unrestricted text** (no bubble).")
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var assistantMarkdown: String {
+    """
+    Here’s a markdown response (rendered with **MarkdownUI**):
+
+    - Lists
+    - *Emphasis*
+    - Links: [AIKit](https://github.com)
+
+    ```swift
+    struct Hello: View {
+      var body: some View { Text(\"Hello\") }
+    }
+    ```
+
+    > Keep the assistant content readable by avoiding bubbles/glass behind it.
+    """
   }
 }
 
@@ -19,12 +38,12 @@ private struct MessageBubble: View {
 
   var body: some View {
     HStack {
-      if role == .assistant {
-        bubble
+      if role == .user {
         Spacer(minLength: 24)
+        bubble
       } else {
-        Spacer(minLength: 24)
         bubble
+        Spacer(minLength: 24)
       }
     }
   }
@@ -43,5 +62,15 @@ private struct MessageBubble: View {
               .stroke(Color.primary.opacity(role == .user ? 0 : 0.12), lineWidth: 1)
           }
       }
+  }
+}
+
+private struct AssistantMarkdownMessage: View {
+  let markdown: String
+
+  var body: some View {
+    Markdown(markdown)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.vertical, 4)
   }
 }
