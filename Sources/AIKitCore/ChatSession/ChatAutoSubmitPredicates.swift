@@ -1,6 +1,13 @@
 import Foundation
 
 public enum ChatAutoSubmitPredicates {
+  public static func lastAssistantMessageIsCompleteWithToolCallsOrApprovalResponses(
+    messages: [ChatMessage]
+  ) -> Bool {
+    lastAssistantMessageIsCompleteWithToolCalls(messages: messages)
+      || lastAssistantMessageIsCompleteWithApprovalResponses(messages: messages)
+  }
+
   public static func lastAssistantMessageIsCompleteWithToolCalls(
     messages: [ChatMessage]
   ) -> Bool {
@@ -65,4 +72,3 @@ public enum ChatAutoSubmitPredicates {
     }
   }
 }
-

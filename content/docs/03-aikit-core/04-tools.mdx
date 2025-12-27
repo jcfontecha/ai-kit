@@ -5,12 +5,17 @@ description: Define tools, tool schemas, and tool execution behavior.
 
 # Tools
 
-Tools are registered in a `ToolRegistry` and passed to `generateText` / `streamText` / `ToolLoopAgent`.
+Tools are registered in a `ToolRegistry` and passed to `AIClient` defaults (recommended) or to `generateText` / `streamText` / `ToolLoopAgent`.
 
 ## Registering a tool
 
 ```swift
+import AIKit
+import AIKitMacro
+
+@AIModel
 struct WeatherInput: Codable, Sendable {
+  @Field("City name", minLength: 1, maxLength: 100)
   var city: String
 }
 
@@ -22,14 +27,7 @@ tools.register(
   ToolSpec(
     title: "Weather",
     description: "Get current weather for a city.",
-    inputSchema: .manual(
-      jsonSchema: .object(
-        properties: ["city": .string()],
-        required: ["city"],
-        additionalProperties: false
-      ),
-      name: "WeatherInput"
-    ),
+    inputSchema: WeatherInput.schema,
     execute: { input, _ in
       .final("Sunny in \(input.city)")
     }
@@ -47,4 +45,3 @@ tools.register(
 ## Streaming tool execution
 
 Tools can stream progress back into the loop via `ToolExecution.streaming(...)`. AIKit will forward these into the overall `TextStreamPart` stream as tool result parts.
-

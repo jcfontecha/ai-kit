@@ -1,47 +1,48 @@
 ---
-title: ChatSession
-description: Manage chat state, streaming updates, and tool calling for UI.
+title: ChatStore
+description: useChat-style chat state for SwiftUI/Combine.
 ---
 
-# ChatSession
+# ChatStore
 
-`ChatSession` is an actor that manages a chat transcript and request lifecycle. It is designed for UI integration:
+`ChatStore` is the single “useChat-shaped” API for app code:
 
 - stores messages (`[ChatMessage]`)
-- exposes status updates (`ChatSessionSnapshot`)
+- exposes request status + errors
 - can stream assistant messages into the transcript
+- supports tool calls, tool outputs, and tool approvals
 
-## Using ChatSession
-
-```swift
-let session = ChatSession(.init(
-  model: model,
-  tools: tools,
-  system: .instructions("You are helpful.")
-))
-
-await session.send(.init(
-  role: .user,
-  parts: [
-    .text(.init(id: "text-1", text: "Hello!", state: .done)),
-  ]
-))
-```
-
-## Combine/SwiftUI
-
-If you can import Combine, `AIKit` exposes `ChatSessionObservable` for SwiftUI-friendly state:
+## Remote chat (recommended)
 
 ```swift
 import AIKit
 
-@StateObject var obs = ChatSessionObservable(session: session)
+@StateObject var chat = ChatStore(remote: URL(string: "https://example.com/api/chat")!)
+
+chat.sendMessage("Hello!")
 ```
 
-See `Sources/AIKitCore/ChatSession/*` and `Sources/AIKit/ChatSessionObservable.swift` for details.
+## Local chat (on-device / client-side model)
+
+```swift
+import AIKit
+
+var tools = ToolRegistry()
+// tools.register(...)
+
+@StateObject var chat = ChatStore(
+  model: model,
+  system: .instructions("You are helpful."),
+  tools: tools
+)
+
+chat.sendMessage("Hello!")
+```
+
+See `Sources/AIKit/ChatStore.swift`.
 
 ## Node server streaming
 
-If you want to drive `ChatSession` from a server-side Vercel AI SDK `streamText` endpoint (SSE UI message stream), see:
+If your backend runs Vercel AI SDK `streamText` and returns the UI message stream (SSE v1), see:
 
-- [Node Server + iOS ChatSession](../06-advanced/04-node-server-chat-session.mdx)
+- [Node Server + iOS ChatStore](../06-advanced/04-node-server-chat-session.mdx)

@@ -1,5 +1,6 @@
 import XCTest
 import AIKit
+import AIKitCore
 import AIKitMacro
 
 @AIModel
@@ -53,9 +54,9 @@ final class AIKitE2ETests: XCTestCase {
       )
     }
 
-    let result = try await generateText(
-      model: model,
-      prompt: "Return a JSON object for a person.",
+    let ai = AIClient(model: model)
+    let result = try await ai.generate(
+      "Return a JSON object for a person.",
       output: Output.typedObject(E2EPerson.self)
     )
 
@@ -85,9 +86,9 @@ final class AIKitE2ETests: XCTestCase {
       }
     )
 
-    let stream = streamText(
-      model: model,
-      prompt: "Return a person JSON object.",
+    let ai = AIClient(model: model)
+    let stream = ai.stream(
+      "Return a person JSON object.",
       output: Output.typedObject(E2EPerson.self)
     )
 

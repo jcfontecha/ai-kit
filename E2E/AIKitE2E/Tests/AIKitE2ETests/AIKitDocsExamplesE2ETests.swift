@@ -1,8 +1,15 @@
 import XCTest
 import AIKit
+import AIKitCore
 import AIKitOpenAI
 import AIKitOpenRouter
 import AIKitMacro
+
+@AIModel
+private struct DocsWeatherInput: Codable, Sendable, Equatable {
+  @Field("City name", minLength: 1, maxLength: 100)
+  var city: String
+}
 
 final class AIKitDocsExamplesE2ETests: XCTestCase {
   func testDocsSwiftSnippetInventory() throws {
@@ -70,19 +77,12 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
       ])
     })
 
-    let result = try await generateText(
-      model: model,
-      prompt: "Write a haiku about Swift concurrency.",
-      output: Output.text()
-    )
+    let ai = AIClient(model: model)
+    let result = try await ai.generate("Write a haiku about Swift concurrency.")
 
     XCTAssertEqual(result.text, "Hello from generateText.")
 
-    let stream = streamText(
-      model: model,
-      prompt: "Write a short story in three sentences.",
-      output: Output.text()
-    )
+    let stream = ai.stream("Write a short story in three sentences.")
 
     var combined = ""
     for try await delta in stream.textStream {
@@ -98,21 +98,17 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
       return .init(content: [.text("ok")], finishReason: .stop, rawFinishReason: "stop")
     }
 
-    let result = try await generateText(
-      model: model,
-      messages: [
-        .system("You are concise."),
-        .user("Give me three names for a coffee shop."),
-      ],
-      output: Output.text()
-    )
+    let ai = AIClient(model: model)
+    let result = try await ai.generate(messages: [
+      .system("You are concise."),
+      .user("Give me three names for a coffee shop."),
+    ])
 
     XCTAssertEqual(result.text, "ok")
   }
 
   func testDocsToolsExample_registersAndToolLoopExecutes() async throws {
-    struct WeatherInput: Codable, Sendable, Equatable { var city: String }
-    let weather = ToolID<WeatherInput, String>("weather")
+    let weather = ToolID<DocsWeatherInput, String>("weather")
 
     var tools = ToolRegistry()
     tools.register(
@@ -120,14 +116,7 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
       ToolSpec(
         title: "Weather",
         description: "Get current weather for a city.",
-        inputSchema: .manual(
-          jsonSchema: .object(
-            properties: ["city": .string()],
-            required: ["city"],
-            additionalProperties: false
-          ),
-          name: "WeatherInput"
-        ),
+        inputSchema: DocsWeatherInput.schema,
         execute: { input, _ in
           .final("Sunny in \(input.city)")
         }
@@ -155,13 +144,8 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
       },
     ])
 
-    let result = try await generateText(
-      model: model,
-      prompt: "Call the tool, then explain the result.",
-      tools: tools,
-      stopWhen: [Stop.stepCountIs(5)],
-      output: Output.text()
-    )
+    let ai = AIClient(model: model, defaults: .init(tools: tools, maxSteps: 5))
+    let result = try await ai.generate("Call the tool, then explain the result.")
 
     let allToolResults = result.steps.flatMap(\.toolResults)
     XCTAssertEqual(allToolResults.first?.toolName, "weather")
@@ -200,27 +184,15 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
     XCTAssertEqual(result.text, "agent ok")
   }
 
-  func testDocsChatSession_examplesCompile() async {
+  func testDocsChatStore_examplesCompile() async {
     let model = RecordingLanguageModel { _ in
       .init(content: [.text("ok")], finishReason: .stop, rawFinishReason: "stop")
     }
 
-    let session = ChatSession(.init(
-      model: model,
-      tools: nil,
-      system: .instructions("You are helpful.")
-    ))
-
-    await session.send(.init(
-      role: .user,
-      parts: [
-        .text(.init(id: "text-1", text: "Hello!", state: .done)),
-      ]
-    ))
-
     #if canImport(Combine)
     await MainActor.run {
-      _ = ChatSessionObservable(session: session)
+      _ = ChatStore(model: model, system: .instructions("You are helpful."))
+      _ = ChatStore(remote: URL(string: "https://example.com/api/chat")!)
     }
     #endif
   }

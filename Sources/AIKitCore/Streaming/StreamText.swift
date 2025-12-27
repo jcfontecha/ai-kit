@@ -384,6 +384,7 @@ private actor StreamTextCollector<OUT: OutputSpec> {
   }
 }
 
+@_spi(Advanced)
 public func streamText<OUT: OutputSpec>(_ options: StreamTextOptions<OUT>) -> StreamTextResult<OUT> {
   let collector = StreamTextCollector<OUT>()
 
@@ -437,6 +438,7 @@ public func streamText<OUT: OutputSpec>(_ options: StreamTextOptions<OUT>) -> St
   )
 }
 
+@_spi(Advanced)
 public func streamText<OUT: OutputSpec>(
   model: any LanguageModel,
   system: SystemPrompt? = nil,
@@ -480,6 +482,7 @@ public func streamText<OUT: OutputSpec>(
   ))
 }
 
+@_spi(Advanced)
 public func streamText<OUT: OutputSpec>(
   model: any LanguageModel,
   system: SystemPrompt? = nil,

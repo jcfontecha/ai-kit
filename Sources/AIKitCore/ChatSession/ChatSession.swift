@@ -118,6 +118,56 @@ public struct ChatSessionInit: Sendable {
     self.messages = messages
   }
 
+  /// Convenience initializer for local chat driven by a configured `ToolLoopAgent`.
+  ///
+  /// This mirrors the AI SDK setup where the server decides whether responses come from
+  /// `streamText(...)` directly or from an agent wrapper; here, the app makes that choice
+  /// explicitly when running locally.
+  public init<CALL_OPTIONS: Sendable>(
+    id: String? = nil,
+    agent: ToolLoopAgent<CALL_OPTIONS, Output.Text>,
+    sendAutomaticallyWhen: (@Sendable (_ messages: [ChatMessage]) async -> Bool)? = nil,
+    onError: (@Sendable (_ error: Error) async -> Void)? = nil,
+    onFinish: (@Sendable (_ event: ChatSessionFinishEvent) async -> Void)? = nil,
+    generateID: (@Sendable () -> String)? = nil,
+    messages: [ChatMessage] = []
+  ) {
+    self.init(
+      id: id,
+      model: nil,
+      tools: nil,
+      toolChoice: .auto,
+      activeTools: nil,
+      system: nil,
+      settings: .init(),
+      headers: nil,
+      providerOptions: nil,
+      onToolCall: nil,
+      onData: nil,
+      sendAutomaticallyWhen: sendAutomaticallyWhen,
+      validateMessageMetadata: nil,
+      validateDataParts: nil,
+      requestStream: { _, chatMessages, _, _, options, cancellationToken in
+        let modelMessages = try await convertToModelMessages(
+          chatMessages,
+          options: .init(tools: nil, ignoreIncompleteToolCalls: false)
+        )
+
+        var configured = agent
+        configured.headers = options?.headers
+        configured.cancellationToken = cancellationToken
+
+        let result = await configured.stream(messages: modelMessages, options: nil)
+        return result.fullStream.flatMapToUIMessageStreamParts()
+      },
+      reconnectToStream: nil,
+      onError: onError,
+      onFinish: onFinish,
+      generateID: generateID,
+      messages: messages
+    )
+  }
+
   /// Convenience initializer for the “remote transport” mode where a server runs the AI SDK
   /// and iOS consumes the AI SDK UI message stream protocol (SSE v1).
   ///

@@ -14,10 +14,11 @@ AIKitCore is designed as a translation of AI SDK Core semantics into Swift. The 
 - `ToolLoopAgent` (JS) → `ToolLoopAgent` (Swift)
 - `Output` (JS) → `Output` / `OutputSpec` (Swift)
 - tool schema (Zod/JSON Schema) → `ObjectSchema<T>` wrapping `JSONSchema`
+- `useChat(...)` (JS) → `ChatStore` (SwiftUI/Combine-friendly façade)
+- “configure once” patterns → `AIClient` (stores defaults, calls `generateText` / `streamText`)
 
 ## Key differences
 
 - Streams are `AsyncThrowingStream` (Swift) instead of web streams/iterables (JS).
 - Provider integrations are separate SwiftPM targets (e.g. `AIKitOpenRouter`).
-- UI hooks are not a separate package; AIKit provides `ChatSession` + `ChatSessionObservable` for app-layer integration.
-
+- UI hooks are not a separate package; AIKit provides `ChatStore` for app-layer integration.

@@ -1,5 +1,5 @@
 import XCTest
-@testable import AIKitCore
+@testable @_spi(Advanced) import AIKitCore
 import AIKitProviders
 
 final class AIUIMessageDecoderTests: XCTestCase {
@@ -148,4 +148,3 @@ final class AIUIMessageDecoderTests: XCTestCase {
     }
   }
 }
-

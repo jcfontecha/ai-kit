@@ -38,9 +38,9 @@ struct Person: Codable, Sendable {
 You can now use the type directly with `Output.typedObject`:
 
 ```swift
-let result = try await generateText(
-  model: model,
-  prompt: "Return a JSON object for a person.",
+let ai = AIClient(model: model)
+let result = try await ai.generate(
+  "Return a JSON object for a person.",
   output: Output.typedObject(Person.self)
 )
 
@@ -85,4 +85,3 @@ Built-in mappings include:
 - nested `SchemaProviding` types via `NestedType.schema.jsonSchema`
 
 Optional properties (`T?` / `Optional<T>`) are treated as not-required in the generated object schema.
-

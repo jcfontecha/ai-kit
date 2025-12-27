@@ -10,11 +10,8 @@ description: Single-step text/object generation with optional tools and stop con
 ## Basic usage
 
 ```swift
-let result = try await generateText(
-  model: model,
-  prompt: "Summarize this in one sentence: …",
-  output: Output.text()
-)
+let ai = AIClient(model: model)
+let result = try await ai.generate("Summarize this in one sentence: …")
 
 print(result.text)
 ```
@@ -22,32 +19,23 @@ print(result.text)
 ## Messages instead of prompt
 
 ```swift
-let result = try await generateText(
-  model: model,
-  messages: [
-    .system("You are concise."),
-    .user("Give me three names for a coffee shop."),
-  ],
-  output: Output.text()
-)
+let ai = AIClient(model: model)
+let result = try await ai.generate(messages: [
+  .system("You are concise."),
+  .user("Give me three names for a coffee shop."),
+])
 ```
 
 ## Tools (multi-step)
 
-To enable multi-step tool execution, pass tools and increase `stopWhen` beyond the default single step:
+To enable multi-step tool execution, pass tools and increase `maxSteps` beyond the default single step:
 
 ```swift
 var tools = ToolRegistry()
 // tools.register(...)
 
-let result = try await generateText(
-  model: model,
-  prompt: "Call the tool, then explain the result.",
-  tools: tools,
-  stopWhen: [Stop.stepCountIs(5)],
-  output: Output.text()
-)
+let ai = AIClient(model: model, defaults: .init(tools: tools, maxSteps: 5))
+let result = try await ai.generate("Call the tool, then explain the result.")
 ```
 
 For tool approvals, see [Tool approvals](./05-tool-approvals.mdx).
-

@@ -1,5 +1,5 @@
 import XCTest
-@testable import AIKitCore
+@testable @_spi(Advanced) import AIKitCore
 import AIKitProviders
 
 final class ChatTransportWiringTests: XCTestCase {
@@ -53,4 +53,3 @@ final class ChatTransportWiringTests: XCTestCase {
     XCTAssertEqual(assistantText, "Hello")
   }
 }
-

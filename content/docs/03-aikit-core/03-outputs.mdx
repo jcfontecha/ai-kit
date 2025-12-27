@@ -29,24 +29,22 @@ AIKit’s canonical schema container is `ObjectSchema<T>`, which wraps provider-
 
 The preferred authoring path is macros (`@AIModel`), which generate `SchemaProviding` and `ObjectSchema<T>` for a type. See [Schemas and macros](../02-foundations/04-schemas-and-macros.mdx).
 
-Manual schema:
+Macro schema:
 
 ```swift
-struct Person: Codable, Sendable { let name: String }
+import AIKit
+import AIKitMacro
 
-let schema = ObjectSchema<Person>.manual(
-  jsonSchema: .object(
-    properties: ["name": .string()],
-    required: ["name"],
-    additionalProperties: false
-  ),
-  name: "Person"
-)
+@AIModel
+struct Person: Codable, Sendable {
+  @Field("Full name", minLength: 1, maxLength: 100)
+  var name: String
+}
 
-let result = try await generateText(
-  model: model,
-  prompt: "Return {\"name\":\"…\"}.",
-  output: Output.object(Person.self, schema: schema)
+let ai = AIClient(model: model)
+let result = try await ai.generate(
+  "Return a JSON object for a person.",
+  output: Output.typedObject(Person.self)
 )
 
 let person = try result.output

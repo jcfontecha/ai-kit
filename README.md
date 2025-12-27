@@ -19,35 +19,29 @@ Add this repository as a Swift Package dependency, then depend on one of:
 ## Quickstart (generate)
 
 ```swift
-import AIKitCore
+import AIKit
 import AIKitOpenRouter
 
 let openrouter = createOpenRouter(.init(apiKey: "<OPENROUTER_API_KEY>"))
 let model = openrouter.chat("openai/gpt-4o-mini")
 
-let result = try await generateText(.init(
-  model: model,
-  prompt: "Write one sentence about Swift concurrency.",
-  output: Output.Text()
-))
+let ai = AIClient(model: model)
+let result = try await ai.generate("Write one sentence about Swift concurrency.")
 
-print(try result.output)
+print(result.text)
 ```
 
 ## Quickstart (stream)
 
 ```swift
-import AIKitCore
+import AIKit
 import AIKitOpenRouter
 
 let openrouter = createOpenRouter(.init(apiKey: "<OPENROUTER_API_KEY>"))
 let model = openrouter.chat("openai/gpt-4o-mini")
 
-let stream = streamText(.init(
-  model: model,
-  prompt: "Stream 3 short bullet points about SSE.",
-  output: Output.Text()
-))
+let ai = AIClient(model: model)
+let stream = ai.stream("Stream 3 short bullet points about SSE.")
 
 for try await delta in stream.textStream {
   print(delta, terminator: "")
@@ -58,4 +52,3 @@ let finalText = try await stream.text
 ## Docs
 
 Start here: `docs/README.md`
-

@@ -377,7 +377,7 @@ AIKit:
 - `ChatSession` provides a framework-agnostic observation mechanism:
   - `ChatSession.updates(...) -> AsyncStream<ChatSessionSnapshot>`
   - Each mutation (message append/replace, status/error change, every streamed part application) yields a new snapshot.
-- A SwiftUI app can either consume the `AsyncStream` directly in a `Task`, or use the optional `ChatSessionObservable` adapter.
+- A SwiftUI app can either consume the `AsyncStream` directly in a `Task`, or use `ChatStore` as a useChat-shaped `ObservableObject` façade.
 
 Because:
 

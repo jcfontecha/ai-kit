@@ -175,6 +175,7 @@ public struct GenerateTextResult<OUT: OutputSpec>: Sendable {
   }
 }
 
+@_spi(Advanced)
 public func generateText<OUT: OutputSpec>(_ options: GenerateTextOptions<OUT>) async throws -> GenerateTextResult<OUT> {
   var steps: [StepResult] = []
   var totalUsage = Usage()
@@ -887,6 +888,7 @@ private extension Usage {
   }
 }
 
+@_spi(Advanced)
 public func generateText<OUT: OutputSpec>(
   model: any LanguageModel,
   system: SystemPrompt? = nil,
@@ -926,6 +928,7 @@ public func generateText<OUT: OutputSpec>(
   ))
 }
 
+@_spi(Advanced)
 public func generateText<OUT: OutputSpec>(
   model: any LanguageModel,
   system: SystemPrompt? = nil,

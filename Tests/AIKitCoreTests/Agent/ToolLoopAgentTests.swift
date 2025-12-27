@@ -1,7 +1,7 @@
 import XCTest
 import AIKitProviders
 import AIKitTestKit
-@testable import AIKitCore
+@testable @_spi(Advanced) import AIKitCore
 
 final class ToolLoopAgentTests: XCTestCase {
   private struct CallOptions: Sendable, Equatable {

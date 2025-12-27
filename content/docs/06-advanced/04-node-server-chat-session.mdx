@@ -1,16 +1,16 @@
 ---
-title: Node Server + iOS ChatSession
-description: Drive ChatSession from a Node Vercel AI SDK streamText SSE endpoint.
+title: Node Server + iOS ChatStore
+description: Drive ChatStore from a Node Vercel AI SDK streamText SSE endpoint.
 ---
 
-# Node Server + iOS ChatSession
+# Node Server + iOS ChatStore
 
-This pattern lets you keep model credentials and (optionally) server-executed tools on a Node backend, while your iOS app uses `ChatSession` to manage UI state and tool UX.
+This pattern lets you keep model credentials and (optionally) server-executed tools on a Node backend, while your iOS app uses `ChatStore` to manage UI state and tool UX.
 
 At a high level:
 
 - **Node** runs the real Vercel AI SDK `streamText(...)` and returns an **SSE UI message stream** (`toUIMessageStreamResponse()`).
-- **iOS** opens the SSE stream, decodes it into `AIUIMessageStreamPart`, and feeds those parts into `ChatSession` via `ChatSessionInit.requestStream`.
+- **iOS** uses `ChatStore(remote: URL)` to talk to that endpoint.
 
 ## Server (Node): streamText endpoint (AI SDK)
 
@@ -22,7 +22,7 @@ The recommended wire protocol is the AI SDK UI message stream (SSE v1):
 
 ## Endpoint contract (recommended)
 
-This is the concrete contract that `AIUIChatEndpointTransport` targets (mirrors AI SDK UI `HttpChatTransport` semantics):
+This is the concrete contract that AIKit’s remote chat expects (mirrors AI SDK UI `HttpChatTransport` semantics):
 
 ### `POST /api/chat` (send messages)
 
@@ -98,106 +98,51 @@ You can mix these strategies:
 
 To support client-executed tools end-to-end, your endpoint needs to accept a message payload that can represent tool calls/results/approvals (not just plain text).
 
-## Client (iOS): ChatSession driven by a remote stream
+## Client (iOS): ChatStore
 
-AIKit exposes:
-
-- `ChatSessionInit.requestStream` (a hook for `submit()` to use a remote `AsyncThrowingStream<AIUIMessageStreamPart, Error>`).
-- `AIUIChatEndpointTransport`:
-  - encodes `ChatMessage[]` → AI SDK `UIMessage[]`
-  - builds the HTTP request body (`id`, `messages`, `trigger`, `messageId`, plus merged body keys)
-  - validates `x-vercel-ai-ui-message-stream: v1`
-  - decodes SSE into `AIUIMessageStreamPart`
-
-### Minimal `HTTPTransport` for URLSession
-
-```swift
-import Foundation
-import AIKitProviders
-
-// AIKitProviders includes `URLSessionHTTPTransport` (uses `URLSession.shared`).
-```
-
-### ChatSession with `requestStream`
+### ChatStore “URL-only” setup
 
 ```swift
 import Foundation
 import AIKit
-import AIKitProviders
 
 let serverURL = URL(string: "https://your-server.example.com/api/chat")!
-let endpoint = AIUIChatEndpointTransport(url: serverURL, httpTransport: URLSessionHTTPTransport())
 
-let session = ChatSession(.init(
-  model: nil, // required when `requestStream` is not provided
-  requestStream: endpoint.makeRequestStream(),
-  reconnectToStream: endpoint.makeReconnectToStream() // optional; enables `resumeStream()`
-))
+let chat = ChatStore(remote: serverURL)
 
-await session.send(.init(
-  role: .user,
-  parts: [.text(.init(id: "u1", text: "Hello!", state: .done))]
-))
-```
-
-### ChatSession with `ChatTransport` (recommended)
-
-AIKit also exposes a `ChatTransport` protocol mirroring the AI SDK UI transport interface.
-`AIUIChatEndpointTransport` conforms to it, so you can write:
-
-```swift
-import Foundation
-import AIKit
-import AIKitProviders
-
-let serverURL = URL(string: "https://your-server.example.com/api/chat")!
-let transport = AIUIChatEndpointTransport(url: serverURL, httpTransport: URLSessionHTTPTransport())
-
-let session = ChatSession(.init(
-  id: "c123",
-  transport: transport
-))
+chat.sendMessage("Hello!")
 ```
 
 ### Adding per-request body/headers (optional)
 
 ```swift
-await session.send(
-  .init(role: .user, parts: [.text(.init(id: "u1", text: "Hello!", state: .done))]),
-  options: .init(
+import Foundation
+import AIKit
+
+let serverURL = URL(string: "https://your-server.example.com/api/chat")!
+let chat = ChatStore(
+  remote: serverURL,
+  requestOptions: .init(
     headers: ["x-client": "ios"],
     body: .object(["sessionId": .string("s1")])
   )
 )
-```
 
-### Adding transport-level body/headers (optional)
-
-If you have “global” headers/body keys you want on every request (mirrors AI SDK UI `HttpChatTransport`):
-
-```swift
-let endpoint = AIUIChatEndpointTransport(
-  url: serverURL,
-  httpTransport: URLSessionHTTPTransport(),
-  headers: ["Authorization": "Bearer <token>"],
-  body: .object(["sessionId": .string("s1")])
-)
+chat.sendMessage("Hello!", options: .init(metadata: .object(["traceID": .string("abc")])))
 ```
 
 ### Resume (optional): `GET /api/chat/:id/stream`
 
-AI SDK `useChat` supports `resumeStream()` by doing a `GET` request to:
-
-- `GET /api/chat/:id/stream`
-- if the server replies `204 No Content`, there is no active stream to resume
+AI SDK `useChat` supports `resumeStream()` by doing a `GET` request to `GET /api/chat/:id/stream`.
 
 On iOS, call:
 
 ```swift
-await session.resumeStream()
+chat.resume()
 ```
 
 Implementing a resumable stream requires server-side state (at minimum: “is there an active stream for this `id`?”). AIKit assumes the AI SDK default endpoint shape + `204` behavior, but does not prescribe a persistence strategy.
+
 
 ## Server persistence contract (recommended)
 
@@ -340,7 +285,7 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
 }
 ```
 
-This satisfies AI SDK `resumeStream()` semantics (and AIKit `ChatSession.resumeStream()`):
+This satisfies AI SDK `resumeStream()` semantics (and AIKit `ChatStore.resume()`):
 
 - while the stream is active: `GET .../:id/stream` returns a stream,
 - once finished: it returns `204`.

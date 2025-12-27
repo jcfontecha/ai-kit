@@ -1,5 +1,5 @@
 import XCTest
-@testable import AIKitCore
+@testable @_spi(Advanced) import AIKitCore
 import AIKitProviders
 
 private extension JSONValue {
