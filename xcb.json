@@ -2,12 +2,24 @@
   "version": 1,
   "builds": [
     {
-      "id": "default",
+      "id": "demo-swiftui",
       "scheme": "AIKitElementsDemoApp",
       "project": "Examples/AIKitElementsDemoApp/AIKitElementsDemoApp.xcodeproj",
       "destination": "generic/platform=iOS Simulator",
       "configuration": "Debug"
+    },
+    {
+      "id": "demo-uikit",
+      "scheme": "DemoUIKit",
+      "project": "Examples/DemoUIKit/DemoUIKit.xcodeproj",
+      "destination": "generic/platform=iOS Simulator",
+      "configuration": "Debug"
+    },
+    {
+      "id": "swift-packages",
+      "scheme": "AIKit",
+      "packageDir": ".",
+      "destination": "platform=macOS"
     }
   ]
 }
-

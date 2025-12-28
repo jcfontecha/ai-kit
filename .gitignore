@@ -24,6 +24,9 @@ Examples/**/*.xcuserstate
 # Node (in case tools/examples add it)
 **/node_modules/
 
+# Apple reference docs
+internal_docs/references/apple-developer-docs/
+
 # Repo-local analysis artifacts / upstream vendor
 ai-sdk/
 openrouter-provider/

@@ -196,7 +196,7 @@ public struct Conversation<MessageView: View>: View {
 private struct ScrollEdgeEffectCompat: ViewModifier {
   func body(content: Content) -> some View {
     if #available(iOS 26.0, macOS 26.0, *) {
-      content.scrollEdgeEffectStyle(.hard, for: .bottom)
+      content.scrollEdgeEffectStyle(.soft, for: .bottom)
     } else {
       content
     }
