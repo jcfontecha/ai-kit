@@ -11,6 +11,7 @@
 		0D80A0212F01234500574A17 /* AIKitProviders in Frameworks */ = {isa = PBXBuildFile; productRef = 0D80A0112F01234500574A17 /* AIKitProviders */; };
 		0D80A0222F01234500574A17 /* AIKitElements in Frameworks */ = {isa = PBXBuildFile; productRef = 0D80A0122F01234500574A17 /* AIKitElements */; };
 		0D80A0232F01234500574A17 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 0D80A0132F01234500574A17 /* MarkdownUI */; };
+		0D80A0242F01234500574A17 /* AIKitOpenRouter in Frameworks */ = {isa = PBXBuildFile; productRef = 0D80A0142F01234500574A17 /* AIKitOpenRouter */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +76,7 @@
 				0D80A0202F01234500574A17 /* AIKitCore in Frameworks */,
 				0D80A0212F01234500574A17 /* AIKitProviders in Frameworks */,
 				0D80A0222F01234500574A17 /* AIKitElements in Frameworks */,
+				0D80A0242F01234500574A17 /* AIKitOpenRouter in Frameworks */,
 				0D80A0232F01234500574A17 /* MarkdownUI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -139,6 +141,7 @@
 				0D80A0102F01234500574A17 /* AIKitCore */,
 				0D80A0112F01234500574A17 /* AIKitProviders */,
 				0D80A0122F01234500574A17 /* AIKitElements */,
+				0D80A0142F01234500574A17 /* AIKitOpenRouter */,
 				0D80A0132F01234500574A17 /* MarkdownUI */,
 			);
 			productName = DemoUIKit;
@@ -649,6 +652,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 0D80A0012F01234500574A17 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
+		};
+		0D80A0142F01234500574A17 /* AIKitOpenRouter */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0D80A0002F01234500574A17 /* XCLocalSwiftPackageReference "../../../ai-kit" */;
+			productName = AIKitOpenRouter;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

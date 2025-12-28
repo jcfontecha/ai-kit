@@ -5,6 +5,7 @@
 //  Created by Juan Carlos on 12/27/25.
 //
 
+import SwiftUI
 import UIKit
 
 final class ComponentsViewController: UITableViewController {
@@ -45,9 +46,9 @@ final class ComponentsViewController: UITableViewController {
       let vc: UIViewController
       switch id {
       case "demo/chat":
-        vc = PlaceholderViewController(title: "Chat Demo", detail: "TODO: Port OpenRouterChatDemoView to UIKit demo.")
+        vc = UIKitOpenRouterChatDemoViewController()
       case "settings/openrouter":
-        vc = PlaceholderViewController(title: "Settings", detail: "TODO: Port OpenRouterSettingsView to UIKit demo.")
+        vc = HostingDemoViewController(title: "Settings") { AnyView(OpenRouterSettingsView()) }
       default:
         vc = PlaceholderViewController(title: row.title, detail: "TODO")
       }

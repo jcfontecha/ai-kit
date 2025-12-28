@@ -1,14 +1,13 @@
 import SwiftUI
 import AIKit
 
-public struct PromptInput: View {
+public struct PromptInputElements: View {
   @Binding public var text: String
   public var status: ChatSessionStatus
   public var onSend: (String) -> Void
   public var onStop: () -> Void
 
   // Tuning knobs
-  private let cornerRadius: CGFloat = 24
   private let pillContentLeadingPadding: CGFloat = 10
   private let pillContentVerticalPadding: CGFloat = 5
   private let pillToControlPadding: CGFloat = 7
@@ -42,11 +41,6 @@ public struct PromptInput: View {
 
       trailingControl
             .padding([.trailing, .top, .bottom], pillToControlPadding)
-    }
-    .background {
-      RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        .fill(Color.clear)
-        .glassSurface(cornerRadius: cornerRadius)
     }
   }
 
@@ -112,6 +106,36 @@ public struct PromptInput: View {
     TextField("Message", text: $text)
       .textFieldStyle(.plain)
     #endif
+  }
+}
+
+public struct PromptInput: View {
+  @Binding public var text: String
+  public var status: ChatSessionStatus
+  public var onSend: (String) -> Void
+  public var onStop: () -> Void
+
+  private let cornerRadius: CGFloat = 24
+
+  public init(
+    text: Binding<String>,
+    status: ChatSessionStatus,
+    onSend: @escaping (String) -> Void,
+    onStop: @escaping () -> Void
+  ) {
+    self._text = text
+    self.status = status
+    self.onSend = onSend
+    self.onStop = onStop
+  }
+
+  public var body: some View {
+    PromptInputElements(text: $text, status: status, onSend: onSend, onStop: onStop)
+      .background {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+          .fill(Color.clear)
+          .glassSurface(cornerRadius: cornerRadius)
+      }
   }
 }
 

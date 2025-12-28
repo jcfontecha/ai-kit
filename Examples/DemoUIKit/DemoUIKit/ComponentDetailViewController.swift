@@ -58,6 +58,11 @@ final class ComponentDetailViewController: UITableViewController {
     defer { tableView.deselectRow(at: indexPath, animated: true) }
 
     let variant = component.variants[indexPath.row]
+    if component.id == "conversation", variant.id == "conversation/basic" {
+      navigationController?.pushViewController(UIKitConversationDemoViewController(), animated: true)
+      return
+    }
+
     let vc = HostingDemoViewController(title: variant.title, build: variant.build)
     navigationController?.pushViewController(vc, animated: true)
   }

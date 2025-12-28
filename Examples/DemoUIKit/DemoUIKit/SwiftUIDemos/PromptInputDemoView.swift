@@ -40,4 +40,3 @@ struct PromptInputDemoView: View {
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
-
