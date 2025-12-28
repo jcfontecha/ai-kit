@@ -9,7 +9,6 @@ let package = Package(
   ],
   products: [
     .library(name: "AIKit", targets: ["AIKit"]),
-    .library(name: "AIKitCore", targets: ["AIKitCore"]),
     .library(name: "AIKitProviders", targets: ["AIKitProviders"]),
     .library(name: "AIKitElements", targets: ["AIKitElements"]),
     .library(name: "AIKitOpenAI", targets: ["AIKitOpenAI"]),

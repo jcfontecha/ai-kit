@@ -1,4 +1,5 @@
 @_exported import AIKitProviders
+@_exported import AIKitCore
 @_spi(Advanced) import AIKitCore
 
 // MARK: - Curated re-exports (AIKit is the public surface)
