@@ -5,6 +5,7 @@
 Packages/
 DerivedData/
 xcuserdata/
+Package.resolved
 *.xcodeproj
 *.xcworkspace
 
@@ -14,8 +15,10 @@ xcuserdata/
 !Examples/**/*.xcworkspace
 !Examples/**/*.xcworkspace/**
 
-# Never commit per-user Xcode state (even under Examples exceptions)
+# Re-ignore Xcode user state inside example projects
 Examples/**/xcuserdata/
+Examples/**/*.xcodeproj/**/xcuserdata/
+Examples/**/*.xcworkspace/**/xcuserdata/
 Examples/**/*.xcuserstate
 
 # Codex (agent) local config (keep skills tracked; ignore local settings)

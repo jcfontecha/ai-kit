@@ -211,7 +211,7 @@
 			mainGroup = 0D697E362EFF8E440010CF71;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */,
+				0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../.." */,
 				0D69AA112F00F5E10010CF71 /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -636,9 +636,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */ = {
+		0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../.." */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "../../../ai-kit";
+			relativePath = ../..;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -656,12 +656,12 @@
 /* Begin XCSwiftPackageProductDependency section */
 		0D697E832EFFDD960010CF71 /* AIKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */;
+			package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../.." */;
 			productName = AIKit;
 		};
 		0D697E872EFFDD960010CF71 /* AIKitOpenRouter */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */;
+			package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../.." */;
 			productName = AIKitOpenRouter;
 		};
 		0D69AA122F00F5E10010CF71 /* MarkdownUI */ = {
@@ -671,7 +671,7 @@
 		};
 		0D69AA152F0200A40010CF71 /* AIKitElements */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../../../ai-kit" */;
+			package = 0D6980882EFFE6820010CF71 /* XCLocalSwiftPackageReference "../.." */;
 			productName = AIKitElements;
 		};
 /* End XCSwiftPackageProductDependency section */

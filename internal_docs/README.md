@@ -12,6 +12,10 @@
 - Macros feasibility: `docs/notes/macros/MACROS_FEASIBILITY.md`
 - OpenRouter parity gaps: `docs/notes/openrouter/OPENROUTER_PARITY_GAPS.md`
 
+## AIKitElements docs
+
+- `AssistantMessage`: `internal_docs/AssistantMessage.md`
+
 ## Progress trackers (historical)
 
 - useChat tracker: `docs/notes/trackers/AIKIT_USECHAT_TRACKER.md`

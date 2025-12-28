@@ -77,6 +77,17 @@ enum ComponentCatalog {
       ]
     ),
     .init(
+      id: "assistant-message",
+      category: .chatbot,
+      name: "Assistant Message",
+      summary: "Interleaved assistant parts (text, reasoning, tools, sources, files)",
+      variants: [
+        .init(id: "assistant-message/kitchen-sink", title: "Kitchen Sink", description: "Shows as many supported parts as possible") {
+          AnyView(AssistantMessageDemoView())
+        },
+      ]
+    ),
+    .init(
       id: "prompt-input",
       category: .chatbot,
       name: "Prompt Input",
@@ -122,7 +133,7 @@ enum ComponentCatalog {
       summary: "Disclosure for streaming reasoning (header can be glass; body should be readable)",
       variants: [
         .init(id: "reasoning/basic", title: "Basic", description: "Collapsible reasoning panel") {
-          AnyView(PlaceholderDemoView(title: "Reasoning", detail: "TODO: implement Reasoning demo"))
+          AnyView(ReasoningDemoView())
         },
       ]
     ),
@@ -133,7 +144,7 @@ enum ComponentCatalog {
       summary: "Collapsible sources list / popover-friendly rows",
       variants: [
         .init(id: "sources/basic", title: "Basic", description: "Used N sources + list") {
-          AnyView(PlaceholderDemoView(title: "Sources", detail: "TODO: implement Sources demo"))
+          AnyView(SourcesDemoView())
         },
       ]
     ),
@@ -160,24 +171,13 @@ enum ComponentCatalog {
       ]
     ),
     .init(
-      id: "shimmer",
-      category: .utilities,
-      name: "Shimmer",
-      summary: "Subtle shimmer for streaming placeholders",
-      variants: [
-        .init(id: "shimmer/basic", title: "Basic", description: nil) {
-          AnyView(PlaceholderDemoView(title: "Shimmer", detail: "TODO: implement Shimmer demo"))
-        },
-      ]
-    ),
-    .init(
       id: "code-block",
       category: .utilities,
       name: "Code Block",
       summary: "Code presentation + copy affordance",
       variants: [
         .init(id: "code-block/basic", title: "Basic", description: nil) {
-          AnyView(PlaceholderDemoView(title: "Code Block", detail: "TODO: implement CodeBlock demo"))
+          AnyView(CodeBlockDemoView())
         },
       ]
     ),
@@ -216,4 +216,3 @@ enum ComponentCatalog {
     ),
   ]
 }
-

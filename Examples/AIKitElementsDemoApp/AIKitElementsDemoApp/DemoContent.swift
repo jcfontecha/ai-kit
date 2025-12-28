@@ -1,7 +1,6 @@
 import Foundation
 
-import AIKitCore
-import AIKitProviders
+import AIKit
 
 enum DemoContent {
   nonisolated static var initialMessages: [ChatMessage] {
