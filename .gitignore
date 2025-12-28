@@ -31,6 +31,6 @@ Examples/**/*.xcuserstate
 internal_docs/references/apple-developer-docs/
 
 # Repo-local analysis artifacts / upstream vendor
-ai-sdk/
-openrouter-provider/
-ai-elements/
+vendored/ai-sdk/
+vendored/openrouter-provider/
+vendored/ai-elements/

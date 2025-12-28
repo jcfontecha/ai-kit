@@ -41,9 +41,9 @@ These notes are here to keep development consistent as the codebase grows.
 
 These repos are vendored in this repository for reference:
 
-- `ai-sdk/`: Vercel's AI SDK (JavaScript/TypeScript). Primary reference for behavior, tests, and API semantics. Used to ensure parity with `generateText` / `streamText` behavior, tool loop implementation, and streaming event models.
-- `openrouter-provider/`: OpenRouter provider implementation. Reference for provider architecture patterns and OpenRouter-specific behavior.
-- `ai-elements/`: AI Elements UI components library. Reference for UI patterns and component design (when building Swift equivalents).
+- `vendored/ai-sdk/`: Vercel's AI SDK (JavaScript/TypeScript). Primary reference for behavior, tests, and API semantics. Used to ensure parity with `generateText` / `streamText` behavior, tool loop implementation, and streaming event models.
+- `vendored/openrouter-provider/`: OpenRouter provider implementation. Reference for provider architecture patterns and OpenRouter-specific behavior.
+- `vendored/ai-elements/`: AI Elements UI components library. Reference for UI patterns and component design (when building Swift equivalents).
 
 ## Repo layout
 
@@ -89,10 +89,11 @@ When implementing parity, prefer small units and match AI SDK concepts:
   5. Run the tests and confirm they fail.
   6. Implement logic until tests pass.
 
-- Tests live under `Tests/AIKitCoreTests/...` and should mirror `ai-sdk/packages/ai/src/...` scenario groupings (see Vendored repos section).
+- Tests live under `Tests/AIKitCoreTests/...` and should mirror `vendored/ai-sdk/packages/ai/src/...` scenario groupings (see Vendored repos section).
 - Prefer snapshot-style assertions for complex event streams.
   - Record snapshots with `AIKIT_SNAPSHOT_RECORD=1`.
   - Snapshots are stored under `Tests/__Snapshots__/`.
+- Build after almost every turn (use `xcb <scheme>` for demo apps; use `swift test` for core changes; `swift build` only for Swift package frameworks), unless the change is truly trivial and we’re confident it can’t break the build.
 
 Recommended incremental implementation order:
 1. `OutputSpec` response formats + parsing

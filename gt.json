@@ -1,7 +1,9 @@
 {
   "postCreate" : [
     "cp .env.example .env.local",
-    "npm install"
+    "npm install",
+    "mkdir -p vendored",
+    "if [ -n \"$GT_WORKTREE\" ] && [ -d \"$GT_WORKTREE/vendored\" ]; then rsync -a \"$GT_WORKTREE/vendored/\" \"vendored/\"; fi"
   ],
   "version" : 1
 }

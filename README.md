@@ -1,6 +1,6 @@
 # AIKit
 
-Swift-first, type-safe client framework for building AI features on iOS/macOS, inspired by Vercel’s AI SDK (vendored under `ai-sdk/` for reference).
+Swift-first, type-safe client framework for building AI features on iOS/macOS, inspired by Vercel’s AI SDK (vendored under `vendored/ai-sdk/` for reference).
 
 ## Requirements
 
