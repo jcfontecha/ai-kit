@@ -9,11 +9,11 @@ public struct PromptInputElements: View {
 
   // Tuning knobs
   private let pillContentLeadingPadding: CGFloat = 10
-  private let pillContentVerticalPadding: CGFloat = 5
-  private let pillToControlPadding: CGFloat = 7
+  private let pillContentVerticalPadding: CGFloat = 10
+  private let pillToControlPadding: CGFloat = 5
   private let trailingControlInset: CGFloat = 6
   private let controlIconSize: CGFloat = 16
-  private let controlIconPadding: CGFloat = 10
+  private let controlIconPadding: CGFloat = 7
 
   public init(
     text: Binding<String>,
@@ -37,10 +37,9 @@ public struct PromptInputElements: View {
         .padding(.trailing, trailingControlWidth + trailingControlInset)
         .padding(.leading, pillContentLeadingPadding)
         .padding(.vertical, pillContentVerticalPadding)
-        .padding(.bottom, pillContentVerticalPadding + 3)
 
       trailingControl
-            .padding([.trailing, .top, .bottom], pillToControlPadding)
+        .padding([.trailing, .top, .bottom], pillToControlPadding)
     }
   }
 
@@ -95,16 +94,19 @@ public struct PromptInputElements: View {
     if #available(iOS 16.0, *) {
       TextField("Message", text: $text, axis: .vertical)
         .textFieldStyle(.plain)
+        .font(.callout)
         .lineLimit(1...6)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.leading, 6)
     } else {
       TextField("Message", text: $text)
         .textFieldStyle(.plain)
+        .font(.callout)
     }
     #else
     TextField("Message", text: $text)
       .textFieldStyle(.plain)
+      .font(.callout)
     #endif
   }
 }
@@ -114,28 +116,61 @@ public struct PromptInput: View {
   public var status: ChatSessionStatus
   public var onSend: (String) -> Void
   public var onStop: () -> Void
+  public var onAdd: (() -> Void)?
 
   private let cornerRadius: CGFloat = 24
+  private let plusButtonIconSize: CGFloat = 16
+  private let plusButtonPadding: CGFloat = 11
+  private let plusButtonSpacing: CGFloat = 8
+  private var plusButtonSize: CGFloat { plusButtonIconSize + (plusButtonPadding * 2) }
 
   public init(
     text: Binding<String>,
     status: ChatSessionStatus,
     onSend: @escaping (String) -> Void,
-    onStop: @escaping () -> Void
+    onStop: @escaping () -> Void,
+    onAdd: (() -> Void)? = nil
   ) {
     self._text = text
     self.status = status
     self.onSend = onSend
     self.onStop = onStop
+    self.onAdd = onAdd
   }
 
   public var body: some View {
-    PromptInputElements(text: $text, status: status, onSend: onSend, onStop: onStop)
-      .background {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-          .fill(Color.clear)
-          .glassSurface(cornerRadius: cornerRadius)
-      }
+    HStack(alignment: .bottom, spacing: plusButtonSpacing) {
+      plusButton
+      PromptInputElements(text: $text, status: status, onSend: onSend, onStop: onStop)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: plusButtonSize, alignment: .center)
+        .background {
+          RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.clear)
+            .glassSurface(cornerRadius: cornerRadius)
+        }
+    }
+  }
+
+  private var plusButtonCornerRadius: CGFloat {
+    plusButtonSize / 2
+  }
+
+  private var plusButton: some View {
+    let action = onAdd ?? {}
+    return Button(action: action) {
+      Image(systemName: "plus")
+        .frame(width: plusButtonIconSize, height: plusButtonIconSize)
+        .padding(plusButtonPadding)
+        .foregroundStyle(Color.primary)
+    }
+    .buttonStyle(.plain)
+    .background {
+      RoundedRectangle(cornerRadius: plusButtonCornerRadius, style: .continuous)
+        .fill(Color.clear)
+        .glassSurface(cornerRadius: plusButtonCornerRadius, interactive: true)
+    }
+    .accessibilityLabel("Add")
   }
 }
 
@@ -145,7 +180,8 @@ public extension View {
     status: ChatSessionStatus,
     height: Binding<CGFloat>,
     onSend: @escaping (String) -> Void,
-    onStop: @escaping () -> Void
+    onStop: @escaping () -> Void,
+    onAdd: (() -> Void)? = nil
   ) -> some View {
     modifier(
       PromptInputBottomBarModifier(
@@ -153,7 +189,8 @@ public extension View {
         status: status,
         height: height,
         onSend: onSend,
-        onStop: onStop
+        onStop: onStop,
+        onAdd: onAdd
       )
     )
   }
@@ -165,6 +202,7 @@ private struct PromptInputBottomBarModifier: ViewModifier {
   @Binding var height: CGFloat
   let onSend: (String) -> Void
   let onStop: () -> Void
+  let onAdd: (() -> Void)?
 
   func body(content: Content) -> some View {
     #if os(iOS)
@@ -172,7 +210,7 @@ private struct PromptInputBottomBarModifier: ViewModifier {
       // Keep the main content (e.g. `Conversation`) extending behind the composer for depth.
       .ignoresSafeArea(.container, edges: .bottom)
       .safeAreaInset(edge: .bottom, spacing: 0) {
-        PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop)
+        PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop, onAdd: onAdd)
           .padding(.horizontal, 12)
           .padding(.top, 12)
           .padding(.bottom, 8)
@@ -189,7 +227,7 @@ private struct PromptInputBottomBarModifier: ViewModifier {
     #else
     content
       .safeAreaInset(edge: .bottom) {
-        PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop)
+        PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop, onAdd: onAdd)
           .padding(.horizontal, 12)
           .padding(.top, 12)
           .padding(.bottom, 12)
