@@ -1,6 +1,5 @@
 @_exported import AIKitProviders
-
-import AIKitCore
+@_exported import AIKitCore
 
 // MARK: - Curated re-exports (keep app surface small)
 

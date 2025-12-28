@@ -20,12 +20,32 @@ public struct ToolRenderContext {
 public typealias ToolRenderer = (_ context: ToolRenderContext) -> AnyView
 public typealias ReasoningTextRenderer = (_ text: String) -> AnyView
 
+public struct ToolStatusStrings: Hashable, Sendable {
+  public var loading: String
+  public var success: String
+  public var error: String
+
+  public init(loading: String, success: String, error: String) {
+    self.loading = loading
+    self.success = success
+    self.error = error
+  }
+}
+
 private struct AssistantMessageShowsReasoningKey: EnvironmentKey {
   static var defaultValue: Bool = true
 }
 
 private struct AssistantMessageToolRenderersKey: EnvironmentKey {
   static var defaultValue: [String: ToolRenderer] = [:]
+}
+
+private struct AssistantMessageToolStatusStringsKey: EnvironmentKey {
+  static var defaultValue: [String: ToolStatusStrings] = [:]
+}
+
+private struct AssistantMessageToolDefaultStatusStringsKey: EnvironmentKey {
+  static var defaultValue: ToolStatusStrings? = nil
 }
 
 private struct AssistantMessageOnToolApprovalResponseKey: EnvironmentKey {
@@ -43,6 +63,16 @@ private extension EnvironmentValues {
     set { self[AssistantMessageToolRenderersKey.self] = newValue }
   }
 
+  var assistantMessageToolStatusStrings: [String: ToolStatusStrings] {
+    get { self[AssistantMessageToolStatusStringsKey.self] }
+    set { self[AssistantMessageToolStatusStringsKey.self] = newValue }
+  }
+
+  var assistantMessageToolDefaultStatusStrings: ToolStatusStrings? {
+    get { self[AssistantMessageToolDefaultStatusStringsKey.self] }
+    set { self[AssistantMessageToolDefaultStatusStringsKey.self] = newValue }
+  }
+
   var assistantMessageOnToolApprovalResponse: (_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void {
     get { self[AssistantMessageOnToolApprovalResponseKey.self] }
     set { self[AssistantMessageOnToolApprovalResponseKey.self] = newValue }
@@ -56,6 +86,26 @@ public extension View {
 
   func assistantMessageToolRenderers(_ toolRenderers: [String: ToolRenderer]) -> some View {
     environment(\.assistantMessageToolRenderers, toolRenderers)
+  }
+
+  func assistantMessageToolStatusStrings(_ toolStatusStrings: [String: ToolStatusStrings]) -> some View {
+    environment(\.assistantMessageToolStatusStrings, toolStatusStrings)
+  }
+
+  func assistantMessageToolStatusStrings(
+    _ toolName: String,
+    loading: String,
+    success: String,
+    error: String
+  ) -> some View {
+    modifier(AssistantMessageToolStatusStringsModifier(
+      toolName: toolName,
+      statusStrings: .init(loading: loading, success: success, error: error)
+    ))
+  }
+
+  func assistantMessageToolDefaultStatusStrings(_ statusStrings: ToolStatusStrings) -> some View {
+    environment(\.assistantMessageToolDefaultStatusStrings, statusStrings)
   }
 
   func assistantMessageToolRenderer(_ toolName: String, renderer: @escaping ToolRenderer) -> some View {
@@ -92,6 +142,20 @@ private struct AssistantMessageToolRendererModifier: ViewModifier {
   }
 }
 
+private struct AssistantMessageToolStatusStringsModifier: ViewModifier {
+  let toolName: String
+  let statusStrings: ToolStatusStrings
+
+  @Environment(\.assistantMessageToolStatusStrings) private var baseToolStatusStrings
+
+  func body(content: Content) -> some View {
+    content.environment(
+      \.assistantMessageToolStatusStrings,
+      baseToolStatusStrings.merging([toolName: statusStrings], uniquingKeysWith: { _, new in new })
+    )
+  }
+}
+
 /// Renders a single assistant `ChatMessage` body from `message.parts` (text, reasoning, tools, sources, files).
 ///
 /// This is the primary home for “interleaved part rendering” complexity (especially tools + approvals).
@@ -99,18 +163,24 @@ public struct AssistantMessage<AssistantText: View>: View {
   public var parts: [ChatMessagePart]
   public var showsReasoning: Bool?
   public var toolRenderers: [String: ToolRenderer]?
+  public var toolStatusStrings: [String: ToolStatusStrings]?
+  public var toolDefaultStatusStrings: ToolStatusStrings?
   public var onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)?
   @ViewBuilder public var assistantText: (String) -> AssistantText
   public var assistantReasoningText: ReasoningTextRenderer?
 
   @Environment(\.assistantMessageShowsReasoning) private var environmentShowsReasoning
   @Environment(\.assistantMessageToolRenderers) private var environmentToolRenderers
+  @Environment(\.assistantMessageToolStatusStrings) private var environmentToolStatusStrings
+  @Environment(\.assistantMessageToolDefaultStatusStrings) private var environmentToolDefaultStatusStrings
   @Environment(\.assistantMessageOnToolApprovalResponse) private var environmentOnToolApprovalResponse
 
   public init(
     parts: [ChatMessagePart],
     showsReasoning: Bool? = nil,
     toolRenderers: [String: ToolRenderer]? = nil,
+    toolStatusStrings: [String: ToolStatusStrings]? = nil,
+    toolDefaultStatusStrings: ToolStatusStrings? = nil,
     onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
     assistantReasoningText: ReasoningTextRenderer? = nil,
     @ViewBuilder assistantText: @escaping (String) -> AssistantText
@@ -118,6 +188,8 @@ public struct AssistantMessage<AssistantText: View>: View {
     self.parts = parts
     self.showsReasoning = showsReasoning
     self.toolRenderers = toolRenderers
+    self.toolStatusStrings = toolStatusStrings
+    self.toolDefaultStatusStrings = toolDefaultStatusStrings
     self.onToolApprovalResponse = onToolApprovalResponse
     self.assistantReasoningText = assistantReasoningText
     self.assistantText = assistantText
@@ -127,6 +199,8 @@ public struct AssistantMessage<AssistantText: View>: View {
     parts: [ChatMessagePart],
     showsReasoning: Bool? = nil,
     toolRenderers: [String: ToolRenderer]? = nil,
+    toolStatusStrings: [String: ToolStatusStrings]? = nil,
+    toolDefaultStatusStrings: ToolStatusStrings? = nil,
     onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
     @ViewBuilder assistantReasoningText: @escaping (String) -> AssistantReasoningText,
     @ViewBuilder assistantText: @escaping (String) -> AssistantText
@@ -136,6 +210,8 @@ public struct AssistantMessage<AssistantText: View>: View {
       parts: parts,
       showsReasoning: showsReasoning,
       toolRenderers: toolRenderers,
+      toolStatusStrings: toolStatusStrings,
+      toolDefaultStatusStrings: toolDefaultStatusStrings,
       onToolApprovalResponse: onToolApprovalResponse,
       assistantReasoningText: Optional(renderer),
       assistantText: assistantText
@@ -146,6 +222,8 @@ public struct AssistantMessage<AssistantText: View>: View {
     parts: [ChatMessagePart],
     showsReasoning: Bool? = nil,
     toolRenderers: [String: ToolRenderer]? = nil,
+    toolStatusStrings: [String: ToolStatusStrings]? = nil,
+    toolDefaultStatusStrings: ToolStatusStrings? = nil,
     onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
     assistantReasoningText: ReasoningTextRenderer? = nil
   ) where AssistantText == Text {
@@ -153,6 +231,8 @@ public struct AssistantMessage<AssistantText: View>: View {
       parts: parts,
       showsReasoning: showsReasoning,
       toolRenderers: toolRenderers,
+      toolStatusStrings: toolStatusStrings,
+      toolDefaultStatusStrings: toolDefaultStatusStrings,
       onToolApprovalResponse: onToolApprovalResponse,
       assistantReasoningText: assistantReasoningText,
       assistantText: { Text($0) }
@@ -162,6 +242,8 @@ public struct AssistantMessage<AssistantText: View>: View {
   public var body: some View {
     let resolvedShowsReasoning = showsReasoning ?? environmentShowsReasoning
     let resolvedToolRenderers = toolRenderers ?? environmentToolRenderers
+    let resolvedToolStatusStrings = toolStatusStrings ?? environmentToolStatusStrings
+    let resolvedToolDefaultStatusStrings = toolDefaultStatusStrings ?? environmentToolDefaultStatusStrings
     let resolvedOnToolApprovalResponse = onToolApprovalResponse ?? environmentOnToolApprovalResponse
 
     VStack(alignment: .leading, spacing: 14) {
@@ -183,7 +265,13 @@ public struct AssistantMessage<AssistantText: View>: View {
           }
 
         case .tool(let tool):
-          toolView(tool, toolRenderers: resolvedToolRenderers, onToolApprovalResponse: resolvedOnToolApprovalResponse)
+          toolView(
+            tool,
+            toolRenderers: resolvedToolRenderers,
+            toolStatusStrings: resolvedToolStatusStrings,
+            toolDefaultStatusStrings: resolvedToolDefaultStatusStrings,
+            onToolApprovalResponse: resolvedOnToolApprovalResponse
+          )
 
         case .fileGroup(let attachments):
           FileAttachmentsRow(attachments: attachments)
@@ -206,6 +294,8 @@ public struct AssistantMessage<AssistantText: View>: View {
   private func toolView(
     _ tool: ChatToolPart,
     toolRenderers: [String: ToolRenderer],
+    toolStatusStrings: [String: ToolStatusStrings],
+    toolDefaultStatusStrings: ToolStatusStrings?,
     onToolApprovalResponse: @escaping (_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void
   ) -> some View {
     let approvalID = toolApprovalID(tool)
@@ -217,7 +307,8 @@ public struct AssistantMessage<AssistantText: View>: View {
     if let renderer = toolRenderers[tool.toolName] {
       renderer(.init(tool: tool, isLoading: toolIsLoading(tool.state), sendApproval: sendApproval))
     } else {
-      ToolPartView(tool: tool, sendApproval: sendApproval)
+      let statusStrings = toolStatusStrings[tool.toolName] ?? toolDefaultStatusStrings
+      ToolPartView(tool: tool, sendApproval: sendApproval, statusStrings: statusStrings)
     }
   }
 }

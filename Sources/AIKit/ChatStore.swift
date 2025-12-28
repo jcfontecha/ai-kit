@@ -128,6 +128,7 @@ public final class ChatStore: ObservableObject {
     settings: CallSettings = .init(),
     headers: [String: String]? = nil,
     providerOptions: ProviderOptions? = nil,
+    initialMessages: [ChatMessage] = [],
     bufferingPolicy: AsyncStream<ChatSessionSnapshot>.Continuation.BufferingPolicy = .bufferingNewest(1),
     sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
       ChatAutoSubmitPredicates
@@ -135,7 +136,7 @@ public final class ChatStore: ObservableObject {
     }
   ) {
     self.defaultRequestOptions = .init()
-    self.messages = []
+    self.messages = initialMessages
     self.input = ""
     self.status = .ready
     self.errorDescription = nil
@@ -149,7 +150,8 @@ public final class ChatStore: ObservableObject {
       settings: settings,
       headers: headers,
       providerOptions: providerOptions,
-      sendAutomaticallyWhen: sendAutomaticallyWhen
+      sendAutomaticallyWhen: sendAutomaticallyWhen,
+      messages: initialMessages
     ))
 
     startUpdatesTask(bufferingPolicy: bufferingPolicy)

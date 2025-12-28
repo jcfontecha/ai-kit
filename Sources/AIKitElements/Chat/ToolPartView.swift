@@ -4,17 +4,20 @@ import AIKit
 public struct ToolPartView: View {
   public var tool: ChatToolPart
   public var sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)?
+  public var statusStrings: ToolStatusStrings?
 
   public init(
     tool: ChatToolPart,
-    sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil
+    sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
+    statusStrings: ToolStatusStrings? = nil
   ) {
     self.tool = tool
     self.sendApproval = sendApproval
+    self.statusStrings = statusStrings
   }
 
   public var body: some View {
-    let (isLoading, statusLabel, tint) = toolStatus(tool.state)
+    let (isLoading, statusLabel, tint) = toolStatus(tool.state, statusStrings: statusStrings)
 
     DisclosureGroup {
       VStack(alignment: .leading, spacing: 10) {
@@ -113,6 +116,31 @@ private func toolStatus(_ state: ChatToolPart.State) -> (isLoading: Bool, label:
   }
 }
 
+private func toolStatus(
+  _ state: ChatToolPart.State,
+  statusStrings: ToolStatusStrings?
+) -> (isLoading: Bool, label: String, tint: Color?) {
+  guard let statusStrings else {
+    return toolStatus(state)
+  }
+  switch state {
+  case .inputStreaming:
+    return (true, statusStrings.loading, nil)
+  case .inputAvailable:
+    return (true, statusStrings.loading, Color.yellow.opacity(0.10))
+  case .approvalRequested:
+    return (false, "Awaiting approval", Color.yellow.opacity(0.10))
+  case .approvalResponded(_, let approved, _):
+    return (false, approved ? "Approved" : "Rejected", approved ? Color.green.opacity(0.10) : Color.red.opacity(0.10))
+  case .outputDenied:
+    return (false, statusStrings.error, Color.red.opacity(0.10))
+  case .outputAvailable:
+    return (false, statusStrings.success, Color.green.opacity(0.10))
+  case .outputError:
+    return (false, statusStrings.error, Color.red.opacity(0.10))
+  }
+}
+
 private func toolInputText(_ tool: ChatToolPart) -> String? {
   if let input = tool.input {
     return prettyJSON(input)
@@ -155,4 +183,3 @@ private func prettyJSON(_ value: JSONValue) -> String {
   }
   return "<invalid json>"
 }
-
