@@ -1,8 +1,7 @@
 import SwiftUI
 import MarkdownUI
 
-import AIKitCore
-import AIKitProviders
+import AIKit
 import AIKitElements
 
 struct AssistantMessageDemoView: View {
@@ -14,8 +13,16 @@ struct AssistantMessageDemoView: View {
       Toggle("Show reasoning", isOn: $showsReasoning)
         .font(.subheadline)
 
+      Text("Default tool renderer + custom tool override")
+        .font(.headline)
+
       AssistantMessage(
         parts: demoParts,
+        toolDefaultStatusStrings: .init(
+          loading: "Loading",
+          success: "Completed",
+          error: "Error"
+        ),
         assistantReasoningText: { text in
           Markdown(text)
             .markdownTextStyle { ForegroundColor(.secondary) }
@@ -56,6 +63,42 @@ struct AssistantMessageDemoView: View {
         .padding(12)
         .glassSurface(cornerRadius: 16, interactive: false, tint: Color.blue.opacity(0.08))
       }
+      .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
+        approvalResponses[approvalID] = (approved: approved, reason: reason)
+      }
+
+      Text("Reasoning-style tool renderer (all tools)")
+        .font(.headline)
+        .padding(.top, 8)
+
+      AssistantMessage(
+        parts: demoParts,
+        toolDefaultStatusStrings: .init(
+          loading: "Working…",
+          success: "Done",
+          error: "Failed"
+        ),
+        toolDefaultRenderer: { context in
+          AnyView(
+            ToolPartReasoningView(
+              tool: context.tool,
+              icon: Image(systemName: "sparkles"),
+              sendApproval: context.sendApproval,
+              statusStrings: context.statusStrings
+            )
+          )
+        },
+        assistantReasoningText: { text in
+          Markdown(text)
+            .markdownTextStyle { ForegroundColor(.secondary) }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        },
+        assistantText: { text in
+          Markdown(text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      )
+      .assistantMessageShowsReasoning(showsReasoning)
       .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
         approvalResponses[approvalID] = (approved: approved, reason: reason)
       }

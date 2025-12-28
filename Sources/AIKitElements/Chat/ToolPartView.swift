@@ -1,52 +1,75 @@
 import SwiftUI
 import AIKit
 
-public struct ToolPartView: View {
+public struct ToolPartContentContext {
   public var tool: ChatToolPart
   public var sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)?
-  public var statusStrings: ToolStatusStrings?
+  public var statusStrings: ToolStatusStrings
 
   public init(
     tool: ChatToolPart,
-    sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
-    statusStrings: ToolStatusStrings? = nil
+    sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)?,
+    statusStrings: ToolStatusStrings
   ) {
     self.tool = tool
     self.sendApproval = sendApproval
     self.statusStrings = statusStrings
+  }
+}
+
+public typealias ToolPartContentRenderer = (_ context: ToolPartContentContext) -> AnyView
+
+public struct ToolPartView: View {
+  public var tool: ChatToolPart
+  public var icon: Image
+  public var sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)?
+  public var statusStrings: ToolStatusStrings
+  public var contentRenderer: ToolPartContentRenderer?
+
+  public init(
+    tool: ChatToolPart,
+    icon: Image = Image(systemName: "wrench.and.screwdriver"),
+    sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
+    statusStrings: ToolStatusStrings,
+    contentRenderer: ToolPartContentRenderer? = nil
+  ) {
+    self.tool = tool
+    self.icon = icon
+    self.sendApproval = sendApproval
+    self.statusStrings = statusStrings
+    self.contentRenderer = contentRenderer
+  }
+
+  public init<Content: View>(
+    tool: ChatToolPart,
+    icon: Image = Image(systemName: "wrench.and.screwdriver"),
+    sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
+    statusStrings: ToolStatusStrings,
+    @ViewBuilder content: @escaping (_ context: ToolPartContentContext) -> Content
+  ) {
+    self.init(
+      tool: tool,
+      icon: icon,
+      sendApproval: sendApproval,
+      statusStrings: statusStrings,
+      contentRenderer: { context in AnyView(content(context)) }
+    )
   }
 
   public var body: some View {
     let (isLoading, statusLabel, tint) = toolStatus(tool.state, statusStrings: statusStrings)
 
     DisclosureGroup {
-      VStack(alignment: .leading, spacing: 10) {
-        if let inputText = toolInputText(tool) {
-          ToolSection(title: "Parameters") {
-            CodeBlock(inputText)
-          }
-        }
-
-        if let outputText = toolOutputText(tool) {
-          ToolSection(title: outputHeading(tool), isError: outputIsError(tool)) {
-            CodeBlock(outputText, isError: outputIsError(tool))
-          }
-        }
-
-        if case .approvalRequested = tool.state {
-          ApprovalBanner(
-            state: .requested,
-            message: "Approve running “\(tool.title ?? tool.toolName)”?",
-            onApprove: { sendApproval?(true, nil) },
-            onReject: { sendApproval?(false, nil) }
-          )
-        }
+      if let contentRenderer {
+        contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: statusStrings))
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.top, 10)
+      } else {
+        ToolPartDefaultContent(tool: tool, sendApproval: sendApproval)
       }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.top, 10)
     } label: {
       HStack(spacing: 10) {
-        Image(systemName: "wrench.and.screwdriver")
+        icon
         Text(tool.title ?? tool.toolName)
           .font(.subheadline.weight(.medium))
         Spacer()
@@ -61,24 +84,37 @@ public struct ToolPartView: View {
     .glassSurface(cornerRadius: 16, interactive: false, tint: tint)
   }
 
-  private func outputHeading(_ tool: ChatToolPart) -> String {
-    switch tool.state {
-    case .outputError:
-      return "Error"
-    case .outputDenied:
-      return "Denied"
-    default:
-      return "Result"
-    }
-  }
+}
 
-  private func outputIsError(_ tool: ChatToolPart) -> Bool {
-    switch tool.state {
-    case .outputError, .outputDenied:
-      return true
-    default:
-      return false
+struct ToolPartDefaultContent: View {
+  let tool: ChatToolPart
+  let sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      if let inputText = toolInputText(tool) {
+        ToolSection(title: "Parameters") {
+          CodeBlock(inputText)
+        }
+      }
+
+      if let outputText = toolOutputText(tool) {
+        ToolSection(title: outputHeading(tool), isError: outputIsError(tool)) {
+          CodeBlock(outputText, isError: outputIsError(tool))
+        }
+      }
+
+      if case .approvalRequested = tool.state {
+        ApprovalBanner(
+          state: .requested,
+          message: "Approve running “\(tool.title ?? tool.toolName)”?",
+          onApprove: { sendApproval?(true, nil) },
+          onReject: { sendApproval?(false, nil) }
+        )
+      }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.top, 10)
   }
 }
 
@@ -97,20 +133,40 @@ private struct ToolSection<Content: View>: View {
   }
 }
 
+private func outputHeading(_ tool: ChatToolPart) -> String {
+  switch tool.state {
+  case .outputError:
+    return "Error"
+  case .outputDenied:
+    return "Denied"
+  default:
+    return "Result"
+  }
+}
+
+private func outputIsError(_ tool: ChatToolPart) -> Bool {
+  switch tool.state {
+  case .outputError, .outputDenied:
+    return true
+  default:
+    return false
+  }
+}
+
 private func toolStatus(_ state: ChatToolPart.State) -> (isLoading: Bool, label: String, tint: Color?) {
   switch state {
   case .inputStreaming:
     return (true, "Pending", nil)
   case .inputAvailable:
-    return (true, "Running", Color.yellow.opacity(0.10))
+    return (true, "Running", nil)
   case .approvalRequested:
-    return (false, "Awaiting approval", Color.yellow.opacity(0.10))
+    return (false, "Awaiting approval", nil)
   case .approvalResponded(_, let approved, _):
-    return (false, approved ? "Approved" : "Rejected", approved ? Color.green.opacity(0.10) : Color.red.opacity(0.10))
+    return (false, approved ? "Approved" : "Rejected", approved ? nil : Color.red.opacity(0.10))
   case .outputDenied:
     return (false, "Denied", Color.red.opacity(0.10))
   case .outputAvailable:
-    return (false, "Completed", Color.green.opacity(0.10))
+    return (false, "Completed", nil)
   case .outputError:
     return (false, "Error", Color.red.opacity(0.10))
   }
@@ -118,24 +174,21 @@ private func toolStatus(_ state: ChatToolPart.State) -> (isLoading: Bool, label:
 
 private func toolStatus(
   _ state: ChatToolPart.State,
-  statusStrings: ToolStatusStrings?
+  statusStrings: ToolStatusStrings
 ) -> (isLoading: Bool, label: String, tint: Color?) {
-  guard let statusStrings else {
-    return toolStatus(state)
-  }
   switch state {
   case .inputStreaming:
     return (true, statusStrings.loading, nil)
   case .inputAvailable:
-    return (true, statusStrings.loading, Color.yellow.opacity(0.10))
+    return (true, statusStrings.loading, nil)
   case .approvalRequested:
-    return (false, "Awaiting approval", Color.yellow.opacity(0.10))
+    return (false, "Awaiting approval", nil)
   case .approvalResponded(_, let approved, _):
-    return (false, approved ? "Approved" : "Rejected", approved ? Color.green.opacity(0.10) : Color.red.opacity(0.10))
+    return (false, approved ? "Approved" : "Rejected", approved ? nil : Color.red.opacity(0.10))
   case .outputDenied:
     return (false, statusStrings.error, Color.red.opacity(0.10))
   case .outputAvailable:
-    return (false, statusStrings.success, Color.green.opacity(0.10))
+    return (false, statusStrings.success, nil)
   case .outputError:
     return (false, statusStrings.error, Color.red.opacity(0.10))
   }

@@ -6,10 +6,10 @@ import AIKitElements
 struct ToolDemoView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      ToolPartView(tool: pendingTool)
-      ToolPartView(tool: runningTool)
-      ToolPartView(tool: completedTool)
-      ToolPartView(tool: errorTool)
+      ToolPartView(tool: pendingTool, statusStrings: statusStrings)
+      ToolPartView(tool: runningTool, statusStrings: statusStrings)
+      ToolPartView(tool: completedTool, statusStrings: statusStrings)
+      ToolPartView(tool: errorTool, statusStrings: statusStrings)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
@@ -19,6 +19,10 @@ struct ToolDemoView: View {
       "location": .string("San Francisco"),
       "units": .string("fahrenheit"),
     ])
+  }
+
+  private var statusStrings: ToolStatusStrings {
+    .init(loading: "Loading", success: "Completed", error: "Error")
   }
 
   private var pendingTool: ChatToolPart {

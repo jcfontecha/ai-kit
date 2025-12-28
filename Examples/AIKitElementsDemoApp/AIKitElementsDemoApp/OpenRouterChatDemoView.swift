@@ -163,6 +163,11 @@ private struct DemoMessageRow: View {
       HStack(alignment: .top) {
         AssistantMessage(
           parts: message.parts,
+          toolDefaultStatusStrings: .init(
+            loading: "Loading",
+            success: "Completed",
+            error: "Error"
+          ),
           assistantReasoningText: { text in
             Markdown(text)
               .markdownTextStyle { ForegroundColor(.secondary) }

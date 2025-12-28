@@ -63,7 +63,6 @@ public struct ReasoningDisclosure<Content: View>: View {
       .contentShape(Rectangle())
     }
     .tint(.secondary)
-    .padding(.bottom, 16)
     .onAppear {
       scheduleAutoCloseIfNeeded()
     }
