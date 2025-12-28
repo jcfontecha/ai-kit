@@ -64,6 +64,9 @@ public struct ReasoningDisclosure<Content: View>: View {
     }
     .tint(.secondary)
     .onAppear {
+      if isStreaming, startTime == nil {
+        startTime = Date()
+      }
       scheduleAutoCloseIfNeeded()
     }
     .onChange(of: isStreaming) { newIsStreaming in

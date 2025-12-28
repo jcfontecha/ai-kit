@@ -1,0 +1,7 @@
+{
+  "postCreate" : [
+    "cp .env.example .env.local",
+    "npm install"
+  ],
+  "version" : 1
+}

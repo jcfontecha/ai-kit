@@ -212,8 +212,8 @@ private struct PromptInputBottomBarModifier: ViewModifier {
       .safeAreaInset(edge: .bottom, spacing: 0) {
         PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop, onAdd: onAdd)
           .padding(.horizontal, 12)
-          .padding(.top, 12)
-          .padding(.bottom, 8)
+          .padding(.top, 8)
+          .padding(.bottom, 6)
           .background {
             GeometryReader { proxy in
               Color.clear
@@ -229,8 +229,8 @@ private struct PromptInputBottomBarModifier: ViewModifier {
       .safeAreaInset(edge: .bottom) {
         PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop, onAdd: onAdd)
           .padding(.horizontal, 12)
-          .padding(.top, 12)
-          .padding(.bottom, 12)
+          .padding(.top, 8)
+          .padding(.bottom, 8)
           .background {
             GeometryReader { proxy in
               Color.clear

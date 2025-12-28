@@ -16,7 +16,7 @@ public struct Conversation<MessageView: View>: View {
   @State private var isAtBottom: Bool = true
   @State private var pendingScrollTask: Task<Void, Never>?
 
-  private let extraBottomPadding: CGFloat = 20
+  private let extraBottomPadding: CGFloat = 0
   private let bottomInsetAnimation: Animation = .easeOut(duration: 0.18)
   private let scrollAnimation: Animation = .easeOut(duration: 0.20)
   private let streamingScrollAnimation: Animation = .easeOut(duration: 0.10)
@@ -49,8 +49,8 @@ public struct Conversation<MessageView: View>: View {
 
   public var body: some View {
       ScrollViewReader { proxy in
-      ScrollView {
-        VStack(alignment: .leading, spacing: 12) {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 16) {
           if shouldShowLoadMoreSentinel {
             Color.clear
               .frame(height: 1)
@@ -73,6 +73,7 @@ public struct Conversation<MessageView: View>: View {
             .onDisappear { isAtBottom = false }
         }
         .padding(.top, 20)
+        .padding(.horizontal, 16)
       }
       .modifier(ScrollEdgeEffectCompat())
       #if os(iOS)
@@ -108,7 +109,7 @@ public struct Conversation<MessageView: View>: View {
   }
 
   private var bottomInset: CGFloat {
-    max(1, bottomOverlayHeight + extraBottomPadding)
+    max(1, extraBottomPadding)
   }
 
   private var resolvedVisibleCount: Int {

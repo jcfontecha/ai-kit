@@ -70,14 +70,9 @@ public struct ToolPartView: View {
     } label: {
       HStack(spacing: 10) {
         icon
-        Text(tool.title ?? tool.toolName)
+        Text(statusLabel)
           .font(.subheadline.weight(.medium))
         Spacer()
-        Text(isLoading ? "Running" : statusLabel)
-          .font(.caption.weight(.semibold))
-          .padding(.horizontal, 10)
-          .padding(.vertical, 6)
-          .background(Capsule().fill(Color.secondary.opacity(0.12)))
       }
     }
     .padding(12)

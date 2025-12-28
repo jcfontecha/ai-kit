@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct UserBubble: View {
   public var text: String
+  @Environment(\.colorScheme) private var colorScheme
 
   public init(text: String) {
     self.text = text
@@ -15,8 +16,7 @@ public struct UserBubble: View {
       .padding(.vertical, 10)
       .background {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-          .fill(Color.secondary.opacity(0.12))
+          .fill(Color.secondary.opacity(colorScheme == .dark ? 0.24 : 0.12))
       }
   }
 }
-

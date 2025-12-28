@@ -292,7 +292,7 @@ public struct AssistantMessage<AssistantText: View>: View {
 
         case .reasoning(let text, let isStreaming):
           if resolvedShowsReasoning {
-            ReasoningDisclosure(isStreaming: isStreaming) {
+            ReasoningDisclosure(isStreaming: isStreaming, defaultOpen: false) {
               if let assistantReasoningText {
                 assistantReasoningText(text)
               } else {
@@ -386,8 +386,8 @@ private func groupedParts(_ parts: [ChatMessagePart]) -> [GroupedPart] {
     fileBuffer.removeAll(keepingCapacity: true)
   }
 
-  for (idx, part) in parts.enumerated() {
-    switch part {
+    for (idx, part) in parts.enumerated() {
+      switch part {
     case .file(let file):
       fileBuffer.append(.init(id: "file-\(idx)", filename: file.filename, mediaType: file.mediaType))
 
@@ -400,7 +400,16 @@ private func groupedParts(_ parts: [ChatMessagePart]) -> [GroupedPart] {
       case .text(let text):
         result.append(.init(id: id, kind: .text(text.text)))
       case .reasoning(let reasoning):
-        result.append(.init(id: id, kind: .reasoning(reasoning.text, isStreaming: reasoning.state == .streaming)))
+        let hasLaterNonReasoning = parts[(idx + 1)...].contains { nextPart in
+          switch nextPart {
+          case .reasoning, .stepStart, .data, .file:
+            return false
+          default:
+            return true
+          }
+        }
+        let isStreaming = reasoning.state == .streaming && hasLaterNonReasoning == false
+        result.append(.init(id: id, kind: .reasoning(reasoning.text, isStreaming: isStreaming)))
       case .sourceURL(let source):
         result.append(.init(id: id, kind: .sourceURL(url: source.url, title: source.title)))
       case .sourceDocument(let doc):

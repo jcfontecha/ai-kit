@@ -201,9 +201,10 @@ private struct DemoMessageRow: View {
       HStack(alignment: .top) {
         AssistantMessage(
           parts: message.parts,
+          toolStatusStrings: demoToolStatusStrings,
           toolDefaultStatusStrings: .init(
-            loading: "Loading",
-            success: "Completed",
+            loading: "Working…",
+            success: "Done",
             error: "Error"
           ),
           assistantReasoningText: { text in
@@ -215,7 +216,6 @@ private struct DemoMessageRow: View {
           Markdown(text)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        Spacer(minLength: 24)
       }
 
     case .system:
@@ -236,6 +236,13 @@ private struct DemoMessageRow: View {
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+  }
+
+  private var demoToolStatusStrings: [String: ToolStatusStrings] {
+    [
+      "sleep_ms": .init(loading: "Sleeping…", success: "Slept", error: "Sleep failed"),
+      "echo_with_delay": .init(loading: "Echoing…", success: "Echoed", error: "Echo failed"),
+    ]
   }
 
   private func messageText(parts: [ChatMessagePart]) -> String {
