@@ -47,7 +47,9 @@ This document tracks the SwiftUI `Conversation` parity goals vs `ai-elements`’
 These are meant as controlled A/B experiments (change one variable at a time):
 
 1. `LazyVStack` vs `VStack`
-   - Replace `LazyVStack` with `VStack` temporarily to see if lazy layout (deferred measurement / item realization) is contributing to content-size changes during top bounce.
+   - Result: swapping `LazyVStack` → `VStack` eliminated the top-bounce scroll indicator jitter.
+   - Working hypothesis: `LazyVStack`’s incremental realization/measurement during edge bounce causes content-size churn, which makes the indicator thumb recompute repeatedly.
+   - Next: keep `VStack`, but add paging (render only the last N messages + “load older” sentinel) to preserve performance on large histories.
 2. Remove `scrollEdgeEffectStyle(.hard, for: .bottom)`
    - Especially on iOS 26+, this modifier changes edge behavior; verify whether it affects indicator stability even when the jitter is observed at the *top* edge.
 3. Remove `scrollDismissesKeyboard(.interactively)`
@@ -56,4 +58,3 @@ These are meant as controlled A/B experiments (change one variable at a time):
    - Keep bottom inset itself, but ensure height changes are not animated by SwiftUI layout during unrelated scroll interactions.
 5. Force a constant bottom inset
    - Temporarily hardcode `bottomOverlayHeight` to a constant and stop measuring composer height, to see if composer measurement is fluctuating during bounce.
-

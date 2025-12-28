@@ -14,6 +14,10 @@ xcuserdata/
 !Examples/**/*.xcworkspace
 !Examples/**/*.xcworkspace/**
 
+# Never commit per-user Xcode state (even under Examples exceptions)
+Examples/**/xcuserdata/
+Examples/**/*.xcuserstate
+
 # Codex (agent) local config (keep skills tracked; ignore local settings)
 .codex/settings.local.json
 

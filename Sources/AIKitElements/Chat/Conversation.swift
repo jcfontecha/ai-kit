@@ -2,6 +2,8 @@ import SwiftUI
 import AIKit
 
 private let conversationBottomSentinelID = "chat-bottom-sentinel"
+private let conversationTopSentinelID = "chat-top-sentinel"
+private let conversationMessagePageSize = 60
 
 public struct Conversation<MessageView: View>: View {
   public var messages: [ChatMessage]
@@ -9,11 +11,12 @@ public struct Conversation<MessageView: View>: View {
   public var bottomOverlayHeight: CGFloat
   @ViewBuilder public var messageView: (ChatMessage) -> MessageView
 
+  @State private var visibleCount: Int = conversationMessagePageSize
   @State private var didPerformInitialScroll: Bool = false
   @State private var isAtBottom: Bool = true
   @State private var pendingScrollTask: Task<Void, Never>?
 
-  private let extraBottomPadding: CGFloat = 28
+  private let extraBottomPadding: CGFloat = 20
   private let bottomInsetAnimation: Animation = .easeOut(duration: 0.18)
   private let scrollAnimation: Animation = .easeOut(duration: 0.20)
   private let streamingScrollAnimation: Animation = .easeOut(duration: 0.10)
@@ -48,7 +51,16 @@ public struct Conversation<MessageView: View>: View {
       ScrollViewReader { proxy in
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
-          ForEach(messages) { message in
+          if shouldShowLoadMoreSentinel {
+            Color.clear
+              .frame(height: 1)
+              .id(conversationTopSentinelID)
+              .onAppear {
+                loadOlderMessages(with: proxy)
+              }
+          }
+
+          ForEach(Array(visibleMessages)) { message in
             messageView(message)
               .id(message.id)
           }
@@ -67,10 +79,12 @@ public struct Conversation<MessageView: View>: View {
       .modifier(ScrollDismissesKeyboardCompat())
       #endif
       .onAppear {
+        syncVisibleCountWithMessages()
         scrollToBottom(proxy, animated: false)
         didPerformInitialScroll = true
       }
       .onChange(of: messages.count) { _ in
+        syncVisibleCountWithMessages()
         guard didPerformInitialScroll else { return }
         guard isAtBottom else { return }
         scrollToBottom(proxy, animated: true, animation: scrollAnimation)
@@ -94,6 +108,55 @@ public struct Conversation<MessageView: View>: View {
 
   private var bottomInset: CGFloat {
     max(1, bottomOverlayHeight + extraBottomPadding)
+  }
+
+  private var resolvedVisibleCount: Int {
+    guard messages.isEmpty == false else { return 0 }
+    let baseline = min(conversationMessagePageSize, messages.count)
+    let desired = max(visibleCount, baseline)
+    return min(desired, messages.count)
+  }
+
+  private var visibleMessages: ArraySlice<ChatMessage> {
+    messages.suffix(resolvedVisibleCount)
+  }
+
+  private var shouldShowLoadMoreSentinel: Bool {
+    resolvedVisibleCount < messages.count
+  }
+
+  private func syncVisibleCountWithMessages() {
+    guard messages.isEmpty == false else {
+      if visibleCount != 0 {
+        visibleCount = 0
+      }
+      didPerformInitialScroll = false
+      return
+    }
+
+    let baseline = min(conversationMessagePageSize, messages.count)
+    if visibleCount < baseline {
+      visibleCount = baseline
+    } else if visibleCount > messages.count {
+      visibleCount = messages.count
+    }
+  }
+
+  private func loadOlderMessages(with proxy: ScrollViewProxy) {
+    guard didPerformInitialScroll else { return }
+    guard visibleCount < messages.count else { return }
+
+    let currentFirstID = visibleMessages.first?.id
+    let newCount = min(messages.count, visibleCount + conversationMessagePageSize)
+    guard newCount != visibleCount else { return }
+
+    visibleCount = newCount
+
+    if let currentFirstID {
+      DispatchQueue.main.async {
+        proxy.scrollTo(currentFirstID, anchor: .top)
+      }
+    }
   }
 
   private func requestStreamingScroll(_ proxy: ScrollViewProxy) {
