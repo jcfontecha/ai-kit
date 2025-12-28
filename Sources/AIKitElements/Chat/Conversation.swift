@@ -7,7 +7,6 @@ public struct Conversation<MessageView: View>: View {
   public var messages: [ChatMessage]
   public var status: ChatSessionStatus
   public var bottomOverlayHeight: CGFloat
-  public var showsScrollButton: Bool
   @ViewBuilder public var messageView: (ChatMessage) -> MessageView
 
   @State private var didPerformInitialScroll: Bool = false
@@ -24,27 +23,23 @@ public struct Conversation<MessageView: View>: View {
     messages: [ChatMessage],
     status: ChatSessionStatus,
     bottomOverlayHeight: CGFloat,
-    showsScrollButton: Bool = false,
     @ViewBuilder messageView: @escaping (ChatMessage) -> MessageView
   ) {
     self.messages = messages
     self.status = status
     self.bottomOverlayHeight = bottomOverlayHeight
-    self.showsScrollButton = showsScrollButton
     self.messageView = messageView
   }
 
   public init(
     messages: [ChatMessage],
     bottomOverlayHeight: CGFloat,
-    showsScrollButton: Bool = false,
     @ViewBuilder messageView: @escaping (ChatMessage) -> MessageView
   ) {
     self.init(
       messages: messages,
       status: .ready,
       bottomOverlayHeight: bottomOverlayHeight,
-      showsScrollButton: showsScrollButton,
       messageView: messageView
     )
   }
@@ -52,7 +47,7 @@ public struct Conversation<MessageView: View>: View {
   public var body: some View {
       ScrollViewReader { proxy in
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
           ForEach(messages) { message in
             messageView(message)
               .id(message.id)
@@ -93,21 +88,6 @@ public struct Conversation<MessageView: View>: View {
       .onChange(of: bottomInset) { _ in
         guard isAtBottom else { return }
         scrollToBottom(proxy, animated: true, animation: scrollAnimation)
-      }
-      .overlay(alignment: .bottom) {
-        if showsScrollButton, isAtBottom == false {
-          Button {
-            scrollToBottom(proxy, animated: true, animation: scrollAnimation)
-          } label: {
-            Image(systemName: "arrow.down")
-              .font(.system(size: 14, weight: .semibold))
-              .frame(width: 36, height: 36)
-          }
-          .buttonStyle(.bordered)
-          .clipShape(Circle())
-          .accessibilityLabel("Scroll to bottom")
-          .padding(.bottom, max(16, bottomOverlayHeight + 16))
-        }
       }
     }
   }

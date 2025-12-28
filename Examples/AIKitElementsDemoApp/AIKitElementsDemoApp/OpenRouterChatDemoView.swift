@@ -14,7 +14,7 @@ struct OpenRouterChatDemoView: View {
   @State private var text: String = ""
 
   var body: some View {
-    Conversation(messages: store.snapshot.messages, status: store.snapshot.status, bottomOverlayHeight: composerHeight, showsScrollButton: true) { message in
+    Conversation(messages: store.snapshot.messages, status: store.snapshot.status, bottomOverlayHeight: composerHeight) { message in
       DemoChatMessageView(message: message)
         .id(message.id)
     }
