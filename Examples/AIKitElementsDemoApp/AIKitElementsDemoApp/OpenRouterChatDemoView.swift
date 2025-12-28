@@ -15,8 +15,22 @@ struct OpenRouterChatDemoView: View {
   @State private var composerHeight: CGFloat = 0
 
   var body: some View {
-    ZStack {
-      Conversation(messages: store.messages, status: store.status, bottomOverlayHeight: composerHeight) { message in
+    content
+      .task {
+        store.configureIfPossible(apiKey: apiKey, modelID: modelID)
+      }
+      .onChange(of: apiKey) { _, _ in
+        store.configureIfPossible(apiKey: apiKey, modelID: modelID)
+      }
+      .onChange(of: modelID) { _, _ in
+        store.configureIfPossible(apiKey: apiKey, modelID: modelID)
+      }
+  }
+
+  @ViewBuilder
+  private var content: some View {
+    let base = ZStack {
+      Conversation(messages: store.messages, status: store.status, bottomOverlayHeight: composerHeight + 8) { message in
         DemoMessageRow(message: message)
       }
       .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
@@ -50,31 +64,45 @@ struct OpenRouterChatDemoView: View {
 
         if store.status == .streaming || store.status == .submitted {
           Button("Stop") { Task { await store.stop() } }
-            .buttonStyle(.borderedProminent)
+          .buttonStyle(.borderedProminent)
         }
       }
       .padding(10)
     }
-    .promptInputBottomBar(
-      text: $text,
-      status: store.status,
-      height: $composerHeight,
-      onSend: { message in
-        Task { await store.send(text: message) }
-      },
-      onStop: {
-        Task { await store.stop() }
+    #if os(iOS)
+    base
+      .safeAreaBar(edge: .bottom) {
+        PromptInput(text: $text, status: store.status, onSend: { message in
+          Task { await store.send(text: message) }
+          }, onStop: {
+            Task { await store.stop() }
+          })
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background {
+          GeometryReader { proxy in
+            Color.clear
+              .onAppear { composerHeight = proxy.size.height }
+              .onChange(of: proxy.size.height) {
+                composerHeight = proxy.size.height
+              }
+          }
+        }
       }
-    )
-    .task {
-      store.configureIfPossible(apiKey: apiKey, modelID: modelID)
-    }
-    .onChange(of: apiKey) { _, _ in
-      store.configureIfPossible(apiKey: apiKey, modelID: modelID)
-    }
-    .onChange(of: modelID) { _, _ in
-      store.configureIfPossible(apiKey: apiKey, modelID: modelID)
-    }
+    #else
+    base
+      .promptInputBottomBar(
+        text: $text,
+        status: store.status,
+        height: $composerHeight,
+        onSend: { message in
+          Task { await store.send(text: message) }
+        },
+        onStop: {
+          Task { await store.stop() }
+        }
+      )
+    #endif
   }
 }
 

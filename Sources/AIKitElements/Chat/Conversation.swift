@@ -83,23 +83,24 @@ public struct Conversation<MessageView: View>: View {
         scrollToBottom(proxy, animated: false)
         didPerformInitialScroll = true
       }
-      .onChange(of: messages.count) { _ in
+      .onChange(of: messages.count) {
         syncVisibleCountWithMessages()
         guard didPerformInitialScroll else { return }
         guard isAtBottom else { return }
         scrollToBottom(proxy, animated: true, animation: scrollAnimation)
       }
-      .onChange(of: messages) { _ in
+      .onChange(of: messages) {
         guard status == .streaming else { return }
         guard isAtBottom else { return }
         requestStreamingScroll(proxy)
       }
-      .onChange(of: status) { newStatus in
+      .onChange(of: status) {
+        let newStatus = status
         guard newStatus == .streaming else { return }
         guard isAtBottom else { return }
         requestStreamingScroll(proxy)
       }
-      .onChange(of: bottomInset) { _ in
+      .onChange(of: bottomInset) {
         guard isAtBottom else { return }
         scrollToBottom(proxy, animated: true, animation: scrollAnimation)
       }
@@ -195,11 +196,7 @@ public struct Conversation<MessageView: View>: View {
 
 private struct ScrollEdgeEffectCompat: ViewModifier {
   func body(content: Content) -> some View {
-    if #available(iOS 26.0, macOS 26.0, *) {
-      content.scrollEdgeEffectStyle(.soft, for: .bottom)
-    } else {
-      content
-    }
+    content.scrollEdgeEffectStyle(.soft, for: .bottom)
   }
 }
 

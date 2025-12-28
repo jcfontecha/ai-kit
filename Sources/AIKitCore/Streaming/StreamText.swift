@@ -1,6 +1,31 @@
 import Foundation
 import AIKitProviders
 
+private struct UnsafeSendable<Value>: @unchecked Sendable {
+  let value: Value
+}
+
+private final class Locked<Value>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: Value
+
+  init(_ value: Value) {
+    self.value = value
+  }
+
+  func withLock<T>(_ body: (inout Value) -> T) -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return body(&value)
+  }
+
+  func get() -> Value {
+    lock.lock()
+    defer { lock.unlock() }
+    return value
+  }
+}
+
 public enum TextStreamPart: Sendable, Equatable {
   case start
   case finish(finishReason: FinishReason, rawFinishReason: String? = nil, totalUsage: Usage = .init())
@@ -642,14 +667,16 @@ private func runStreamText<OUT: OutputSpec>(
     )
 
     let baseStream = stepModel.stream(request)
-    var stepResponse = LanguageModelResponseMetadata()
+    let stepResponseBox = Locked(LanguageModelResponseMetadata())
 
     let tappedStream = AsyncThrowingStream(ModelStreamPart.self) { continuation in
+      let continuationBox = UnsafeSendable(value: continuation)
       Task {
+        let continuation = continuationBox.value
         do {
           for try await part in baseStream {
             if case let .responseMetadata(response) = part {
-              stepResponse = response
+              stepResponseBox.withLock { $0 = response }
             }
             continuation.yield(part)
           }
@@ -872,7 +899,7 @@ private func runStreamText<OUT: OutputSpec>(
         stepRawFinishReason = rawFinishReason
         stepUsage = totalUsage
       case .finishStep(let response, let usage, let finishReason, let rawFinishReason, let providerMetadata):
-        stepResponse = response
+        stepResponseBox.withLock { $0 = response }
         stepUsage = usage
         stepFinishReason = finishReason
         stepRawFinishReason = rawFinishReason
@@ -913,7 +940,7 @@ private func runStreamText<OUT: OutputSpec>(
       usage: stepUsage,
       warnings: stepWarnings,
       request: stepRequest,
-      response: stepResponse,
+      response: stepResponseBox.get(),
       responseMessages: responseMessagesHistory + stepResponseMessages,
       providerMetadata: stepProviderMetadata
     )
@@ -925,7 +952,7 @@ private func runStreamText<OUT: OutputSpec>(
 
     fullContinuation?.yield(
       .finishStep(
-        response: stepResponse,
+        response: stepResponseBox.get(),
         usage: stepUsage,
         finishReason: stepFinishReason,
         rawFinishReason: stepRawFinishReason,

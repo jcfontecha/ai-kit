@@ -50,23 +50,35 @@ public struct ToolDefaultRenderContext {
 }
 
 private struct AssistantMessageShowsReasoningKey: EnvironmentKey {
-  static var defaultValue: Bool = true
+  static let defaultValue: Bool = true
+}
+
+private struct ToolRendererStore: @unchecked Sendable {
+  var value: [String: ToolRenderer]
+}
+
+private struct ToolDefaultRendererStore: @unchecked Sendable {
+  var value: ToolDefaultRenderer?
+}
+
+private struct ToolApprovalResponseStore: @unchecked Sendable {
+  var value: (_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void
 }
 
 private struct AssistantMessageToolRenderersKey: EnvironmentKey {
-  static var defaultValue: [String: ToolRenderer] = [:]
+  static let defaultValue = ToolRendererStore(value: [:])
 }
 
 private struct AssistantMessageToolStatusStringsKey: EnvironmentKey {
-  static var defaultValue: [String: ToolStatusStrings] = [:]
+  static let defaultValue: [String: ToolStatusStrings] = [:]
 }
 
 private struct AssistantMessageDefaultToolRendererKey: EnvironmentKey {
-  static var defaultValue: ToolDefaultRenderer? = nil
+  static let defaultValue = ToolDefaultRendererStore(value: nil)
 }
 
 private struct AssistantMessageOnToolApprovalResponseKey: EnvironmentKey {
-  static var defaultValue: (_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void = { _, _, _ in }
+  static let defaultValue = ToolApprovalResponseStore(value: { _, _, _ in })
 }
 
 private extension EnvironmentValues {
@@ -76,8 +88,8 @@ private extension EnvironmentValues {
   }
 
   var assistantMessageToolRenderers: [String: ToolRenderer] {
-    get { self[AssistantMessageToolRenderersKey.self] }
-    set { self[AssistantMessageToolRenderersKey.self] = newValue }
+    get { self[AssistantMessageToolRenderersKey.self].value }
+    set { self[AssistantMessageToolRenderersKey.self] = .init(value: newValue) }
   }
 
   var assistantMessageToolStatusStrings: [String: ToolStatusStrings] {
@@ -86,13 +98,13 @@ private extension EnvironmentValues {
   }
 
   var assistantMessageDefaultToolRenderer: ToolDefaultRenderer? {
-    get { self[AssistantMessageDefaultToolRendererKey.self] }
-    set { self[AssistantMessageDefaultToolRendererKey.self] = newValue }
+    get { self[AssistantMessageDefaultToolRendererKey.self].value }
+    set { self[AssistantMessageDefaultToolRendererKey.self] = .init(value: newValue) }
   }
 
   var assistantMessageOnToolApprovalResponse: (_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void {
-    get { self[AssistantMessageOnToolApprovalResponseKey.self] }
-    set { self[AssistantMessageOnToolApprovalResponseKey.self] = newValue }
+    get { self[AssistantMessageOnToolApprovalResponseKey.self].value }
+    set { self[AssistantMessageOnToolApprovalResponseKey.self] = .init(value: newValue) }
   }
 }
 

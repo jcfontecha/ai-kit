@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import Combine
 
 import AIKit
 import AIKitElements
@@ -154,7 +155,6 @@ final class UIKitOpenRouterChatDemoViewController: UIViewController {
   }
 
   private func refreshBottomEdgeEffect() {
-    guard #available(iOS 26.0, *) else { return }
     conversationView.setBottomEdgeEffect(style: .soft)
     if let edgeInteraction {
       promptInputView.edgeEffectContainerView.removeInteraction(edgeInteraction)

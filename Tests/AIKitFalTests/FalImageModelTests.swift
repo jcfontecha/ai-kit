@@ -29,7 +29,7 @@ final class FalImageModelTests: XCTestCase {
   private func createBasicModel(
     server: FalTestServer,
     headers: [String: String]? = nil,
-    currentDate: (() -> Date)? = nil
+    currentDate: (@Sendable () -> Date)? = nil
   ) -> FalImageModel {
     FalImageModel(
       modelId: "fal-ai/qwen-image",
@@ -38,7 +38,7 @@ final class FalImageModelTests: XCTestCase {
         apiKey: nil,
         headers: { headers ?? ["api-key": "test-key"] },
         transport: server.transport(),
-        currentDate: currentDate ?? { Date() }
+        currentDate: currentDate ?? { @Sendable in Date() }
       )
     )
   }

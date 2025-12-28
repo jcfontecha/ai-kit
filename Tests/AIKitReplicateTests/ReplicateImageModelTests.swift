@@ -191,13 +191,14 @@ final class ReplicateImageModelTests: XCTestCase {
     )
     server.responses["GET https://replicate.delivery/xezq/abc/out-0.webp"] = .binary(Data("test-binary-content".utf8))
 
+    let fixedDate = testDate
     let model = ReplicateImageModel(
       modelId: "black-forest-labs/flux-schnell",
       config: .init(
         baseURL: "https://api.replicate.com/v1",
         headers: { ["authorization": "Bearer test-api-token", "user-agent": "ai-sdk/replicate/0.0.0-test"] },
         transport: server.transport(),
-        currentDate: { self.testDate }
+        currentDate: { [fixedDate] in fixedDate }
       )
     )
 

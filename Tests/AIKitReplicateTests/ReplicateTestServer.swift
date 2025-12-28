@@ -1,7 +1,8 @@
 import Foundation
 import AIKitProviders
 
-final class ReplicateTestServer {
+final class ReplicateTestServer: @unchecked Sendable {
+  private let lock = NSLock()
   enum ResponseType {
     case json(Data, headers: [String: String] = [:], status: Int = 200)
     case binary(Data, headers: [String: String] = [:], status: Int = 200)
@@ -22,7 +23,7 @@ final class ReplicateTestServer {
     TestTransport(server: self)
   }
 
-  private final class TestTransport: HTTPTransport {
+  private struct TestTransport: HTTPTransport {
     let server: ReplicateTestServer
     init(server: ReplicateTestServer) { self.server = server }
 
@@ -49,7 +50,7 @@ final class ReplicateTestServer {
       }
       let method = request.httpMethod ?? "GET"
       let key = "\(method) \(url)"
-      guard let responseConfig = server.responses[key] else {
+      guard let responseConfig = server.response(for: key) else {
         throw URLError(.badServerResponse)
       }
 
@@ -61,7 +62,7 @@ final class ReplicateTestServer {
       let body = request.httpBody ?? Data()
       let bodyJSON = try? JSONDecoder().decode(JSONValue.self, from: body)
 
-      server.calls.append(
+      server.recordCall(
         .init(
           requestMethod: method,
           requestUrl: url,
@@ -94,5 +95,16 @@ final class ReplicateTestServer {
       return (data, response)
     }
   }
-}
 
+  private func response(for key: String) -> ResponseType? {
+    lock.lock()
+    defer { lock.unlock() }
+    return responses[key]
+  }
+
+  private func recordCall(_ record: CallRecord) {
+    lock.lock()
+    defer { lock.unlock() }
+    calls.append(record)
+  }
+}

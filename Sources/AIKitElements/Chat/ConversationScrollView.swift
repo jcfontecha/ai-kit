@@ -89,13 +89,11 @@ public final class ConversationScrollView: UIView {
     }
   }
 
-  @available(iOS 26.0, *)
   public func setBottomEdgeEffect(style: UIScrollEdgeEffect.Style) {
     tableView.bottomEdgeEffect.style = style
     tableView.bottomEdgeEffect.isHidden = false
   }
 
-  @available(iOS 26.0, *)
   public func attachBottomEdgeEffect(to containerView: UIView) {
     let interaction = UIScrollEdgeElementContainerInteraction()
     interaction.scrollView = tableView

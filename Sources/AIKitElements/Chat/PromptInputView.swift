@@ -83,13 +83,9 @@ public final class PromptInputView: UIView {
     glassView.isOpaque = false
     glassView.clipsToBounds = true
     glassView.layer.cornerRadius = 24
-    if #available(iOS 26.0, *) {
-      let glassEffect = UIGlassEffect(style: .clear)
-      glassEffect.tintColor = .clear
-      glassView.effect = glassEffect
-    } else {
-      glassView.effect = UIBlurEffect(style: .systemMaterial)
-    }
+    let glassEffect = UIGlassEffect(style: .clear)
+    glassEffect.tintColor = .clear
+    glassView.effect = glassEffect
 
     addSubview(glassContainerView)
     glassContainerView.addSubview(glassView)

@@ -1,6 +1,10 @@
 import Foundation
 import AIKitProviders
 
+private struct UnsafeSendable<Value>: @unchecked Sendable {
+  let value: Value
+}
+
 public enum SSEUIMessageStreamDecoderError: Error, LocalizedError, Sendable, Equatable {
   case invalidUTF8
   case invalidJSON(String)
@@ -64,7 +68,11 @@ public struct SSEUIMessageStreamDecoder: Sendable {
     _ bytes: S
   ) -> AsyncThrowingStream<SSEEvent, Error> where S.Element == UInt8 {
     AsyncThrowingStream(SSEEvent.self) { continuation in
+      let continuationBox = UnsafeSendable(value: continuation)
+      let bytesBox = UnsafeSendable(value: bytes)
       Task {
+        let continuation = continuationBox.value
+        let bytes = bytesBox.value
         var buffer = Data()
         do {
           for try await byte in bytes {

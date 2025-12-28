@@ -2,6 +2,31 @@ import Foundation
 import AIKitCore
 import AIKitProviders
 
+private struct UnsafeSendable<Value>: @unchecked Sendable {
+  let value: Value
+}
+
+private final class Locked<Value>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: Value
+
+  init(_ value: Value) {
+    self.value = value
+  }
+
+  func withLock<T>(_ body: (inout Value) -> T) -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return body(&value)
+  }
+
+  func get() -> Value {
+    lock.lock()
+    defer { lock.unlock() }
+    return value
+  }
+}
+
 public final class MockLanguageModel: @unchecked Sendable, LanguageModel {
   public let id: String
   public let capabilities: ModelCapabilities
@@ -99,12 +124,14 @@ public final class MockLanguageModel: @unchecked Sendable, LanguageModel {
 
   public func recordedRequests() -> [ModelRequest] {
     let semaphore = DispatchSemaphore(value: 0)
-    var result: [ModelRequest] = []
+    let semaphoreBox = UnsafeSendable(value: semaphore)
+    let resultBox = UnsafeSendable(value: Locked<[ModelRequest]>([]))
     Task {
-      result = await state.requests
-      semaphore.signal()
+      let requests = await state.requests
+      resultBox.value.withLock { $0 = requests }
+      semaphoreBox.value.signal()
     }
     semaphore.wait()
-    return result
+    return resultBox.value.get()
   }
 }

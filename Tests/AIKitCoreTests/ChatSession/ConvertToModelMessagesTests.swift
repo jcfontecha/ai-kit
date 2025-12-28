@@ -10,7 +10,7 @@ private extension JSONValue {
 }
 
 final class ConvertToModelMessagesTests: XCTestCase {
-  private func toolOutputText(_ value: String) -> JSONValue {
+  private static func toolOutputText(_ value: String) -> JSONValue {
     .object(["type": .string("text"), "value": .string(value)])
   }
 
@@ -31,7 +31,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
     return obj
   }
 
-  private func stringField(_ key: String, in object: JSONValue) -> String? {
+  private static func stringField(_ key: String, in object: JSONValue) -> String? {
     guard case let .object(obj) = object else { return nil }
     guard case let .string(value)? = obj[key] else { return nil }
     return value
@@ -178,8 +178,8 @@ final class ConvertToModelMessagesTests: XCTestCase {
       messages,
       options: .init(convertDataPart: { part in
         guard part.type == "data-url" else { return nil }
-        guard let url = self.stringField("url", in: part.data) else { return nil }
-        guard let content = self.stringField("content", in: part.data) else { return nil }
+        guard let url = Self.stringField("url", in: part.data) else { return nil }
+        guard let content = Self.stringField("content", in: part.data) else { return nil }
         return .text(.init(text: "\n\n[\(url)]\n\(content)"))
       })
     )
@@ -205,7 +205,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
     let result = try await convertToModelMessages(
       messages,
       options: .init(convertDataPart: { part in
-        if part.type == "data-url", let url = self.stringField("url", in: part.data) {
+        if part.type == "data-url", let url = Self.stringField("url", in: part.data) {
           return .text(.init(text: url))
         }
         return nil
@@ -238,9 +238,9 @@ final class ConvertToModelMessagesTests: XCTestCase {
       messages,
       options: .init(convertDataPart: { part in
         guard part.type == "data-attachment" else { return nil }
-        guard let mediaType = self.stringField("mediaType", in: part.data) else { return nil }
-        guard let filename = self.stringField("filename", in: part.data) else { return nil }
-        guard let data = self.stringField("data", in: part.data) else { return nil }
+        guard let mediaType = Self.stringField("mediaType", in: part.data) else { return nil }
+        guard let filename = Self.stringField("filename", in: part.data) else { return nil }
+        guard let data = Self.stringField("data", in: part.data) else { return nil }
         return .file(.init(data: .base64(data), filename: filename, mediaType: mediaType))
       })
     )
@@ -279,12 +279,12 @@ final class ConvertToModelMessagesTests: XCTestCase {
       options: .init(convertDataPart: { part in
         switch part.type {
         case "data-url":
-          guard let url = self.stringField("url", in: part.data) else { return nil }
-          guard let title = self.stringField("title", in: part.data) else { return nil }
+          guard let url = Self.stringField("url", in: part.data) else { return nil }
+          guard let title = Self.stringField("title", in: part.data) else { return nil }
           return .text(.init(text: "[\(title)](\(url))"))
         case "data-code":
-          guard let code = self.stringField("code", in: part.data) else { return nil }
-          guard let language = self.stringField("language", in: part.data) else { return nil }
+          guard let code = Self.stringField("code", in: part.data) else { return nil }
+          guard let language = Self.stringField("language", in: part.data) else { return nil }
           return .text(.init(text: "```\(language)\n\(code)\n```"))
         default:
           return nil
@@ -348,7 +348,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
       messages,
       options: .init(convertDataPart: { part in
         guard part.type == "data-tag" else { return nil }
-        guard let value = self.stringField("value", in: part.data) else { return nil }
+        guard let value = Self.stringField("value", in: part.data) else { return nil }
         return .text(.init(text: "[\(value)]"))
       })
     )
@@ -383,8 +383,8 @@ final class ConvertToModelMessagesTests: XCTestCase {
       messages,
       options: .init(convertDataPart: { part in
         guard part.type == "data-url" else { return nil }
-        guard let url = self.stringField("url", in: part.data) else { return nil }
-        guard let content = self.stringField("content", in: part.data) else { return nil }
+        guard let url = Self.stringField("url", in: part.data) else { return nil }
+        guard let content = Self.stringField("content", in: part.data) else { return nil }
         return .text(.init(text: "\n\n[\(url)]\n\(content)"))
       })
     )
@@ -429,7 +429,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
     let result = try await convertToModelMessages(
       messages,
       options: .init(convertDataPart: { part in
-        if part.type == "data-url", let url = self.stringField("url", in: part.data) {
+        if part.type == "data-url", let url = Self.stringField("url", in: part.data) {
           return .text(.init(text: url))
         }
         return nil
@@ -462,9 +462,9 @@ final class ConvertToModelMessagesTests: XCTestCase {
       messages,
       options: .init(convertDataPart: { part in
         guard part.type == "data-attachment" else { return nil }
-        guard let mediaType = self.stringField("mediaType", in: part.data) else { return nil }
-        guard let filename = self.stringField("filename", in: part.data) else { return nil }
-        guard let data = self.stringField("data", in: part.data) else { return nil }
+        guard let mediaType = Self.stringField("mediaType", in: part.data) else { return nil }
+        guard let filename = Self.stringField("filename", in: part.data) else { return nil }
+        guard let data = Self.stringField("data", in: part.data) else { return nil }
         return .file(.init(data: .base64(data), filename: filename, mediaType: mediaType))
       })
     )
@@ -503,12 +503,12 @@ final class ConvertToModelMessagesTests: XCTestCase {
       options: .init(convertDataPart: { part in
         switch part.type {
         case "data-url":
-          guard let url = self.stringField("url", in: part.data) else { return nil }
-          guard let title = self.stringField("title", in: part.data) else { return nil }
+          guard let url = Self.stringField("url", in: part.data) else { return nil }
+          guard let title = Self.stringField("title", in: part.data) else { return nil }
           return .text(.init(text: "[\(title)](\(url))"))
         case "data-code":
-          guard let code = self.stringField("code", in: part.data) else { return nil }
-          guard let language = self.stringField("language", in: part.data) else { return nil }
+          guard let code = Self.stringField("code", in: part.data) else { return nil }
+          guard let language = Self.stringField("language", in: part.data) else { return nil }
           return .text(.init(text: "```\(language)\n\(code)\n```"))
         default:
           return nil
@@ -572,7 +572,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
       messages,
       options: .init(convertDataPart: { part in
         guard part.type == "data-tag" else { return nil }
-        guard let value = self.stringField("value", in: part.data) else { return nil }
+        guard let value = Self.stringField("value", in: part.data) else { return nil }
         return .text(.init(text: "[\(value)]"))
       })
     )
@@ -843,7 +843,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
     guard case let .toolResult(toolResult) = result[1].content.first else { return XCTFail("expected tool result") }
     XCTAssertEqual(toolResult.toolCallID, "call1")
     XCTAssertEqual(toolResult.toolName, "calculator")
-    XCTAssertEqual(toolResult.output, toolOutputText("3"))
+    XCTAssertEqual(toolResult.output, Self.toolOutputText("3"))
     XCTAssertEqual(object(toolResult.providerMetadata?["testProvider"])?["signature"], .string("1234567890"))
   }
 
@@ -917,7 +917,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
     XCTAssertEqual(result[0].content.compactMap { part -> ToolResult? in
       guard case let .toolResult(r) = part else { return nil }
       return r
-    }.first?.output, toolOutputText("3"))
+    }.first?.output, Self.toolOutputText("3"))
   }
 
   func testAssistantMessage_providerExecutedToolOutputError_isErrorJSON() async throws {
@@ -999,7 +999,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
         .toolCall(.init(toolCallID: "call1", toolName: "screenshot", inputJSON: "", input: .object([:]))),
       ]),
       .init(role: .tool, content: [
-        .toolResult(.init(toolCallID: "call1", toolName: "screenshot", output: toolOutputText("imgbase64"))),
+        .toolResult(.init(toolCallID: "call1", toolName: "screenshot", output: Self.toolOutputText("imgbase64"))),
       ]),
     ])
   }
@@ -1066,21 +1066,21 @@ final class ConvertToModelMessagesTests: XCTestCase {
         .toolCall(.init(toolCallID: "call-1", toolName: "screenshot", inputJSON: "", input: .object(["value": .string("value-1")]))),
       ]),
       .init(role: .tool, content: [
-        .toolResult(.init(toolCallID: "call-1", toolName: "screenshot", output: toolOutputText("result-1"))),
+        .toolResult(.init(toolCallID: "call-1", toolName: "screenshot", output: Self.toolOutputText("result-1"))),
       ]),
       .init(role: .assistant, content: [
         .toolCall(.init(toolCallID: "call-2", toolName: "screenshot", inputJSON: "", input: .object(["value": .string("value-2")]))),
         .toolCall(.init(toolCallID: "call-3", toolName: "screenshot", inputJSON: "", input: .object(["value": .string("value-3")]))),
       ]),
       .init(role: .tool, content: [
-        .toolResult(.init(toolCallID: "call-2", toolName: "screenshot", output: toolOutputText("result-2"))),
-        .toolResult(.init(toolCallID: "call-3", toolName: "screenshot", output: toolOutputText("result-3"))),
+        .toolResult(.init(toolCallID: "call-2", toolName: "screenshot", output: Self.toolOutputText("result-2"))),
+        .toolResult(.init(toolCallID: "call-3", toolName: "screenshot", output: Self.toolOutputText("result-3"))),
       ]),
       .init(role: .assistant, content: [
         .toolCall(.init(toolCallID: "call-4", toolName: "screenshot", inputJSON: "", input: .object(["value": .string("value-4")]))),
       ]),
       .init(role: .tool, content: [
-        .toolResult(.init(toolCallID: "call-4", toolName: "screenshot", output: toolOutputText("result-4"))),
+        .toolResult(.init(toolCallID: "call-4", toolName: "screenshot", output: Self.toolOutputText("result-4"))),
       ]),
     ])
   }
@@ -1133,7 +1133,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
         .toolCall(.init(toolCallID: "call-1", toolName: "screenshot", inputJSON: "", input: .object(["value": .string("value-1")]))),
       ]),
       .init(role: .tool, content: [
-        .toolResult(.init(toolCallID: "call-1", toolName: "screenshot", output: toolOutputText("result-1"))),
+        .toolResult(.init(toolCallID: "call-1", toolName: "screenshot", output: Self.toolOutputText("result-1"))),
       ]),
       .init(role: .assistant, content: [
         .text(.init(text: "i am gonna use tool2 and tool3")),
@@ -1141,14 +1141,14 @@ final class ConvertToModelMessagesTests: XCTestCase {
         .toolCall(.init(toolCallID: "call-3", toolName: "screenshot", inputJSON: "", input: .object(["value": .string("value-3")]))),
       ]),
       .init(role: .tool, content: [
-        .toolResult(.init(toolCallID: "call-2", toolName: "screenshot", output: toolOutputText("result-2"))),
-        .toolResult(.init(toolCallID: "call-3", toolName: "screenshot", output: toolOutputText("result-3"))),
+        .toolResult(.init(toolCallID: "call-2", toolName: "screenshot", output: Self.toolOutputText("result-2"))),
+        .toolResult(.init(toolCallID: "call-3", toolName: "screenshot", output: Self.toolOutputText("result-3"))),
       ]),
       .init(role: .assistant, content: [
         .toolCall(.init(toolCallID: "call-4", toolName: "screenshot", inputJSON: "", input: .object(["value": .string("value-4")]))),
       ]),
       .init(role: .tool, content: [
-        .toolResult(.init(toolCallID: "call-4", toolName: "screenshot", output: toolOutputText("result-4"))),
+        .toolResult(.init(toolCallID: "call-4", toolName: "screenshot", output: Self.toolOutputText("result-4"))),
       ]),
       .init(role: .assistant, content: [
         .text(.init(text: "final response")),
@@ -1183,7 +1183,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
     let toolMessage = result[1]
     guard toolMessage.content.contains(where: { part in
       if case let .toolResult(result) = part {
-        return result.toolCallID == "tool-1" && result.output == toolOutputText("NYC")
+        return result.toolCallID == "tool-1" && result.output == Self.toolOutputText("NYC")
       }
       return false
     }) else {
@@ -1365,7 +1365,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
 
     guard case let .toolResult(toolResult) = result[1].content.first else { return XCTFail("expected tool result") }
     XCTAssertEqual(toolResult.toolCallID, "call-1")
-    XCTAssertEqual(toolResult.output, toolOutputText("result-1"))
+    XCTAssertEqual(toolResult.output, Self.toolOutputText("result-1"))
   }
 
   func testConvertProviderExecutedDynamicToolInvocation_inAssistantContent_andNoToolRoleMessage() async throws {
@@ -1406,7 +1406,7 @@ final class ConvertToModelMessagesTests: XCTestCase {
     XCTAssertEqual(toolResults[0].providerExecuted, true)
     XCTAssertEqual(toolResults[0].dynamic, true)
     XCTAssertEqual(object(toolResults[0].providerMetadata?["test-provider"])?["key-b"], .string("test-value-2"))
-    XCTAssertEqual(toolResults[0].output, toolOutputText("result-1"))
+    XCTAssertEqual(toolResults[0].output, Self.toolOutputText("result-1"))
   }
 
   func testToolApprovalRequestResponses_approvedStaticTool() async throws {

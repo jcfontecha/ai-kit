@@ -2,7 +2,8 @@ import Foundation
 import AIKitProviders
 @testable import AIKitOpenRouter
 
-final class OpenRouterTestServer {
+final class OpenRouterTestServer: @unchecked Sendable {
+  private let lock = NSLock()
   enum ResponseType {
     case jsonValue(JSONValue)
     case streamChunks([String])
@@ -47,7 +48,7 @@ final class OpenRouterTestServer {
     TestTransport(server: self)
   }
 
-  private final class TestTransport: HTTPTransport {
+  private final class TestTransport: @unchecked Sendable, HTTPTransport {
     let server: OpenRouterTestServer
     init(server: OpenRouterTestServer) {
       self.server = server
@@ -75,7 +76,7 @@ final class OpenRouterTestServer {
       guard let url = request.url?.absoluteString else {
         throw OpenRouterInvalidResponseError(message: "Missing request URL.")
       }
-      guard let urlConfig = server.urls[url] else {
+      guard let urlConfig = server.urlConfig(for: url) else {
         throw OpenRouterInvalidResponseError(message: "No response configured for \(url)")
       }
 
@@ -93,8 +94,8 @@ final class OpenRouterTestServer {
         requestHeaders: headers
       )
 
-      server.calls.append(callRecord)
-      urlConfig.calls.append(callRecord)
+      server.recordCall(callRecord)
+      server.recordURLCall(url, callRecord)
 
       guard let responseConfig = urlConfig.response else {
         throw OpenRouterInvalidResponseError(message: "No response configured for \(url)")
@@ -120,6 +121,24 @@ final class OpenRouterTestServer {
 
       return (data, response)
     }
+  }
+
+  private func urlConfig(for url: String) -> URLConfig? {
+    lock.lock()
+    defer { lock.unlock() }
+    return urls[url]
+  }
+
+  private func recordCall(_ record: CallRecord) {
+    lock.lock()
+    defer { lock.unlock() }
+    calls.append(record)
+  }
+
+  private func recordURLCall(_ url: String, _ record: CallRecord) {
+    lock.lock()
+    defer { lock.unlock() }
+    urls[url]?.calls.append(record)
   }
 }
 

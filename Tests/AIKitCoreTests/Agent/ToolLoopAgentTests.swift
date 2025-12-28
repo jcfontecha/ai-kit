@@ -42,7 +42,7 @@ final class ToolLoopAgentTests: XCTestCase {
     }
   }
 
-  private func response(
+  private static func response(
     finishReason: FinishReason = .stop,
     content: [ModelContentPart] = [.text("reply", metadata: nil)]
   ) -> ModelResponse {
@@ -61,7 +61,7 @@ final class ToolLoopAgentTests: XCTestCase {
     )
   }
 
-  private func makeStream(_ parts: [ModelStreamPart]) -> AsyncThrowingStream<ModelStreamPart, Error> {
+  private static func makeStream(_ parts: [ModelStreamPart]) -> AsyncThrowingStream<ModelStreamPart, Error> {
     AsyncThrowingStream(ModelStreamPart.self) { continuation in
       for part in parts {
         continuation.yield(part)
@@ -74,7 +74,7 @@ final class ToolLoopAgentTests: XCTestCase {
     let requestBox = RequestBox()
     let model = MockLanguageModel(generate: { request in
       requestBox.set(request)
-      return self.response()
+      return Self.response()
     })
 
     let agent = ToolLoopAgent<CallOptions, Output.Text>(
@@ -97,7 +97,7 @@ final class ToolLoopAgentTests: XCTestCase {
     let requestBox = RequestBox()
     let model = MockLanguageModel(generate: { request in
       requestBox.set(request)
-      return self.response()
+      return Self.response()
     })
 
     let agent = ToolLoopAgent<CallOptions, Output.Text>(
@@ -123,7 +123,7 @@ final class ToolLoopAgentTests: XCTestCase {
     let token = CancellationToken()
     let model = MockLanguageModel(generate: { request in
       requestBox.set(request)
-      return self.response()
+      return Self.response()
     })
 
     let agent = ToolLoopAgent<Never, Output.Text>(
@@ -141,7 +141,7 @@ final class ToolLoopAgentTests: XCTestCase {
     let requestBox = RequestBox()
     let model = MockLanguageModel(generate: { request in
       requestBox.set(request)
-      return self.response()
+      return Self.response()
     })
 
     let agent = ToolLoopAgent<Never, Output.Text>(
@@ -165,7 +165,7 @@ final class ToolLoopAgentTests: XCTestCase {
     let requestBox = RequestBox()
     let model = MockLanguageModel(generate: { request in
       requestBox.set(request)
-      return self.response()
+      return Self.response()
     })
 
     let systemMessage = ModelMessage(
@@ -195,7 +195,7 @@ final class ToolLoopAgentTests: XCTestCase {
     let requestBox = RequestBox()
     let model = MockLanguageModel(generate: { request in
       requestBox.set(request)
-      return self.response()
+      return Self.response()
     })
 
     let systemMessages = [
@@ -230,7 +230,7 @@ final class ToolLoopAgentTests: XCTestCase {
     let downloadsBox = DownloadRequestsBox()
     let model = MockLanguageModel(generate: { request in
       requestBox.set(request)
-      return self.response()
+      return Self.response()
     })
 
     let agent = ToolLoopAgent<Never, Output.Text>(
@@ -267,7 +267,7 @@ final class ToolLoopAgentTests: XCTestCase {
     let requestBox = RequestBox()
     let model = MockLanguageModel(generate: { request in
       requestBox.set(request)
-      return self.response()
+      return Self.response()
     })
 
     let agent = ToolLoopAgent<Never, Output.Text>(
@@ -288,10 +288,10 @@ final class ToolLoopAgentTests: XCTestCase {
   func testStream_usesPrepareCall() async throws {
     let requestBox = RequestBox()
     let model = MockLanguageModel(
-      generate: { _ in self.response() },
+      generate: { _ in Self.response() },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .streamStart(warnings: []),
           .responseMetadata(.init(id: "id-0", modelID: "mock-model", timestamp: Date(timeIntervalSince1970: 0))),
           .textStart(id: "1", providerMetadata: nil),
@@ -322,10 +322,10 @@ final class ToolLoopAgentTests: XCTestCase {
   func testStream_prepareCallInjectsProviderOptions() async throws {
     let requestBox = RequestBox()
     let model = MockLanguageModel(
-      generate: { _ in self.response() },
+      generate: { _ in Self.response() },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .streamStart(warnings: []),
           .responseMetadata(.init(id: "id-0", modelID: "mock-model", timestamp: Date(timeIntervalSince1970: 0))),
           .textStart(id: "1", providerMetadata: nil),
@@ -358,10 +358,10 @@ final class ToolLoopAgentTests: XCTestCase {
   func testStream_messagesUsesProvidedMessages() async throws {
     let requestBox = RequestBox()
     let model = MockLanguageModel(
-      generate: { _ in self.response() },
+      generate: { _ in Self.response() },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .streamStart(warnings: []),
           .responseMetadata(.init(id: "id-0", modelID: "mock-model", timestamp: Date(timeIntervalSince1970: 0))),
           .textStart(id: "1", providerMetadata: nil),
@@ -392,10 +392,10 @@ final class ToolLoopAgentTests: XCTestCase {
     let requestBox = RequestBox()
     let token = CancellationToken()
     let model = MockLanguageModel(
-      generate: { _ in self.response() },
+      generate: { _ in Self.response() },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .streamStart(warnings: []),
           .responseMetadata(.init(id: "id-0", modelID: "mock-model", timestamp: Date(timeIntervalSince1970: 0))),
           .textStart(id: "1", providerMetadata: nil),
@@ -421,10 +421,10 @@ final class ToolLoopAgentTests: XCTestCase {
   func testStream_instructionsString() async throws {
     let requestBox = RequestBox()
     let model = MockLanguageModel(
-      generate: { _ in self.response() },
+      generate: { _ in Self.response() },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .streamStart(warnings: []),
           .responseMetadata(.init(id: "id-0", modelID: "mock-model", timestamp: Date(timeIntervalSince1970: 0))),
           .textStart(id: "1", providerMetadata: nil),
@@ -456,10 +456,10 @@ final class ToolLoopAgentTests: XCTestCase {
   func testStream_instructionsSystemMessage() async throws {
     let requestBox = RequestBox()
     let model = MockLanguageModel(
-      generate: { _ in self.response() },
+      generate: { _ in Self.response() },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .streamStart(warnings: []),
           .responseMetadata(.init(id: "id-0", modelID: "mock-model", timestamp: Date(timeIntervalSince1970: 0))),
           .textStart(id: "1", providerMetadata: nil),

@@ -91,7 +91,7 @@ final class GenerateTextTests: XCTestCase {
     }
   }
 
-  private func response(
+  private static func response(
     finishReason: FinishReason,
     content: [ModelContentPart],
     usage: Usage = .init()
@@ -110,7 +110,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_basicText() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [.text("Hello, world!", metadata: nil)]
       ),
@@ -131,7 +131,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_toolCallExecutesAndLoops() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -143,7 +143,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Done.", metadata: nil),
@@ -173,7 +173,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_toolApprovalStopsAfterOneStep() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -209,7 +209,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_invalidToolCallAddsErrorContentAndResponseMessages() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -247,7 +247,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_responseMessagesAggregatedAcrossSteps() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -259,7 +259,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Final response", metadata: nil),
@@ -287,7 +287,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_toolCallsFromLastStepOnly() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -299,7 +299,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Final response", metadata: nil),
@@ -325,7 +325,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_toolResultsFromLastStepOnly() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -337,7 +337,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Final response", metadata: nil),
@@ -372,7 +372,7 @@ final class GenerateTextTests: XCTestCase {
     )
 
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -385,7 +385,7 @@ final class GenerateTextTests: XCTestCase {
         ],
         usage: usageStep1
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Final response", metadata: nil),
@@ -413,7 +413,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_headersForwardedToModelRequest() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [.text("Hello", metadata: nil)]
       ),
@@ -435,7 +435,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_providerOptionsForwardedToModelRequest() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [.text("Hello", metadata: nil)]
       ),
@@ -457,7 +457,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_abortSignalForwardedToModelRequest() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [.text("Hello", metadata: nil)]
       ),
@@ -479,7 +479,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_activeToolsFiltersDefinitions() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [.text("Hello", metadata: nil)]
       ),
@@ -531,7 +531,7 @@ final class GenerateTextTests: XCTestCase {
 
     let requests = model.recordedRequests()
     XCTAssertEqual(requests.count, 1)
-    let toolNames = requests.first?.tools.map(\.name) ?? []
+    let toolNames = requests.first?.tools.map { $0.name } ?? []
     XCTAssertEqual(toolNames, ["testTool"])
   }
 
@@ -604,7 +604,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_providerMetadataFromLastStep() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -647,7 +647,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_toolExecutionErrorAddsToolErrorAndContinuesLoop() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -659,7 +659,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Recovered.", metadata: nil),
@@ -692,7 +692,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_onInputAvailableCalledEvenWhenApprovalRequired() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -743,7 +743,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_needsApprovalReceivesContextMessages() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -786,7 +786,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_providerExecutedToolIncludedAndNotExecuted() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .toolCall(
@@ -864,7 +864,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_providerExecutedDeferredResultContinuesLoop() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -878,7 +878,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .toolResult(
@@ -931,7 +931,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_programmaticToolCallingAcrossMultipleSteps() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .text("Starting game.", metadata: nil),
@@ -952,7 +952,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -964,7 +964,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .toolResult(
@@ -1052,7 +1052,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_messagesPassedToToolContext() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -1064,7 +1064,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Done.", metadata: nil),
@@ -1098,7 +1098,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_systemMessagePrependedToRequest() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Done.", metadata: nil),
@@ -1122,7 +1122,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_stopWhenMultipleConditionsStopsWhenAnyTrue() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -1134,7 +1134,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Should not reach", metadata: nil),
@@ -1163,7 +1163,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_stopWhenEvaluatedEachStep() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -1175,7 +1175,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Second step", metadata: nil),
@@ -1220,7 +1220,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_prepareStepOverridesProviderOptionsAndMessages() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -1232,7 +1232,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Second step", metadata: nil),
@@ -1270,7 +1270,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_prepareStepOverridesToolsAndActiveTools() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -1282,7 +1282,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Second step", metadata: nil),
@@ -1350,7 +1350,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_onStepFinishCalledForEachStep() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -1362,7 +1362,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Second step", metadata: nil),
@@ -1401,7 +1401,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_onFinishPayloadMatchesResult() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Done", metadata: nil),
@@ -1448,7 +1448,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_resultSurfaceReasoningAndToolParts() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Hello", metadata: nil),
@@ -1492,7 +1492,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_outputTextForwardsTextAndSetsResponseFormat() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [.text("Hello, world!", metadata: nil)]
       ),
@@ -1528,7 +1528,7 @@ final class GenerateTextTests: XCTestCase {
     )
 
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [.text("{ \"value\": \"test-value\" }", metadata: nil)]
       ),
@@ -1563,7 +1563,7 @@ final class GenerateTextTests: XCTestCase {
     )
 
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text(
@@ -1592,7 +1592,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_outputChoiceParsesAndSetsResponseFormat() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("{ \"result\": \"sunny\" }", metadata: nil),
@@ -1616,7 +1616,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_doesNotParseOutputWhenFinishReasonIsToolCalls() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -1670,7 +1670,7 @@ final class GenerateTextTests: XCTestCase {
     let file = GeneratedFile(data: Data([0x01, 0x02]), mediaType: "image/png")
 
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Hello", metadata: nil),
@@ -1692,7 +1692,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_systemAsMessagePreserved() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Done", metadata: nil),
@@ -1718,7 +1718,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_systemAsMessagesArrayPreserved() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Done", metadata: nil),
@@ -1748,7 +1748,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_toolsWithCustomSchemaPassedToModel() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -1829,7 +1829,7 @@ final class GenerateTextTests: XCTestCase {
     let file = GeneratedFile(data: Data([1, 2, 3]), mediaType: "image/png")
 
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .text("Hello, world!", metadata: nil),
@@ -1846,7 +1846,7 @@ final class GenerateTextTests: XCTestCase {
           .text("More text", metadata: nil),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Final", metadata: nil),
@@ -1894,7 +1894,7 @@ final class GenerateTextTests: XCTestCase {
     )
 
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [.text("{ \"wrong\": \"value\" }", metadata: nil)]
       ),
@@ -1916,7 +1916,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_approvalApprovedIncludesToolResultInResponseMessages() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Hello, world!", metadata: nil),
@@ -1971,7 +1971,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_approvalDeniedIncludesToolOutputDeniedInResponseMessages() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .text("Hello, world!", metadata: nil),
@@ -2028,7 +2028,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_stopWhenOverridesToolLoop() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -2040,7 +2040,7 @@ final class GenerateTextTests: XCTestCase {
           ),
         ]
       ),
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Should not reach", metadata: nil),
@@ -2066,7 +2066,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_prepareStepCanOverrideModelAndSystem() async throws {
     let modelA = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -2081,7 +2081,7 @@ final class GenerateTextTests: XCTestCase {
     ])
 
     let modelB = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Second step", metadata: nil),
@@ -2128,7 +2128,7 @@ final class GenerateTextTests: XCTestCase {
         "image/*": [URLPattern("^https?:\\/\\/.*$")]
       ],
       responses: [
-        response(finishReason: .stop, content: [.text("ignored", metadata: nil)]),
+        Self.response(finishReason: .stop, content: [.text("ignored", metadata: nil)]),
       ]
     )
 
@@ -2136,7 +2136,7 @@ final class GenerateTextTests: XCTestCase {
       supportedURLs: [:],
       generate: { request in
         requestBox.set(request)
-        return self.response(
+        return Self.response(
           finishReason: .stop,
           content: [.text("response from without-image-url-support", metadata: nil)]
         )
@@ -2210,7 +2210,7 @@ final class GenerateTextTests: XCTestCase {
     let model = MockLanguageModel(
       generate: { request in
         requestBox.set(request)
-        return self.response(
+        return Self.response(
           finishReason: .stop,
           content: [.text("ok", metadata: nil)]
         )
@@ -2258,7 +2258,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_filePartRequiresMediaType() async throws {
     let model = MockLanguageModel(responses: [
-      response(finishReason: .stop, content: [.text("ok", metadata: nil)]),
+      Self.response(finishReason: .stop, content: [.text("ok", metadata: nil)]),
     ])
 
     do {
@@ -2295,7 +2295,7 @@ final class GenerateTextTests: XCTestCase {
       ],
       generate: { request in
         requestBox.set(request)
-        return self.response(
+        return Self.response(
           finishReason: .stop,
           content: [.text("ok", metadata: nil)]
         )
@@ -2368,7 +2368,7 @@ final class GenerateTextTests: XCTestCase {
       supportedURLs: [:],
       generate: { request in
         requestBox.set(request)
-        return self.response(
+        return Self.response(
           finishReason: .stop,
           content: [.text("ok", metadata: nil)]
         )
@@ -2437,7 +2437,7 @@ final class GenerateTextTests: XCTestCase {
     let model = MockLanguageModel(
       supportedURLs: [:],
       generate: { _ in
-        self.response(
+        Self.response(
           finishReason: .stop,
           content: [.text("ok", metadata: nil)]
         )
@@ -2487,7 +2487,7 @@ final class GenerateTextTests: XCTestCase {
     let model = MockLanguageModel(
       generate: { request in
         requestBox.set(request)
-        return self.response(
+        return Self.response(
           finishReason: .stop,
           content: [.text("ok", metadata: nil)]
         )
@@ -2539,7 +2539,7 @@ final class GenerateTextTests: XCTestCase {
         "*/*": [URLPattern("^https?:\\/\\/.*$")]
       ],
       generate: { _ in
-        self.response(
+        Self.response(
           finishReason: .stop,
           content: [.text("ok", metadata: nil)]
         )
@@ -2585,7 +2585,7 @@ final class GenerateTextTests: XCTestCase {
     let model = MockLanguageModel(
       generate: { request in
         requestBox.set(request)
-        return self.response(
+        return Self.response(
           finishReason: .stop,
           content: [.text("ok", metadata: nil)]
         )
@@ -2636,7 +2636,7 @@ final class GenerateTextTests: XCTestCase {
     let model = MockLanguageModel(
       generate: { request in
         requestBox.set(request)
-        return self.response(
+        return Self.response(
           finishReason: .stop,
           content: [.text("ok", metadata: nil)]
         )
@@ -2692,7 +2692,7 @@ final class GenerateTextTests: XCTestCase {
         "image/png": [URLPattern("^https?:\\/\\/png-only\\.com\\/.*$")]
       ],
       generate: { _ in
-        self.response(
+        Self.response(
           finishReason: .stop,
           content: [.text("ok", metadata: nil)]
         )
@@ -2734,7 +2734,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_providerExecutedApprovalRequestIncluded() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .toolCalls,
         content: [
           .toolCall(
@@ -2767,7 +2767,7 @@ final class GenerateTextTests: XCTestCase {
 
   func testGenerateText_providerExecutedApprovalDoesNotEmitToolOutputDenied() async throws {
     let model = MockLanguageModel(responses: [
-      response(
+      Self.response(
         finishReason: .stop,
         content: [
           .text("Done", metadata: nil),

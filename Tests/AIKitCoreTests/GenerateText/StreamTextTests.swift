@@ -17,12 +17,12 @@ final class StreamTextTests: XCTestCase {
     let value: String
   }
 
-  private let usage = Usage(
+  private static let usage = Usage(
     inputTokens: .init(total: 3, noCache: 3, cacheRead: nil, cacheWrite: nil),
     outputTokens: .init(total: 10, text: 10, reasoning: nil)
   )
 
-  private func makeStream(_ parts: [ModelStreamPart]) -> AsyncThrowingStream<ModelStreamPart, Error> {
+  private static func makeStream(_ parts: [ModelStreamPart]) -> AsyncThrowingStream<ModelStreamPart, Error> {
     AsyncThrowingStream(ModelStreamPart.self) { continuation in
       for part in parts {
         continuation.yield(part)
@@ -193,13 +193,13 @@ final class StreamTextTests: XCTestCase {
 
   func testTextStream_sendsTextDeltas() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .textDelta(id: "1", text: ", ", providerMetadata: nil),
         .textDelta(id: "1", text: "world!", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -215,7 +215,7 @@ final class StreamTextTests: XCTestCase {
 
   func testTextStream_filtersEmptyDeltas() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
@@ -225,7 +225,7 @@ final class StreamTextTests: XCTestCase {
         .textDelta(id: "1", text: "world!", providerMetadata: nil),
         .textDelta(id: "1", text: "", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -241,14 +241,14 @@ final class StreamTextTests: XCTestCase {
 
   func testTextStream_excludesReasoning() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .reasoningStart(id: "r1", providerMetadata: nil),
         .reasoningDelta(id: "r1", text: "Think", providerMetadata: nil),
         .reasoningEnd(id: "r1", providerMetadata: nil),
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -270,14 +270,14 @@ final class StreamTextTests: XCTestCase {
     )
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .responseMetadata(responseMetadata),
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .textDelta(id: "1", text: ", ", providerMetadata: nil),
         .textDelta(id: "1", text: "world!", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -300,23 +300,23 @@ final class StreamTextTests: XCTestCase {
         .textEnd(id: "1", providerMetadata: nil),
         .finishStep(
           response: responseMetadata,
-          usage: usage,
+          usage: Self.usage,
           finishReason: .stop,
           rawFinishReason: nil,
           providerMetadata: nil
         ),
-        .finish(finishReason: .stop, rawFinishReason: nil, totalUsage: usage),
+        .finish(finishReason: .stop, rawFinishReason: nil, totalUsage: Self.usage),
       ]
     )
   }
 
   func testFullStream_usesDefaultResponseMetadataWhenMissing() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -346,12 +346,12 @@ final class StreamTextTests: XCTestCase {
     let warning = CallWarning(message: "warning", code: "unsupported-parameter")
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .streamStart(warnings: [warning]),
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -369,7 +369,7 @@ final class StreamTextTests: XCTestCase {
     let tools = toolRegistry(needsApproval: { _, _ in true })
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -377,7 +377,7 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"needs-approval\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -434,11 +434,11 @@ final class StreamTextTests: XCTestCase {
     )
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Done.", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -466,7 +466,7 @@ final class StreamTextTests: XCTestCase {
 
   func testStreamText_providerApprovalRequestIncludesToolCall() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -477,7 +477,7 @@ final class StreamTextTests: XCTestCase {
           )
         ),
         .toolApprovalRequest(.init(approvalID: "approval-1", toolCallID: "call-1")),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -507,7 +507,7 @@ final class StreamTextTests: XCTestCase {
     })
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -515,7 +515,7 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"value\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -569,11 +569,11 @@ final class StreamTextTests: XCTestCase {
     )
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Done.", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -624,11 +624,11 @@ final class StreamTextTests: XCTestCase {
     )
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Done.", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -654,7 +654,7 @@ final class StreamTextTests: XCTestCase {
     })
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -663,7 +663,7 @@ final class StreamTextTests: XCTestCase {
             dynamic: true
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -692,7 +692,7 @@ final class StreamTextTests: XCTestCase {
     let tools = toolRegistry()
 
     let queue = StreamQueue([
-      makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -702,9 +702,9 @@ final class StreamTextTests: XCTestCase {
             dynamic: true
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .toolResult(
           .init(
             toolCallID: "call-1",
@@ -717,7 +717,7 @@ final class StreamTextTests: XCTestCase {
             dynamic: true
           )
         ),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ]),
     ])
 
@@ -748,7 +748,7 @@ final class StreamTextTests: XCTestCase {
     })
 
     let queue = StreamQueue([
-      makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -756,9 +756,9 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"value\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-2",
@@ -766,13 +766,13 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"value-2\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Done.", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ]),
     ])
 
@@ -804,7 +804,7 @@ final class StreamTextTests: XCTestCase {
     })
 
     let queue = StreamQueue([
-      makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -812,19 +812,19 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"value\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Done.", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .textStart(id: "2", providerMetadata: nil),
         .textDelta(id: "2", text: "Extra", providerMetadata: nil),
         .textEnd(id: "2", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ]),
     ])
 
@@ -860,21 +860,21 @@ final class StreamTextTests: XCTestCase {
 
   func testStreamText_prepareStepOverridesModelAndSystem() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "First", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
     let otherModel = makeModel { request in
       XCTAssertEqual(request.messages.first?.role, .system)
-      return self.makeStream([
+      return Self.makeStream([
         .textStart(id: "2", providerMetadata: nil),
         .textDelta(id: "2", text: "Second", providerMetadata: nil),
         .textEnd(id: "2", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -903,21 +903,21 @@ final class StreamTextTests: XCTestCase {
   func testStreamText_prepareStepOverridesMessages() async throws {
     let model = makeModel { request in
       XCTAssertEqual(request.messages.first?.role, .user)
-      return self.makeStream([
+      return Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "First", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
     let otherModel = makeModel { request in
       XCTAssertEqual(request.messages.first?.role, .user)
-      return self.makeStream([
+      return Self.makeStream([
         .textStart(id: "2", providerMetadata: nil),
         .textDelta(id: "2", text: "Second", providerMetadata: nil),
         .textEnd(id: "2", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -953,11 +953,11 @@ final class StreamTextTests: XCTestCase {
       ],
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { _ in
-        self.makeStream([
+        Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ignored", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -967,11 +967,11 @@ final class StreamTextTests: XCTestCase {
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "response from without-image-url-support", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1044,11 +1044,11 @@ final class StreamTextTests: XCTestCase {
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ok", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1096,11 +1096,11 @@ final class StreamTextTests: XCTestCase {
 
   func testStreamText_filePartRequiresMediaType() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "ok", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -1141,11 +1141,11 @@ final class StreamTextTests: XCTestCase {
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ok", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1217,11 +1217,11 @@ final class StreamTextTests: XCTestCase {
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ok", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1289,11 +1289,11 @@ final class StreamTextTests: XCTestCase {
       supportedURLs: [:],
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { _ in
-        self.makeStream([
+        Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ok", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1344,11 +1344,11 @@ final class StreamTextTests: XCTestCase {
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ok", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1399,11 +1399,11 @@ final class StreamTextTests: XCTestCase {
       ],
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { _ in
-        self.makeStream([
+        Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ok", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1448,11 +1448,11 @@ final class StreamTextTests: XCTestCase {
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ok", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1502,11 +1502,11 @@ final class StreamTextTests: XCTestCase {
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { request in
         requestBox.set(request)
-        return self.makeStream([
+        return Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ok", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1561,11 +1561,11 @@ final class StreamTextTests: XCTestCase {
       ],
       generate: { _ in .init(content: [], finishReason: .stop, rawFinishReason: "stop") },
       stream: { _ in
-        self.makeStream([
+        Self.makeStream([
           .textStart(id: "1", providerMetadata: nil),
           .textDelta(id: "1", text: "ok", providerMetadata: nil),
           .textEnd(id: "1", providerMetadata: nil),
-          .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+          .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
         ])
       }
     )
@@ -1624,7 +1624,7 @@ final class StreamTextTests: XCTestCase {
     let resp2 = LanguageModelResponseMetadata(id: "resp-2", modelID: "m2", timestamp: Date(timeIntervalSince1970: 20))
 
     let queue = StreamQueue([
-      makeStream([
+      Self.makeStream([
         .startStep(request: req1, warnings: warnings),
         .toolCall(
           .init(
@@ -1636,7 +1636,7 @@ final class StreamTextTests: XCTestCase {
         .responseMetadata(resp1),
         .finish(finishReason: .toolCalls, usage: usage1, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .startStep(request: req2, warnings: []),
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Done.", providerMetadata: nil),
@@ -1708,7 +1708,7 @@ final class StreamTextTests: XCTestCase {
     })
 
     let queue = StreamQueue([
-      makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -1716,13 +1716,13 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"value\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Done.", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ]),
     ])
 
@@ -1831,11 +1831,11 @@ final class StreamTextTests: XCTestCase {
     let onErrorBox = MessageBox()
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .error(.init(message: "chunk error")),
-        .finish(finishReason: .error, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .error, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -1862,17 +1862,17 @@ final class StreamTextTests: XCTestCase {
   func testStreamText_abortInSecondStepEmitsAbortAndStops() async throws {
     let token = CancellationToken()
     let queue = StreamQueue([
-      makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "First", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .textStart(id: "2", providerMetadata: nil),
         .textDelta(id: "2", text: "Second", providerMetadata: nil),
         .textEnd(id: "2", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ]),
     ])
 
@@ -1909,7 +1909,7 @@ final class StreamTextTests: XCTestCase {
 
   func testStreamText_fullStreamMixedContentOrder() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .startStep(request: .init(), warnings: []),
         .textStart(id: "t1", providerMetadata: nil),
         .textDelta(id: "t1", text: "Hi ", providerMetadata: nil),
@@ -1923,7 +1923,7 @@ final class StreamTextTests: XCTestCase {
         .textEnd(id: "t1", providerMetadata: nil),
         .finishStep(
           response: .init(),
-          usage: self.usage,
+          usage: Self.usage,
           finishReason: .stop,
           rawFinishReason: "stop",
           providerMetadata: nil
@@ -1955,12 +1955,12 @@ final class StreamTextTests: XCTestCase {
       .textEnd(id: "t1", providerMetadata: nil),
       .finishStep(
         response: .init(),
-        usage: self.usage,
+        usage: Self.usage,
         finishReason: .stop,
         rawFinishReason: "stop",
         providerMetadata: nil
       ),
-      .finish(finishReason: .stop, rawFinishReason: "stop", totalUsage: self.usage),
+      .finish(finishReason: .stop, rawFinishReason: "stop", totalUsage: Self.usage),
     ]
     XCTAssertEqual(parts, expected)
   }
@@ -1971,7 +1971,7 @@ final class StreamTextTests: XCTestCase {
     })
 
     let queue = StreamQueue([
-      makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -1979,13 +1979,13 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"value\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Done.", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ]),
     ])
 
@@ -2031,7 +2031,7 @@ final class StreamTextTests: XCTestCase {
 
   func testFullStream_reasoningDeltasAreForwarded() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .reasoningStart(id: "r1", providerMetadata: nil),
         .reasoningDelta(id: "r1", text: "Think", providerMetadata: nil),
         .reasoningDelta(id: "r1", text: " more", providerMetadata: nil),
@@ -2039,7 +2039,7 @@ final class StreamTextTests: XCTestCase {
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2064,7 +2064,7 @@ final class StreamTextTests: XCTestCase {
     })
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -2072,7 +2072,7 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"value\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2099,7 +2099,7 @@ final class StreamTextTests: XCTestCase {
     let tools = toolRegistry(needsApproval: { _, _ in true })
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -2107,7 +2107,7 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"needs-approval\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2127,9 +2127,9 @@ final class StreamTextTests: XCTestCase {
 
   func testFullStream_rawPartsHonorsIncludeRawParts() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .raw(.object(["key": .string("value")])),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2146,14 +2146,14 @@ final class StreamTextTests: XCTestCase {
 
   func testPartialOutputStream_json() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "{", providerMetadata: nil),
         .textDelta(id: "1", text: "\"value\":", providerMetadata: nil),
         .textDelta(id: "1", text: "\"hi\"", providerMetadata: nil),
         .textDelta(id: "1", text: "}", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2170,14 +2170,14 @@ final class StreamTextTests: XCTestCase {
 
   func testPartialOutputStream_object() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "{", providerMetadata: nil),
         .textDelta(id: "1", text: "\"name\":", providerMetadata: nil),
         .textDelta(id: "1", text: "\"Ada\"", providerMetadata: nil),
         .textDelta(id: "1", text: "}", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2194,7 +2194,7 @@ final class StreamTextTests: XCTestCase {
 
   func testPartialOutputStream_array() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "{", providerMetadata: nil),
         .textDelta(id: "1", text: "\"elements\":[", providerMetadata: nil),
@@ -2203,7 +2203,7 @@ final class StreamTextTests: XCTestCase {
         .textDelta(id: "1", text: "{\"value\":\"b\"}", providerMetadata: nil),
         .textDelta(id: "1", text: "]}", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2220,14 +2220,14 @@ final class StreamTextTests: XCTestCase {
 
   func testPartialOutputStream_choice() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "{", providerMetadata: nil),
         .textDelta(id: "1", text: "\"result\":", providerMetadata: nil),
         .textDelta(id: "1", text: "\"ap\"", providerMetadata: nil),
         .textDelta(id: "1", text: "}", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2257,7 +2257,7 @@ final class StreamTextTests: XCTestCase {
     )
 
     let queue = StreamQueue([
-      makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -2267,7 +2267,7 @@ final class StreamTextTests: XCTestCase {
         ),
         .finish(finishReason: .toolCalls, usage: usageStep1, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Done.", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
@@ -2315,13 +2315,13 @@ final class StreamTextTests: XCTestCase {
     )
 
     let queue = StreamQueue([
-      makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
         .finish(finishReason: .toolCalls, usage: usageStep1, providerMetadata: nil),
       ]),
-      makeStream([
+      Self.makeStream([
         .textStart(id: "2", providerMetadata: nil),
         .textDelta(id: "2", text: "World", providerMetadata: nil),
         .textEnd(id: "2", providerMetadata: nil),
@@ -2363,7 +2363,7 @@ final class StreamTextTests: XCTestCase {
     })
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolInputStart(id: "call-1", toolName: "testTool", providerMetadata: nil),
         .toolInputDelta(id: "call-1", delta: "{", providerMetadata: nil),
         .toolInputDelta(id: "call-1", delta: "\"value\":\"v\"}", providerMetadata: nil),
@@ -2400,7 +2400,7 @@ final class StreamTextTests: XCTestCase {
         .textStart(id: "t1", providerMetadata: nil),
         .textDelta(id: "t1", text: "Hello", providerMetadata: nil),
         .textEnd(id: "t1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2472,7 +2472,7 @@ final class StreamTextTests: XCTestCase {
     let messageBox = MessageBox()
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .error(.init(message: "boom")),
       ])
     }
@@ -2502,11 +2502,11 @@ final class StreamTextTests: XCTestCase {
     await token.cancel()
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2559,7 +2559,7 @@ final class StreamTextTests: XCTestCase {
     )
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolInputStart(id: "call-1", toolName: "testTool", providerMetadata: nil),
         .toolInputDelta(id: "call-1", delta: "{\"value\":\"v\"}", providerMetadata: nil),
         .toolInputEnd(id: "call-1", providerMetadata: nil),
@@ -2570,7 +2570,7 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"v\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2591,7 +2591,7 @@ final class StreamTextTests: XCTestCase {
 
   func testStreamText_providerExecutedToolInputStreaming() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolInputStart(
           id: "call-1",
           toolName: "serverTool",
@@ -2602,7 +2602,7 @@ final class StreamTextTests: XCTestCase {
         ),
         .toolInputDelta(id: "call-1", delta: "{\"value\":\"v\"}", providerMetadata: nil),
         .toolInputEnd(id: "call-1", providerMetadata: nil),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2629,7 +2629,7 @@ final class StreamTextTests: XCTestCase {
 
   func testStreamText_fullStreamEmitsErrorPart() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .error(.init(message: "boom")),
       ])
     }
@@ -2683,7 +2683,7 @@ final class StreamTextTests: XCTestCase {
 
   func testStreamText_noOutputGeneratedThrows() async throws {
     let model = makeModel { _ in
-      self.makeStream([])
+      Self.makeStream([])
     }
 
     let result = streamText(
@@ -2707,11 +2707,11 @@ final class StreamTextTests: XCTestCase {
 
   func testStreamText_transformModifiesText() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "hello", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2754,12 +2754,12 @@ final class StreamTextTests: XCTestCase {
 
   func testStreamText_transformCanEndStreamEarly() async throws {
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: nil),
         .textDelta(id: "1", text: " World", providerMetadata: nil),
         .textEnd(id: "1", providerMetadata: nil),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2810,7 +2810,7 @@ final class StreamTextTests: XCTestCase {
     })
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .toolCall(
           .init(
             toolCallID: "call-1",
@@ -2818,7 +2818,7 @@ final class StreamTextTests: XCTestCase {
             inputJSON: "{ \"value\": \"value\" }"
           )
         ),
-        .finish(finishReason: .toolCalls, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
@@ -2853,7 +2853,7 @@ final class StreamTextTests: XCTestCase {
     let metadata: ProviderMetadata = ["test": .string("value")]
 
     let model = makeModel { _ in
-      self.makeStream([
+      Self.makeStream([
         .textStart(id: "1", providerMetadata: nil),
         .textDelta(id: "1", text: "Hello", providerMetadata: metadata),
         .textEnd(id: "1", providerMetadata: nil),
@@ -2865,7 +2865,7 @@ final class StreamTextTests: XCTestCase {
             providerMetadata: metadata
           )
         ),
-        .finish(finishReason: .stop, usage: self.usage, providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
       ])
     }
 
