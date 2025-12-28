@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import SwiftUI
 import UIKit
 
@@ -162,3 +163,9 @@ private struct PromptInputHost: View {
     .padding(.vertical, 8)
   }
 }
+#else
+import Foundation
+
+@available(*, unavailable, message: "PromptInputView is only available on UIKit platforms.")
+public final class PromptInputView: NSObject {}
+#endif

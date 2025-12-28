@@ -69,8 +69,8 @@ struct OpenRouterChatDemoView: View {
 final class OpenRouterChatStore: ObservableObject {
   @Published var snapshot: ChatSessionSnapshot = .init(status: .ready, messages: [], errorDescription: nil)
 
-  private var session: ChatSession?
-  private var updatesTask: Task<Void, Never>?
+  private var chat: ChatStore?
+  private var chatUpdates: AnyCancellable?
   private var configuredKey: String = ""
   private var configuredModelID: String = ""
 
@@ -79,9 +79,9 @@ final class OpenRouterChatStore: ObservableObject {
     let modelID = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
 
     if apiKey.isEmpty || modelID.isEmpty {
-      updatesTask?.cancel()
-      updatesTask = nil
-      session = nil
+      chatUpdates?.cancel()
+      chatUpdates = nil
+      chat = nil
       configuredKey = ""
       configuredModelID = ""
       snapshot = .init(
@@ -92,58 +92,48 @@ final class OpenRouterChatStore: ObservableObject {
       return
     }
 
-    guard apiKey != configuredKey || modelID != configuredModelID || session == nil else {
+    guard apiKey != configuredKey || modelID != configuredModelID || chat == nil else {
       return
     }
 
     configuredKey = apiKey
     configuredModelID = modelID
 
-    updatesTask?.cancel()
-    updatesTask = nil
+    chatUpdates?.cancel()
+    chatUpdates = nil
 
     let provider = createOpenRouter(.init(apiKey: apiKey))
     let model = provider.chat(modelID)
-    let agent = ToolLoopAgent<Void, Output.Text>(model: model, output: .init())
-
-    let session = ChatSession(.init(agent: agent))
-    self.session = session
-
-    updatesTask = Task { [weak self] in
-      guard let self else { return }
-      await session.setMessages { messages in
-        messages.isEmpty ? DemoContent.initialMessages : messages
-      }
-      let stream = await session.updates()
-      for await snap in stream {
-        if Task.isCancelled { return }
-        await MainActor.run { self.snapshot = snap }
-      }
+    let chat = ChatStore(
+      model: model,
+      initialMessages: DemoContent.initialMessages
+    )
+    self.chat = chat
+    snapshot = .init(status: chat.status, messages: chat.messages, errorDescription: chat.errorDescription)
+    chatUpdates = chat.objectWillChange.sink { [weak self] _ in
+      guard let self, let chat = self.chat else { return }
+      self.snapshot = .init(status: chat.status, messages: chat.messages, errorDescription: chat.errorDescription)
     }
 
     snapshot = .init(status: .ready, messages: DemoContent.initialMessages, errorDescription: nil)
   }
 
   func send(text: String) async {
-    guard let session else { return }
+    guard let chat else { return }
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard trimmed.isEmpty == false else { return }
 
-    let draft = ChatDraftMessage(
-      role: .user,
-      parts: [
-        .text(.init(id: UUID().uuidString, text: trimmed, state: .done)),
-      ]
-    )
-    await session.send(draft)
+    chat.sendMessage(trimmed)
   }
 
   func stop() async {
-    await session?.stop()
+    chat?.stop()
   }
 
   func clear() async {
-    guard let session else { return }
-    await session.setMessages { _ in [] }
+    chatUpdates?.cancel()
+    chatUpdates = nil
+    chat = nil
+    configureIfPossible(apiKey: configuredKey, modelID: configuredModelID)
   }
 }

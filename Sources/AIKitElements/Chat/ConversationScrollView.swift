@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import UIKit
 
 public protocol ConversationScrollViewDataSource: AnyObject {
@@ -156,3 +157,15 @@ extension ConversationScrollView: UITableViewDelegate {
     delegate?.conversationScrollViewDidScroll(self)
   }
 }
+#else
+import Foundation
+
+@available(*, unavailable, message: "ConversationScrollView is only available on UIKit platforms.")
+public protocol ConversationScrollViewDataSource: AnyObject {}
+
+@available(*, unavailable, message: "ConversationScrollView is only available on UIKit platforms.")
+public protocol ConversationScrollViewDelegate: AnyObject {}
+
+@available(*, unavailable, message: "ConversationScrollView is only available on UIKit platforms.")
+public final class ConversationScrollView: NSObject {}
+#endif
