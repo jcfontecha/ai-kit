@@ -1,5 +1,5 @@
 import SwiftUI
-import AIKitCore
+import AIKit
 import AIKitElements
 
 struct PromptInputDemoView: View {

@@ -2,8 +2,8 @@ import SwiftUI
 import Combine
 import MarkdownUI
 
-import AIKitOpenRouter
 import AIKit
+import AIKitOpenRouter
 import AIKitElements
 
 struct OpenRouterChatDemoView: View {

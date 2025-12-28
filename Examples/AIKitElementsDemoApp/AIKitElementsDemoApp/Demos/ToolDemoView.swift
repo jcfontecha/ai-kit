@@ -1,6 +1,5 @@
 import SwiftUI
 import AIKit
-import AIKitCore
 import AIKitElements
 
 struct ToolDemoView: View {

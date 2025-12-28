@@ -1,7 +1,5 @@
 import Foundation
-
-import AIKitCore
-import AIKitProviders
+import AIKit
 
 enum DemoContent {
   nonisolated static var initialMessages: [ChatMessage] {
@@ -49,4 +47,3 @@ enum DemoContent {
   And then there’s the social layer: neighbors who develop tiny running jokes, trading turnip prices, sending letters, and visiting friends’ islands for inspiration. Even when you’re playing solo, it still feels communal—like you’re part of a quiet town where everyone has their own routines. That gentle sense of connection is a big part of why the series feels comforting when you just want to unwind.
   """
 }
-

@@ -1,9 +1,7 @@
 import SwiftUI
 import Combine
-
-import AIKitCore
+import AIKit
 import AIKitOpenRouter
-import AIKitProviders
 import AIKitElements
 
 struct OpenRouterChatDemoView: View {

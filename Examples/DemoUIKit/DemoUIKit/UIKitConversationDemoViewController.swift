@@ -1,8 +1,6 @@
 import UIKit
-
-import AIKitCore
+import AIKit
 import AIKitElements
-import AIKitProviders
 
 final class UIKitConversationDemoViewController: UIViewController {
   private let conversationView = ConversationScrollView()

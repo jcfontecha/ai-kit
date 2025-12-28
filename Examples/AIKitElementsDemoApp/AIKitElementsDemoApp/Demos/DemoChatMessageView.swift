@@ -1,8 +1,6 @@
 import SwiftUI
 import MarkdownUI
-
-import AIKitCore
-import AIKitProviders
+import AIKit
 
 struct DemoChatMessageView: View {
   let message: ChatMessage

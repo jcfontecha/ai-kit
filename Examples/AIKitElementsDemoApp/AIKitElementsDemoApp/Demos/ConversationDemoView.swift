@@ -1,6 +1,5 @@
 import SwiftUI
-import AIKitCore
-import AIKitProviders
+import AIKit
 import AIKitElements
 
 struct ConversationDemoView: View {

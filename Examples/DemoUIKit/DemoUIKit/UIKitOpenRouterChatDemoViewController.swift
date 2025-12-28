@@ -2,10 +2,8 @@ import SwiftUI
 import UIKit
 
 import AIKit
-import AIKitCore
 import AIKitElements
 import AIKitOpenRouter
-import AIKitProviders
 
 final class UIKitOpenRouterChatDemoViewController: UIViewController {
   private let conversationView = ConversationScrollView()

@@ -1,5 +1,4 @@
 import Foundation
-
 import AIKit
 
 enum DemoContent {
