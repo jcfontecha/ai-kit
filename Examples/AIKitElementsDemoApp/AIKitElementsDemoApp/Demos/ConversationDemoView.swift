@@ -7,12 +7,24 @@ struct ConversationDemoView: View {
   @State private var items: [ChatMessage] = DemoContent.initialMessages
 
   var body: some View {
-    Conversation(messages: items, bottomOverlayHeight: 0) { message in
-      DemoChatMessageView(message: message)
-        .id(message.id)
+    Group {
+      if items.isEmpty {
+        ConversationEmptyState(
+          title: "Start a conversation",
+          description: "Messages will appear here as the conversation progresses.",
+          icon: AnyView(Image(systemName: "message").font(.system(size: 36, weight: .regular)))
+        )
+      } else {
+        Conversation(messages: items, bottomOverlayHeight: 0, showsScrollButton: true) { message in
+          DemoChatMessageView(message: message)
+        }
+      }
     }
     .overlay(alignment: .topTrailing) {
-      Button("Reset") { items = DemoContent.initialMessages }
+      HStack(spacing: 8) {
+        Button("Clear") { items = [] }
+        Button("Reset") { items = DemoContent.initialMessages }
+      }
         .buttonStyle(.bordered)
         .padding(8)
     }

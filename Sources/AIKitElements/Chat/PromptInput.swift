@@ -154,12 +154,13 @@ private struct PromptInputBottomBarModifier: ViewModifier {
           .padding(.bottom, 8)
           .background {
             GeometryReader { proxy in
-              Color.clear.preference(key: PromptInputHeightKey.self, value: proxy.size.height)
+              Color.clear
+                .onAppear { height = proxy.size.height }
+                .onChange(of: proxy.size.height) { newHeight in
+                  height = newHeight
+                }
             }
           }
-      }
-      .onPreferenceChange(PromptInputHeightKey.self) { newHeight in
-        height = newHeight
       }
     #else
     content
@@ -170,18 +171,16 @@ private struct PromptInputBottomBarModifier: ViewModifier {
           .padding(.bottom, 12)
           .background {
             GeometryReader { proxy in
-              Color.clear.preference(key: PromptInputHeightKey.self, value: proxy.size.height)
+              Color.clear
+                .onAppear { height = proxy.size.height }
+                .onChange(of: proxy.size.height) { newHeight in
+                  height = newHeight
+                }
             }
           }
-      }
-      .onPreferenceChange(PromptInputHeightKey.self) { newHeight in
-        height = newHeight
       }
     #endif
   }
 }
 
-private struct PromptInputHeightKey: PreferenceKey {
-  static var defaultValue: CGFloat = 0
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
-}
+// Height measurement is handled in-place (GeometryReader) to avoid preference propagation issues across `safeAreaInset`.
