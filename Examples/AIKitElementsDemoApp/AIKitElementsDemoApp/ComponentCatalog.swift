@@ -171,17 +171,6 @@ enum ComponentCatalog {
       ]
     ),
     .init(
-      id: "shimmer",
-      category: .utilities,
-      name: "Shimmer",
-      summary: "Subtle shimmer for streaming placeholders",
-      variants: [
-        .init(id: "shimmer/basic", title: "Basic", description: nil) {
-          AnyView(PlaceholderDemoView(title: "Shimmer", detail: "TODO: implement Shimmer demo"))
-        },
-      ]
-    ),
-    .init(
       id: "code-block",
       category: .utilities,
       name: "Code Block",

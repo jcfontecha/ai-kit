@@ -2,19 +2,32 @@ import SwiftUI
 import AIKitElements
 
 struct ReasoningDemoView: View {
-  @State private var isStreaming: Bool = true
-
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      Toggle("Streaming", isOn: $isStreaming)
-        .font(.subheadline)
-
-      ReasoningDisclosure(isStreaming: isStreaming) {
-        Text("I should call tools to fetch data, then summarize it for the user.")
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Streaming")
+          .font(.caption.weight(.semibold))
           .foregroundStyle(.secondary)
+
+        ReasoningDisclosure(isStreaming: true) {
+          Text("I should call tools to fetch data, then summarize it for the user.")
+        }
+      }
+
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Complete")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+
+        ReasoningDisclosure(
+          isStreaming: false,
+          open: .constant(false),
+          duration: .constant(7 as Int?)
+        ) {
+          Text("Reasoning finished; this should now be hidden unless you expand it.")
+        }
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 }
-

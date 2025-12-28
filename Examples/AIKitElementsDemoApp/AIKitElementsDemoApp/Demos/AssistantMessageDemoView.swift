@@ -16,6 +16,11 @@ struct AssistantMessageDemoView: View {
 
       AssistantMessage(
         parts: demoParts,
+        assistantReasoningText: { text in
+          Markdown(text)
+            .markdownTextStyle { ForegroundColor(.secondary) }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        },
         assistantText: { text in
           Markdown(text)
             .frame(maxWidth: .infinity, alignment: .leading)

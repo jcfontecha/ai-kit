@@ -169,7 +169,14 @@ private struct DemoMessageRow: View {
 
     case .assistant:
       HStack(alignment: .top) {
-        AssistantMessage(parts: message.parts) { text in
+        AssistantMessage(
+          parts: message.parts,
+          assistantReasoningText: { text in
+            Markdown(text)
+              .markdownTextStyle { ForegroundColor(.secondary) }
+              .frame(maxWidth: .infinity, alignment: .leading)
+          }
+        ) { text in
           Markdown(text)
             .frame(maxWidth: .infinity, alignment: .leading)
         }

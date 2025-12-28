@@ -18,6 +18,7 @@ public struct ToolRenderContext {
 }
 
 public typealias ToolRenderer = (_ context: ToolRenderContext) -> AnyView
+public typealias ReasoningTextRenderer = (_ text: String) -> AnyView
 
 private struct AssistantMessageShowsReasoningKey: EnvironmentKey {
   static var defaultValue: Bool = true
@@ -100,6 +101,7 @@ public struct AssistantMessage<AssistantText: View>: View {
   public var toolRenderers: [String: ToolRenderer]?
   public var onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)?
   @ViewBuilder public var assistantText: (String) -> AssistantText
+  public var assistantReasoningText: ReasoningTextRenderer?
 
   @Environment(\.assistantMessageShowsReasoning) private var environmentShowsReasoning
   @Environment(\.assistantMessageToolRenderers) private var environmentToolRenderers
@@ -110,26 +112,49 @@ public struct AssistantMessage<AssistantText: View>: View {
     showsReasoning: Bool? = nil,
     toolRenderers: [String: ToolRenderer]? = nil,
     onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
+    assistantReasoningText: ReasoningTextRenderer? = nil,
     @ViewBuilder assistantText: @escaping (String) -> AssistantText
   ) {
     self.parts = parts
     self.showsReasoning = showsReasoning
     self.toolRenderers = toolRenderers
     self.onToolApprovalResponse = onToolApprovalResponse
+    self.assistantReasoningText = assistantReasoningText
     self.assistantText = assistantText
+  }
+
+  public init<AssistantReasoningText: View>(
+    parts: [ChatMessagePart],
+    showsReasoning: Bool? = nil,
+    toolRenderers: [String: ToolRenderer]? = nil,
+    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
+    @ViewBuilder assistantReasoningText: @escaping (String) -> AssistantReasoningText,
+    @ViewBuilder assistantText: @escaping (String) -> AssistantText
+  ) {
+    let renderer: ReasoningTextRenderer = { text in AnyView(assistantReasoningText(text)) }
+    self.init(
+      parts: parts,
+      showsReasoning: showsReasoning,
+      toolRenderers: toolRenderers,
+      onToolApprovalResponse: onToolApprovalResponse,
+      assistantReasoningText: Optional(renderer),
+      assistantText: assistantText
+    )
   }
 
   public init(
     parts: [ChatMessagePart],
     showsReasoning: Bool? = nil,
     toolRenderers: [String: ToolRenderer]? = nil,
-    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil
+    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
+    assistantReasoningText: ReasoningTextRenderer? = nil
   ) where AssistantText == Text {
     self.init(
       parts: parts,
       showsReasoning: showsReasoning,
       toolRenderers: toolRenderers,
       onToolApprovalResponse: onToolApprovalResponse,
+      assistantReasoningText: assistantReasoningText,
       assistantText: { Text($0) }
     )
   }
@@ -139,7 +164,7 @@ public struct AssistantMessage<AssistantText: View>: View {
     let resolvedToolRenderers = toolRenderers ?? environmentToolRenderers
     let resolvedOnToolApprovalResponse = onToolApprovalResponse ?? environmentOnToolApprovalResponse
 
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 14) {
       ForEach(groupedParts(parts)) { part in
         switch part.kind {
         case .text(let text):
@@ -149,7 +174,11 @@ public struct AssistantMessage<AssistantText: View>: View {
         case .reasoning(let text, let isStreaming):
           if resolvedShowsReasoning {
             ReasoningDisclosure(isStreaming: isStreaming) {
-              assistantText(text)
+              if let assistantReasoningText {
+                assistantReasoningText(text)
+              } else {
+                AnyView(assistantText(text))
+              }
             }
           }
 

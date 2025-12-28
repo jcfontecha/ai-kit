@@ -18,6 +18,9 @@ let package = Package(
     .library(name: "AIKitFal", targets: ["AIKitFal"]),
     .executable(name: "aikit-codegen", targets: ["AIKitCodegen"]),
   ],
+  dependencies: [
+    .package(url: "https://github.com/markiv/SwiftUI-Shimmer.git", from: "1.5.1"),
+  ],
   targets: [
     .target(
       name: "AIKitProviders"
@@ -28,7 +31,10 @@ let package = Package(
     ),
     .target(
       name: "AIKitElements",
-      dependencies: ["AIKit"]
+      dependencies: [
+        "AIKit",
+        .product(name: "Shimmer", package: "SwiftUI-Shimmer"),
+      ]
     ),
     .target(
       name: "AIKit",
