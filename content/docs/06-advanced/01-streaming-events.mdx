@@ -16,7 +16,6 @@ description: Understand TextStreamPart and how it maps to provider stream parts.
 - tool loop events: `.toolCall`, `.toolResult`, `.toolError`, `.toolApprovalRequest/.toolApprovalResponse`
 - payload passthrough: `.raw(JSONValue)` and `.error(String)`
 
-Providers emit `ModelStreamPart` values; AIKitCore translates them into `TextStreamPart` and aggregates them into steps and the final result.
+Providers emit `ModelStreamPart` values; AIKit translates them into `TextStreamPart` and aggregates them into steps and the final result.
 
-For concrete examples, see `Tests/AIKitCoreTests/GenerateText/StreamTextTests.swift`.
-
+For concrete examples, see `StreamTextTests.swift`.

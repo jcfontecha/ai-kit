@@ -9,9 +9,8 @@ Some providers can execute tools on their side (or return tool results without A
 
 AIKit models this via `ToolKind.provider(supportsDeferredResults:)`.
 
-- When a tool is provider-executed, AIKitCore does not call `ToolSpec.execute`.
+- When a tool is provider-executed, AIKit does not call `ToolSpec.execute`.
 - Tool results are expected to arrive through the provider stream / response.
 - If `supportsDeferredResults` is `true`, results may arrive later; the loop finish waits for pending results.
 
-See `Sources/AIKitCore/ControlFlow/PendingDeferredToolCalls.swift` and tool loop code paths in `generateText` / `streamText`.
-
+See deferred-results tracking (via `pendingDeferredToolCalls`) in `Sources/AIKit/Generation/GenerateText.swift`, and the tool loop code paths in `generateText` / `streamText`.

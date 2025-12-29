@@ -7,16 +7,17 @@ description: Add AIKit to an iOS/macOS app via Swift Package Manager.
 
 AIKit is a Swift Package targeting:
 
-- iOS 15+
-- macOS 12+
+- iOS 26+
+- macOS 26+
 
 ## Swift Package Manager (Xcode)
 
 1. In Xcode, open **File → Add Packages…**
 2. Add this repository URL.
 3. Select the products you need:
-   - `AIKit` (umbrella)
-   - or `AIKitCore` + a provider (e.g. `AIKitOpenRouter`)
+   - `AIKit` (app-facing)
+   - `AIKitProviders` (provider protocols + wire types, if you’re writing a custom provider)
+   - and a provider module (e.g. `AIKitOpenRouter`)
 
 ## Swift Package Manager (Package.swift)
 
@@ -40,4 +41,3 @@ targets: [
 ## API keys
 
 AIKit does not ship “secure key storage”. Provide keys via your provider configuration (e.g. `OpenRouterProviderSettings(apiKey:)`) and store them using your app’s preferred approach (Keychain, MDM, etc.).
-

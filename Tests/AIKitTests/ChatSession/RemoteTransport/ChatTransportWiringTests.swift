@@ -1,5 +1,5 @@
 import XCTest
-@testable @_spi(Advanced) import AIKitCore
+@testable @_spi(Advanced) import AIKit
 import AIKitProviders
 
 final class ChatTransportWiringTests: XCTestCase {

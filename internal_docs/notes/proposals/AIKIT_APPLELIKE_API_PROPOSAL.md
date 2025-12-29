@@ -4,9 +4,9 @@ Date: December 27, 2025
 
 This is an **API-shape proposal** only. The parity engine remains the current v2 core:
 
-- `generateText` / `streamText` (`Sources/AIKitCore/Generation/GenerateText.swift`, `Sources/AIKitCore/Streaming/StreamText.swift`)
-- `ToolLoopAgent` (`Sources/AIKitCore/Agent/ToolLoopAgent.swift`)
-- `ChatSession` (`Sources/AIKitCore/ChatSession/*`)
+- `generateText` / `streamText` (`Sources/AIKit/Generation/GenerateText.swift`, `Sources/AIKit/Streaming/StreamText.swift`)
+- `ToolLoopAgent` (`Sources/AIKit/Agent/ToolLoopAgent.swift`)
+- `ChatSession` (`Sources/AIKit/ChatSession/*`)
 
 The goal is to make the *primary* call sites feel like Apple frameworks: **configure once, call many**; small per-call overrides; minimal “plumbing types” visible to app code.
 
@@ -604,7 +604,7 @@ This is not a rollout schedule; it’s a concrete “work inventory” so we’r
 These are pure façades that delegate to existing v2 types/entrypoints:
 
 - **Add `AIClient` façade (implemented)**
-  - New type in `Sources/AIKitCore` that stores defaults and calls existing `generateText(.init(...))` / `streamText(.init(...))`.
+  - New type in `Sources/AIKit` that stores defaults and calls existing `generateText(.init(...))` / `streamText(.init(...))`.
   - Re-export via `AIKit` target for convenience.
 - **Add `ChatStore` façade (implemented)**
   - New SwiftUI/Combine-friendly wrapper over `ChatSession` (internally listens to `updates()` and publishes state).

@@ -40,10 +40,10 @@ let approvalMessage = ModelMessage(
 )
 ```
 
-Because approval messages are part of the tool loop semantics, the exact message shape is handled by AIKitCore. In practice, the easiest way to integrate approvals is:
+Because approval messages are part of the tool loop semantics, the exact message shape is handled by AIKit (the tool loop engine). In practice, the easiest way to integrate approvals is:
 
 - consume `stream.fullStream`
 - when you receive `.toolApprovalRequest(...)`, present UI
 - then resume with a follow-up call that includes the appropriate approval response messages
 
-See `Tests/AIKitCoreTests/GenerateText/CollectToolApprovalsTests.swift` for concrete scenarios.
+See `CollectToolApprovalsTests.swift` for concrete scenarios.

@@ -58,7 +58,7 @@ The important separation: **the “tool loop” continues by resubmitting messag
 
 AIKit already has:
 
-- `streamText` + `ToolLoopAgent` in `Sources/AIKitCore` (core orchestration).
+- `streamText` + `ToolLoopAgent` in `Sources/AIKit` (core orchestration).
 - Tool concepts aligned with AI SDK:
   - typed tool inputs via `ObjectSchema<T>`
   - `needsApproval`
@@ -94,7 +94,7 @@ Rationale (based on AI SDK semantics):
 
 ### What AIKit should add (API surface)
 
-Add a UI-agnostic chat/session type in `AIKitCore` (SwiftUI can wrap it later):
+Add a UI-agnostic chat/session type in `AIKit` (SwiftUI can wrap it later):
 
 - `ChatSession` (an `actor` or `@MainActor final class`) holding:
   - `id`, `messages`, `status`, `error`

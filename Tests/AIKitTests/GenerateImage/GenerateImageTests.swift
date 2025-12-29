@@ -1,6 +1,6 @@
 import XCTest
 import AIKitProviders
-@testable @_spi(Advanced) import AIKitCore
+@testable @_spi(Advanced) import AIKit
 
 final class GenerateImageTests: XCTestCase {
   private static let prompt = "sunny day at the beach"

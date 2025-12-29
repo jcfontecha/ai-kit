@@ -1,7 +1,7 @@
 import XCTest
 import AIKitProviders
 import AIKitTestKit
-@testable @_spi(Advanced) import AIKitCore
+@testable @_spi(Advanced) import AIKit
 
 final class RunToolsTransformationTests: XCTestCase {
   private struct ValueInput: Codable, Sendable, Equatable {

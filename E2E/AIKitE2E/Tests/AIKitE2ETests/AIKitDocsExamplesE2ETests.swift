@@ -1,6 +1,5 @@
 import XCTest
 import AIKit
-import AIKitCore
 import AIKitOpenAI
 import AIKitOpenRouter
 import AIKitMacro

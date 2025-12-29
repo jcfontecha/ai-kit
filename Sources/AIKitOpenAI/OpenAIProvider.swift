@@ -1,5 +1,4 @@
 import Foundation
-import AIKitCore
 import AIKitProviders
 
 public protocol OpenAIProvider: Sendable {

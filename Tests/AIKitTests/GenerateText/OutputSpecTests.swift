@@ -1,6 +1,6 @@
 import XCTest
 import AIKitProviders
-@testable @_spi(Advanced) import AIKitCore
+@testable @_spi(Advanced) import AIKit
 import AIKitTestKit
 
 final class OutputSpecTests: XCTestCase {

@@ -29,10 +29,6 @@ let package = Package(
       name: "AIKitProviders"
     ),
     .target(
-      name: "AIKitCore",
-      dependencies: ["AIKitProviders"]
-    ),
-    .target(
       name: "AIKitElements",
       dependencies: [
         "AIKit",
@@ -42,28 +38,28 @@ let package = Package(
     ),
     .target(
       name: "AIKit",
-      dependencies: ["AIKitCore", "AIKitProviders"]
+      dependencies: ["AIKitProviders"]
     ),
     .target(
       name: "AIKitOpenAI",
-      dependencies: ["AIKitCore", "AIKitProviders"]
+      dependencies: ["AIKitProviders"]
     ),
     .target(
       name: "AIKitOpenRouter",
-      dependencies: ["AIKitCore", "AIKitProviders"]
+      dependencies: ["AIKitProviders"]
     ),
     .target(
       name: "AIKitReplicate",
-      dependencies: ["AIKitCore", "AIKitProviders"]
+      dependencies: ["AIKitProviders"]
     ),
     .target(
       name: "AIKitFal",
-      dependencies: ["AIKitCore", "AIKitProviders"]
+      dependencies: ["AIKitProviders"]
     ),
     // Internal test utilities (not shipped as a product).
     .target(
       name: "AIKitTestKit",
-      dependencies: ["AIKitCore", "AIKitProviders"]
+      dependencies: ["AIKitProviders"]
     ),
     .executableTarget(
       name: "AIKitCodegen",
@@ -86,8 +82,8 @@ let package = Package(
       path: "AIKitMacros/Sources/AIKitMacro"
     ),
     .testTarget(
-      name: "AIKitCoreTests",
-      dependencies: ["AIKitCore", "AIKitTestKit"]
+      name: "AIKitTests",
+      dependencies: ["AIKit", "AIKitProviders", "AIKitTestKit"]
     ),
     .testTarget(
       name: "AIKitProvidersTests",
@@ -95,7 +91,7 @@ let package = Package(
     ),
     .testTarget(
       name: "AIKitOpenRouterTests",
-      dependencies: ["AIKitOpenRouter", "AIKitCore", "AIKitProviders", "AIKitTestKit"]
+      dependencies: ["AIKitOpenRouter", "AIKitProviders", "AIKitTestKit"]
     ),
     .testTarget(
       name: "AIKitReplicateTests",

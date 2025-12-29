@@ -1,7 +1,7 @@
 import XCTest
 import AIKitProviders
 import AIKitTestKit
-@testable @_spi(Advanced) import AIKitCore
+@testable @_spi(Advanced) import AIKit
 
 final class StreamTextTests: XCTestCase {
   private struct TestError: Error, Equatable {}

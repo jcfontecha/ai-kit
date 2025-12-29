@@ -4,16 +4,16 @@ Swift-first, type-safe client framework for building AI features on iOS/macOS, i
 
 ## Requirements
 
-- iOS 15+
-- macOS 12+
-- Swift 5.10+
+- iOS 26+
+- macOS 26+
+- Swift 6.2+
 
 ## Install (SwiftPM)
 
 Add this repository as a Swift Package dependency, then depend on one of:
 
-- `AIKit` (umbrella)
-- `AIKitCore`, `AIKitProviders` (core APIs + provider protocols)
+- `AIKit` (app-facing)
+- `AIKitProviders` (provider protocols + wire types)
 - Provider modules: `AIKitOpenRouter`, `AIKitOpenAI`, `AIKitReplicate`, `AIKitFal`
 
 ## Quickstart (generate)

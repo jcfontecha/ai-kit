@@ -1,7 +1,6 @@
 #if canImport(Combine)
 import Combine
 import Foundation
-import AIKitCore
 import AIKitProviders
 
 @MainActor

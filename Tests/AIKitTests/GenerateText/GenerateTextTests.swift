@@ -1,7 +1,7 @@
 import XCTest
 import AIKitProviders
 import AIKitTestKit
-@testable @_spi(Advanced) import AIKitCore
+@testable @_spi(Advanced) import AIKit
 
 final class GenerateTextTests: XCTestCase {
   private struct ToolInput: Codable, Sendable, Equatable {

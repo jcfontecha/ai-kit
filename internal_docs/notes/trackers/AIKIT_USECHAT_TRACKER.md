@@ -119,7 +119,7 @@ Missing for parity / productization:
 
 Goal: for every `useChat`/`AbstractChat` feature we port into `ChatSession`, we also port the **corresponding AI SDK unit tests** (or an equivalent Swift assertion when the JS test is environment-specific).
 
-### B1) `ai-sdk/packages/ai/src/ui/chat.test.ts` → `Tests/AIKitCoreTests/ChatSession/ChatSessionTests.swift`
+### B1) `ai-sdk/packages/ai/src/ui/chat.test.ts` → `Tests/AIKitTests/ChatSession/ChatSessionTests.swift`
 
 - [x] `describe('send a simple message', ...)`
 - [x] `describe('send handle a disconnected response stream', ...)` (Swift: thrown stream error; no fetch-specific detection)
@@ -129,7 +129,7 @@ Goal: for every `useChat`/`AbstractChat` feature we port into `ChatSession`, we 
 - [x] `describe('addToolApprovalResponse', ...)`
 - [x] `describe('addToolResult', ...)` (AIKit: `addToolOutput`)
 
-### B2) `ai-sdk/packages/ai/src/ui/convert-to-model-messages.test.ts` → `Tests/AIKitCoreTests/ChatSession/ConvertToModelMessagesTests.swift`
+### B2) `ai-sdk/packages/ai/src/ui/convert-to-model-messages.test.ts` → `Tests/AIKitTests/ChatSession/ConvertToModelMessagesTests.swift`
 
 - [x] `describe('system message', ...)`
 - [x] `describe('user message', ...)`
@@ -142,11 +142,11 @@ Goal: for every `useChat`/`AbstractChat` feature we port into `ChatSession`, we 
 - [x] `describe('when converting tool approval request responses', ...)`
 - [x] `describe('data part conversion', ...)` (port: user + assistant conversion suite)
 
-### B3) `ai-sdk/packages/ai/src/ui/last-assistant-message-is-complete-with-tool-calls.test.ts` → `Tests/AIKitCoreTests/ChatSession/ChatAutoSubmitPredicatesTests.swift`
+### B3) `ai-sdk/packages/ai/src/ui/last-assistant-message-is-complete-with-tool-calls.test.ts` → `Tests/AIKitTests/ChatSession/ChatAutoSubmitPredicatesTests.swift`
 
 - [x] Entire suite translated
 
-### B4) `ai-sdk/packages/ai/src/ui/process-ui-message-stream.test.ts` → `Tests/AIKitCoreTests/ChatSession/ChatMessageStreamingReducerTests.swift`
+### B4) `ai-sdk/packages/ai/src/ui/process-ui-message-stream.test.ts` → `Tests/AIKitTests/ChatSession/ChatMessageStreamingReducerTests.swift`
 
 Selected describes (we only port the parts that impact `ChatMessage`/tool state):
 - [x] `describe('text', ...)`
@@ -161,7 +161,7 @@ Selected describes (we only port the parts that impact `ChatMessage`/tool state)
 - [x] `describe('tool execution denial (dynamic tool)', ...)`
 - [x] `describe('data ui parts', ...)` (single / transient / id replace / object replace)
 
-### B5) `ai-sdk/packages/ai/src/ui/http-chat-transport.test.ts` → `Tests/AIKitCoreTests/ChatSession/RemoteTransport/AIUIChatEndpointTransportTests.swift`
+### B5) `ai-sdk/packages/ai/src/ui/http-chat-transport.test.ts` → `Tests/AIKitTests/ChatSession/RemoteTransport/AIUIChatEndpointTransportTests.swift`
 
 - [x] Body merge/request shape (transport body + per-request body)
 - [x] Headers (transport headers + per-request headers; adds `User-Agent` suffix `aikit/swift`)

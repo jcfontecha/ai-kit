@@ -397,14 +397,14 @@ Goal: set up a Swift-first TDD harness that mirrors the **structure**, **scenari
 
 Create a test tree that matches the AI SDK layout (minus server adapters):
 
-- `Tests/AIKitCoreTests/GenerateText/GenerateTextTests.swift`
-- `Tests/AIKitCoreTests/GenerateText/StreamTextTests.swift`
-- `Tests/AIKitCoreTests/GenerateText/OutputSpecTests.swift`
-- `Tests/AIKitCoreTests/GenerateText/ParseToolCallTests.swift`
-- `Tests/AIKitCoreTests/GenerateText/RunToolsTransformationTests.swift`
-- `Tests/AIKitCoreTests/GenerateText/CollectToolApprovalsTests.swift`
-- `Tests/AIKitCoreTests/GenerateText/PruneMessagesTests.swift`
-- `Tests/AIKitCoreTests/Agent/ToolLoopAgentTests.swift`
+- `Tests/AIKitTests/GenerateText/GenerateTextTests.swift`
+- `Tests/AIKitTests/GenerateText/StreamTextTests.swift`
+- `Tests/AIKitTests/GenerateText/OutputSpecTests.swift`
+- `Tests/AIKitTests/GenerateText/ParseToolCallTests.swift`
+- `Tests/AIKitTests/GenerateText/RunToolsTransformationTests.swift`
+- `Tests/AIKitTests/GenerateText/CollectToolApprovalsTests.swift`
+- `Tests/AIKitTests/GenerateText/PruneMessagesTests.swift`
+- `Tests/AIKitTests/Agent/ToolLoopAgentTests.swift`
 
 Each test method name should preserve the “scenario headings” from JS (so we can diff parity by grep-able strings).
 
@@ -485,43 +485,43 @@ Legend:
 ### Output parsing & response formats
 
 - JS: `ai-sdk/packages/ai/src/generate-text/output.test.ts`
-- Swift API: `Sources/AIKitCore/Output/OutputSpec.swift`
-- Swift tests: `Tests/AIKitCoreTests/GenerateText/OutputSpecTests.swift`
+- Swift API: `Sources/AIKit/Output/OutputSpec.swift`
+- Swift tests: `Tests/AIKitTests/GenerateText/OutputSpecTests.swift`
 - Status: ✅ implementation, ✅ tests
 
 ### Tool call parsing & repair
 
 - JS: `ai-sdk/packages/ai/src/generate-text/parse-tool-call.test.ts`
-- Swift API: `Sources/AIKitCore/Tools/*` (planned: `parseToolCall`, `ToolCallRepair`)
-- Swift tests: `Tests/AIKitCoreTests/GenerateText/ParseToolCallTests.swift`
+- Swift API: `Sources/AIKit/Tools/*` (planned: `parseToolCall`, `ToolCallRepair`)
+- Swift tests: `Tests/AIKitTests/GenerateText/ParseToolCallTests.swift`
 - Status: ✅ implementation, ✅ tests
 
 ### Tool approvals collection
 
 - JS: `ai-sdk/packages/ai/src/generate-text/collect-tool-approvals.test.ts`
-- Swift API: `Sources/AIKitCore/Tools/CollectToolApprovals.swift`
-- Swift tests: `Tests/AIKitCoreTests/GenerateText/CollectToolApprovalsTests.swift`
+- Swift API: `Sources/AIKit/Tools/CollectToolApprovals.swift`
+- Swift tests: `Tests/AIKitTests/GenerateText/CollectToolApprovalsTests.swift`
 - Status: ✅ implementation, ✅ tests
 
 ### Prune messages (reasoning/tool parts)
 
 - JS: `ai-sdk/packages/ai/src/generate-text/prune-messages.test.ts`
-- Swift API: `Sources/AIKitCore/ControlFlow/PruneMessages.swift`
-- Swift tests: `Tests/AIKitCoreTests/GenerateText/PruneMessagesTests.swift`
+- Swift API: `Sources/AIKit/ControlFlow/PruneMessages.swift`
+- Swift tests: `Tests/AIKitTests/GenerateText/PruneMessagesTests.swift`
 - Status: ✅ implementation, ✅ tests
 
 ### Run tools transformation (stream-time tool execution)
 
 - JS: `ai-sdk/packages/ai/src/generate-text/run-tools-transformation.test.ts`
-- Swift API: `Sources/AIKitCore/Streaming/RunToolsTransformation.swift`
-- Swift tests: `Tests/AIKitCoreTests/GenerateText/RunToolsTransformationTests.swift`
+- Swift API: `Sources/AIKit/Streaming/RunToolsTransformation.swift`
+- Swift tests: `Tests/AIKitTests/GenerateText/RunToolsTransformationTests.swift`
 - Status: ✅ implementation, ✅ tests
 
 ### GenerateText (multi-step tool loop)
 
 - JS: `ai-sdk/packages/ai/src/generate-text/generate-text.test.ts`
-- Swift API: `Sources/AIKitCore/Generation/GenerateText.swift`
-- Swift tests: `Tests/AIKitCoreTests/GenerateText/GenerateTextTests.swift`
+- Swift API: `Sources/AIKit/Generation/GenerateText.swift`
+- Swift tests: `Tests/AIKitTests/GenerateText/GenerateTextTests.swift`
 - Status: 🟡 implementation (partial), 🟡 tests (partial coverage)
 
 #### GenerateText missing coverage (priority order)
@@ -545,22 +545,22 @@ Remaining:
 ### StreamText (streaming + multi-step tool loop)
 
 - JS: `ai-sdk/packages/ai/src/generate-text/stream-text.test.ts`
-- Swift API: `Sources/AIKitCore/Streaming/StreamText.swift`
-- Swift tests: `Tests/AIKitCoreTests/GenerateText/StreamTextTests.swift`
+- Swift API: `Sources/AIKit/Streaming/StreamText.swift`
+- Swift tests: `Tests/AIKitTests/GenerateText/StreamTextTests.swift`
 - Status: ✅ implementation, ✅ tests
 
 ### ToolLoopAgent wrapper
 
 - JS: `ai-sdk/packages/ai/src/agent/tool-loop-agent.test.ts`
-- Swift API: `Sources/AIKitCore/Agent/ToolLoopAgent.swift`
-- Swift tests: `Tests/AIKitCoreTests/Agent/ToolLoopAgentTests.swift`
+- Swift API: `Sources/AIKit/Agent/ToolLoopAgent.swift`
+- Swift tests: `Tests/AIKitTests/Agent/ToolLoopAgentTests.swift`
 - Status: ✅ implementation, ✅ tests
 
 ### GenerateObject / StreamObject (future parity)
 
 - JS: `ai-sdk/packages/ai/src/generate-object/*`
 - Swift API: (planned) object-generation wrappers around Output/Object parsing
-- Swift tests: (planned) `Tests/AIKitCoreTests/GenerateObject/*`
+- Swift tests: (planned) `Tests/AIKitTests/GenerateObject/*`
 - Status: ☐ implementation, ☐ tests
 
 ### Provider utilities (JSON schema, parsing, retry, stream helpers)

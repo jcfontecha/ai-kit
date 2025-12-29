@@ -99,20 +99,20 @@ AIKit notes:
 
 Create a new folder:
 
-- `Tests/AIKitCoreTests/ChatSession/`
+- `Tests/AIKitTests/ChatSession/`
 
 Suggested files (mirroring AI SDK groupings):
 
-1. `Tests/AIKitCoreTests/ChatSession/ChatSessionTests.swift`
+1. `Tests/AIKitTests/ChatSession/ChatSessionTests.swift`
    - Mirrors `ai-sdk/.../ui/chat.test.ts`
 
-2. `Tests/AIKitCoreTests/ChatSession/ConvertToModelMessagesTests.swift`
+2. `Tests/AIKitTests/ChatSession/ConvertToModelMessagesTests.swift`
    - Mirrors `ai-sdk/.../ui/convert-to-model-messages.test.ts` (except data parts)
 
-3. `Tests/AIKitCoreTests/ChatSession/ChatAutoSubmitPredicatesTests.swift`
+3. `Tests/AIKitTests/ChatSession/ChatAutoSubmitPredicatesTests.swift`
    - Mirrors tool call completeness + approval completeness helpers
 
-4. `Tests/AIKitCoreTests/ChatSession/ChatMessageStreamingReducerTests.swift`
+4. `Tests/AIKitTests/ChatSession/ChatMessageStreamingReducerTests.swift`
    - Behavioral tests for “apply TextStreamPart → mutate last assistant `ChatMessage`”
    - Mirrors the *selected* describes from `process-ui-message-stream.test.ts`
 
@@ -138,4 +138,3 @@ To keep tests deterministic and fast, define minimal test doubles in `Tests/AIKi
 7. ☐ Implement `ChatSession` lifecycle (send/submit/regenerate/stop/clearError) until green
 8. ☐ Translate selected `process-ui-message-stream.test.ts` blocks → `ChatMessageStreamingReducerTests.swift`
 9. ☐ Implement streaming reducer logic (TextStreamPart → ChatMessage updates) until green
-

@@ -16,15 +16,13 @@ AIKit is **client-only** (iOS/macOS). It intentionally avoids server framework h
 
 ## Packages
 
-- `AIKitCore`: orchestration (`generateText`, `streamText`, tool loop), messages, tools, outputs, stop conditions.
+- `AIKit`: app-facing APIs, including orchestration (`generateText`, `streamText`, tool loop), messages, tools, outputs, stop conditions.
 - `AIKitProviders`: provider protocols + shared wire/streaming types.
 - `AIKitOpenRouter`: OpenRouter provider (HTTP client).
 - `AIKitOpenAI`: OpenAI provider surface (currently a stub; see Providers).
-- `AIKit`: umbrella target that re-exports `AIKitCore` + `AIKitProviders`.
 
 ## Start here
 
 - [Installation](./01-installation.mdx)
 - [Quickstart](./02-quickstart.mdx)
 - [Status and parity](./03-status-and-parity.mdx)
-

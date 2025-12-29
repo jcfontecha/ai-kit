@@ -59,14 +59,14 @@ This “resubmit to continue” is the crucial semantic to preserve.
 
 ### What we already have (AIKit today)
 
-- Core streaming + tool orchestration: `Sources/AIKitCore/Streaming/StreamText.swift`
-- Tool execution transform that yields tool events: `Sources/AIKitCore/Streaming/RunToolsTransformation.swift`
-- Tool definitions (schema/execute/approval hooks): `Sources/AIKitCore/Tools/Tools.swift`
+- Core streaming + tool orchestration: `Sources/AIKit/Streaming/StreamText.swift`
+- Tool execution transform that yields tool events: `Sources/AIKit/Streaming/RunToolsTransformation.swift`
+- Tool definitions (schema/execute/approval hooks): `Sources/AIKit/Tools/Tools.swift`
 - Provider-facing messages: `Sources/AIKitProviders/Model/ModelMessage.swift`
 
 ### What we add (new)
 
-We add a **UI-agnostic session container** named `ChatSession` in `AIKitCore`.
+We add a **UI-agnostic session container** named `ChatSession` in `AIKit`.
 
 `ChatSession` is AIKit’s equivalent to AI SDK’s `AbstractChat` (not the React hook wrapper).
 
@@ -334,7 +334,7 @@ AI SDK:
 
 AIKit:
 
-- We do **not** implement a SwiftUI hook analogue in AIKitCore.
+- We do **not** implement a SwiftUI hook analogue in AIKit.
 - We implement `ChatSession` as the equivalent of `AbstractChat`.
 
 Because:

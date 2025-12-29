@@ -8,7 +8,7 @@ This repo can support **Swift macros** for schema authoring in a way that stays 
 
 - A **compiler plugin target** (`AIKitMacros`) that implements macros using SwiftSyntax.
 - A separate **library target** (`AIKitMacro`) that exposes the user-facing `@AIModel` / `@Field` macros.
-- The core SDK (`AIKitCore`) remains **macro-free** and can be used without any trust prompts or SwiftSyntax dependency.
+- The core SDK (`AIKit`) remains **macro-free** and can be used without any trust prompts or SwiftSyntax dependency.
 
 We ported that pattern here.
 
