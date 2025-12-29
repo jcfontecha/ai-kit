@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 import AIKit
 import AIKitElements
@@ -9,6 +14,7 @@ struct SimpleChatDemoView: View {
 
   @StateObject private var store = OpenRouterChatStore()
   @State private var text: String = ""
+  @State private var attachments: [ChatFilePart] = []
   @State private var composerHeight: CGFloat = 0
 
   var body: some View {
@@ -77,11 +83,28 @@ struct SimpleChatDemoView: View {
     }
     base
       .safeAreaBar(edge: .bottom) {
-        PromptInput(text: $text, status: store.status, onSend: { message in
-          store.send(text: message)
-          }, onStop: {
+        PromptInput(
+          text: $text,
+          status: store.status,
+          attachments: attachments,
+          onPasteImages: { images in
+            attachments.append(contentsOf: images.compactMap { image in
+              guard let data = imageData(from: image) else { return nil }
+              return ChatFilePart(
+                data: .data(data),
+                filename: nil,
+                mediaType: "image/png"
+              )
+            })
+          },
+          onSend: { message in
+            store.send(text: message, attachments: attachments)
+            attachments.removeAll()
+          },
+          onStop: {
             store.stop()
-          })
+          }
+        )
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background {
@@ -96,6 +119,22 @@ struct SimpleChatDemoView: View {
       }
   }
 }
+
+#if os(iOS)
+private func imageData(from image: UIImage) -> Data? {
+  image.pngData()
+}
+#elseif os(macOS)
+private func imageData(from image: NSImage) -> Data? {
+  guard let tiff = image.tiffRepresentation,
+        let rep = NSBitmapImageRep(data: tiff) else { return nil }
+  return rep.representation(using: .png, properties: [:])
+}
+#else
+private func imageData(from image: PlatformImage) -> Data? {
+  nil
+}
+#endif
 
 #Preview {
   SimpleChatDemoView()

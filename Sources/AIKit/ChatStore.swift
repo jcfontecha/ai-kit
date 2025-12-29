@@ -183,18 +183,26 @@ public final class ChatStore: ObservableObject {
   }
 
   public func sendMessage(_ text: String? = nil, options: ChatRequestOptions? = nil) {
+    sendMessage(text, files: [], options: options)
+  }
+
+  public func sendMessage(
+    _ text: String? = nil,
+    files: [ChatFilePart],
+    options: ChatRequestOptions? = nil
+  ) {
     let resolvedText = text ?? input
-    guard resolvedText.isEmpty == false else { return }
+    guard resolvedText.isEmpty == false || files.isEmpty == false else { return }
     input = ""
+
+    var parts: [ChatMessagePart] = files.map { .file($0) }
+    if resolvedText.isEmpty == false {
+      parts.append(.text(.init(id: UUID().uuidString, text: resolvedText, state: .done)))
+    }
 
     let merged = merge(defaultRequestOptions, options)
     Task { [session] in
-      let message = ChatDraftMessage(
-        role: .user,
-        parts: [
-          .text(.init(id: UUID().uuidString, text: resolvedText, state: .done))
-        ]
-      )
+      let message = ChatDraftMessage(role: .user, parts: parts)
       await session.send(message, options: merged)
     }
   }

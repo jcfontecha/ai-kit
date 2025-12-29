@@ -1,21 +1,129 @@
 import SwiftUI
 import AIKit
 
-#if os(macOS)
+#if canImport(AppKit)
 import AppKit
+public typealias PlatformImage = NSImage
+#elseif canImport(UIKit)
+import UIKit
+public typealias PlatformImage = UIImage
+#endif
+
+#if os(iOS)
+private struct PromptInputiOSTextField: UIViewRepresentable {
+  @Binding var text: String
+  let placeholder: String
+  let onPasteImages: (([UIImage]) -> Void)?
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(text: $text, onPasteImages: onPasteImages)
+  }
+
+  func makeUIView(context: Context) -> UITextView {
+    let view = PasteAwareTextView()
+    view.text = text
+    view.backgroundColor = .clear
+    view.font = UIFont.preferredFont(forTextStyle: .body)
+    view.delegate = context.coordinator
+    view.isScrollEnabled = false
+    view.textContainerInset = .zero
+    view.textContainer.lineFragmentPadding = 0
+    view.onPasteImages = context.coordinator.onPasteImages
+    view.placeholderLabel.text = placeholder
+    view.placeholderLabel.isHidden = text.isEmpty == false
+    view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    return view
+  }
+
+  func updateUIView(_ uiView: UITextView, context: Context) {
+    if uiView.text != text {
+      uiView.text = text
+    }
+    if let pasteView = uiView as? PasteAwareTextView {
+      pasteView.onPasteImages = context.coordinator.onPasteImages
+    }
+    if let pasteView = uiView as? PasteAwareTextView {
+      pasteView.placeholderLabel.text = placeholder
+      pasteView.placeholderLabel.isHidden = uiView.text.isEmpty == false
+    }
+  }
+
+  func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize {
+    let targetWidth = proposal.width ?? uiView.bounds.width
+    let size = uiView.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
+    return CGSize(width: targetWidth, height: size.height)
+  }
+
+  final class Coordinator: NSObject, UITextViewDelegate {
+    @Binding private var text: String
+    let onPasteImages: (([UIImage]) -> Void)?
+
+    init(text: Binding<String>, onPasteImages: (([UIImage]) -> Void)?) {
+      self._text = text
+      self.onPasteImages = onPasteImages
+    }
+
+    func textViewDidChange(_ textView: UITextView) {
+      text = textView.text
+      if let pasteView = textView as? PasteAwareTextView {
+        pasteView.placeholderLabel.isHidden = textView.text.isEmpty == false
+      }
+    }
+  }
+
+  final class PasteAwareTextView: UITextView {
+    var onPasteImages: (([UIImage]) -> Void)?
+    let placeholderLabel = UILabel()
+
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+      super.init(frame: frame, textContainer: textContainer)
+      placeholderLabel.font = UIFont.preferredFont(forTextStyle: .body)
+      placeholderLabel.textColor = UIColor.label.withAlphaComponent(0.6)
+      placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
+      addSubview(placeholderLabel)
+      NSLayoutConstraint.activate([
+        placeholderLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
+        placeholderLabel.topAnchor.constraint(equalTo: topAnchor),
+        placeholderLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+      ])
+    }
+
+    required init?(coder: NSCoder) {
+      fatalError("init(coder:) has not been implemented")
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+      if action == #selector(paste(_:)) {
+        if let images = UIPasteboard.general.images, images.isEmpty == false {
+          return true
+        }
+      }
+      return super.canPerformAction(action, withSender: sender)
+    }
+
+    override func paste(_ sender: Any?) {
+      if let images = UIPasteboard.general.images, images.isEmpty == false {
+        onPasteImages?(images)
+        return
+      }
+      super.paste(sender)
+    }
+  }
+}
 #endif
 
 #if os(macOS)
 private struct PromptInputMacTextField: NSViewRepresentable {
   @Binding var text: String
   let placeholder: String
+  let onPasteImages: (([NSImage]) -> Void)?
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(text: $text)
+    Coordinator(text: $text, onPasteImages: onPasteImages)
   }
 
   func makeNSView(context: Context) -> NSTextField {
-    let field = NSTextField(string: text)
+    let field = PasteAwareTextField(string: text)
     field.placeholderString = placeholder
     field.isBordered = false
     field.drawsBackground = false
@@ -26,6 +134,7 @@ private struct PromptInputMacTextField: NSViewRepresentable {
       attributes: [.foregroundColor: NSColor.labelColor.withAlphaComponent(0.6)]
     )
     field.delegate = context.coordinator
+    field.onPasteImages = context.coordinator.onPasteImages
     return field
   }
 
@@ -33,18 +142,37 @@ private struct PromptInputMacTextField: NSViewRepresentable {
     if nsView.stringValue != text {
       nsView.stringValue = text
     }
+    if let pasteField = nsView as? PasteAwareTextField {
+      pasteField.onPasteImages = context.coordinator.onPasteImages
+    }
   }
 
   final class Coordinator: NSObject, NSTextFieldDelegate {
     @Binding private var text: String
+    let onPasteImages: (([NSImage]) -> Void)?
 
-    init(text: Binding<String>) {
+    init(text: Binding<String>, onPasteImages: (([NSImage]) -> Void)?) {
       self._text = text
+      self.onPasteImages = onPasteImages
     }
 
     func controlTextDidChange(_ notification: Notification) {
       guard let field = notification.object as? NSTextField else { return }
       text = field.stringValue
+    }
+  }
+
+  final class PasteAwareTextField: NSTextField {
+    var onPasteImages: (([NSImage]) -> Void)?
+
+    override func paste(_ sender: Any?) {
+      let pasteboard = NSPasteboard.general
+      let objects = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage] ?? []
+      if objects.isEmpty == false {
+        onPasteImages?(objects)
+        return
+      }
+      super.paste(sender)
     }
   }
 }
@@ -53,6 +181,8 @@ private struct PromptInputMacTextField: NSViewRepresentable {
 public struct PromptInputElements: View {
   @Binding public var text: String
   public var status: ChatSessionStatus
+  public var attachments: [ChatFilePart]
+  public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
   public var onStop: () -> Void
 
@@ -68,17 +198,26 @@ public struct PromptInputElements: View {
   public init(
     text: Binding<String>,
     status: ChatSessionStatus,
+    attachments: [ChatFilePart] = [],
+    onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void
   ) {
     self._text = text
     self.status = status
+    self.attachments = attachments
+    self.onPasteImages = onPasteImages
     self.onSend = onSend
     self.onStop = onStop
   }
 
   public var body: some View {
-    composerField
+    VStack(alignment: .leading, spacing: 14) {
+      if attachments.isEmpty == false {
+        attachmentsRow
+      }
+      composerField
+    }
       .frame(maxWidth: .infinity, alignment: .leading)
       .fixedSize(horizontal: false, vertical: true)
       .disabled(status == .streaming || status == .submitted)
@@ -125,7 +264,7 @@ public struct PromptInputElements: View {
         Image(systemName: "stop.fill")
           .frame(width: controlIconSize, height: controlIconSize)
           .padding(controlIconPadding)
-          .foregroundStyle(Color.platformBackground)
+          .foregroundStyle(enabledControlForeground)
           .background { Circle().fill(enabledControlBackground) }
           .contentShape(Circle())
       }
@@ -150,22 +289,32 @@ public struct PromptInputElements: View {
     }
   }
 
+  private var attachmentsRow: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 8) {
+        ForEach(Array(attachments.enumerated()), id: \.offset) { _, attachment in
+          FileAttachmentPreview(attachment: attachment, size: 52, cornerRadius: 10)
+        }
+      }
+      .padding(.leading, 2)
+      .padding(.trailing, 4)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
   @ViewBuilder
   private var composerField: some View {
     #if os(iOS)
-      TextField(
-        "Message",
+      PromptInputiOSTextField(
         text: $text,
-        prompt: Text("Message").foregroundStyle(Color.primary.opacity(0.6)),
-        axis: .vertical
+        placeholder: "Message",
+        onPasteImages: onPasteImages
       )
-        .textFieldStyle(.plain)
-        .font(.body)
-        .lineLimit(1...6)
-        .fixedSize(horizontal: false, vertical: true)
-        .padding(.leading, 6)
+      .font(.body)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .padding(.leading, 6)
     #else
-    PromptInputMacTextField(text: $text, placeholder: "Message")
+    PromptInputMacTextField(text: $text, placeholder: "Message", onPasteImages: onPasteImages)
     #endif
   }
 }
@@ -173,6 +322,8 @@ public struct PromptInputElements: View {
 public struct PromptInput: View {
   @Binding public var text: String
   public var status: ChatSessionStatus
+  public var attachments: [ChatFilePart]
+  public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
   public var onStop: () -> Void
   public var onAdd: (() -> Void)?
@@ -187,12 +338,16 @@ public struct PromptInput: View {
   public init(
     text: Binding<String>,
     status: ChatSessionStatus,
+    attachments: [ChatFilePart] = [],
+    onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
     onAdd: (() -> Void)? = nil
   ) {
     self._text = text
     self.status = status
+    self.attachments = attachments
+    self.onPasteImages = onPasteImages
     self.onSend = onSend
     self.onStop = onStop
     self.onAdd = onAdd
@@ -202,7 +357,14 @@ public struct PromptInput: View {
     GlassEffectContainer(spacing: plusButtonSpacing) {
       HStack(alignment: .bottom, spacing: plusButtonSpacing) {
         plusButton
-        PromptInputElements(text: $text, status: status, onSend: onSend, onStop: onStop)
+        PromptInputElements(
+          text: $text,
+          status: status,
+          attachments: attachments,
+          onPasteImages: onPasteImages,
+          onSend: onSend,
+          onStop: onStop
+        )
           .frame(maxWidth: .infinity, alignment: .leading)
           .frame(minHeight: plusButtonSize, alignment: .center)
           .glassEffect(.clear.interactive(), in: .rect(cornerRadius: cornerRadius))
@@ -244,6 +406,7 @@ public extension View {
   func promptInputBottomBar(
     text: Binding<String>,
     status: ChatSessionStatus,
+    attachments: [ChatFilePart] = [],
     height: Binding<CGFloat>,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
@@ -253,6 +416,7 @@ public extension View {
       PromptInputBottomBarModifier(
         text: text,
         status: status,
+        attachments: attachments,
         height: height,
         onSend: onSend,
         onStop: onStop,
@@ -265,6 +429,7 @@ public extension View {
 private struct PromptInputBottomBarModifier: ViewModifier {
   @Binding var text: String
   let status: ChatSessionStatus
+  let attachments: [ChatFilePart]
   @Binding var height: CGFloat
   let onSend: (String) -> Void
   let onStop: () -> Void
@@ -276,7 +441,14 @@ private struct PromptInputBottomBarModifier: ViewModifier {
       // Keep the main content (e.g. `Conversation`) extending behind the composer for depth.
       .ignoresSafeArea(.container, edges: .bottom)
       .safeAreaInset(edge: .bottom, spacing: 0) {
-        PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop, onAdd: onAdd)
+        PromptInput(
+          text: $text,
+          status: status,
+          attachments: attachments,
+          onSend: onSend,
+          onStop: onStop,
+          onAdd: onAdd
+        )
           .padding(.horizontal, 12)
           .padding(.top, 8)
           .padding(.bottom, 26)
@@ -293,7 +465,14 @@ private struct PromptInputBottomBarModifier: ViewModifier {
     #else
     content
       .safeAreaInset(edge: .bottom) {
-        PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop, onAdd: onAdd)
+        PromptInput(
+          text: $text,
+          status: status,
+          attachments: attachments,
+          onSend: onSend,
+          onStop: onStop,
+          onAdd: onAdd
+        )
           .padding(.horizontal, 12)
           .padding(.top, 8)
           .padding(.bottom, 8)

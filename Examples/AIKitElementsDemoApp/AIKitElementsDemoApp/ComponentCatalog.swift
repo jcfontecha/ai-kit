@@ -102,6 +102,9 @@ enum ComponentCatalog {
         .init(id: "prompt-input/streaming", title: "Streaming", description: "Stop button state") {
           AnyView(PromptInputDemoView(mode: .streaming))
         },
+        .init(id: "prompt-input/with-attachments", title: "With Input Attachment", description: "Composer with attachments above the field") {
+          AnyView(PromptInputDemoView(mode: .withAttachments))
+        },
       ]
     ),
     .init(

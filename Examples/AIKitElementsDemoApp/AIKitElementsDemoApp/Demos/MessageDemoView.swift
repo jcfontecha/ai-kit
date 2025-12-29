@@ -1,10 +1,24 @@
 import SwiftUI
 import MarkdownUI
+import AIKit
 import AIKitElements
+
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct MessageDemoView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
+      MessageBubble(role: .user) {
+        VStack(alignment: .trailing, spacing: 8) {
+          FileAttachmentPreviewRow(attachments: sampleAttachments, size: 44, cornerRadius: 10, alignment: .trailing)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+          UserBubble(text: "And I'm the user. Bubbles should not be glass by default.")
+        }
+      }
       MessageBubble(role: .user) {
         UserBubble(text: "And I'm the user. Bubbles should not be glass by default.")
       }
@@ -30,6 +44,13 @@ struct MessageDemoView: View {
 
     > Keep the assistant content readable by avoiding bubbles/glass behind it.
     """
+  }
+
+  private var sampleAttachments: [ChatFilePart] {
+    [
+      .init(data: .data(demoSymbolData("photo") ?? Data()), filename: "Image.png", mediaType: "image/png"),
+      .init(data: .data(demoSymbolData("doc") ?? Data()), filename: "Notes.pdf", mediaType: "application/pdf"),
+    ]
   }
 }
 
@@ -61,3 +82,16 @@ private struct AssistantMarkdownMessage: View {
       .padding(.vertical, 4)
   }
 }
+
+#if canImport(AppKit)
+private func demoSymbolData(_ name: String) -> Data? {
+  guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return nil }
+  guard let tiff = image.tiffRepresentation,
+        let rep = NSBitmapImageRep(data: tiff) else { return nil }
+  return rep.representation(using: .png, properties: [:])
+}
+#elseif canImport(UIKit)
+private func demoSymbolData(_ name: String) -> Data? {
+  UIImage(systemName: name)?.pngData()
+}
+#endif

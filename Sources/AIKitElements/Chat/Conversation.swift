@@ -331,8 +331,7 @@ public struct Conversation<MessageView: View>: View {
         Spacer(minLength: 24)
         VStack(alignment: .trailing, spacing: 8) {
           if userAttachments(message).isEmpty == false {
-            FileAttachmentsRow(attachments: userAttachments(message))
-              .frame(maxWidth: .infinity, alignment: .trailing)
+            FileAttachmentPreviewRow(attachments: userAttachments(message), alignment: .trailing)
           }
           if userText(message).isEmpty == false {
             UserBubble(text: userText(message))
@@ -385,10 +384,10 @@ public struct Conversation<MessageView: View>: View {
     }.joined()
   }
 
-  private static func userAttachments(_ message: ChatMessage) -> [FileAttachment] {
-    message.parts.enumerated().compactMap { idx, part in
+  private static func userAttachments(_ message: ChatMessage) -> [ChatFilePart] {
+    message.parts.compactMap { part in
       guard case let .file(file) = part else { return nil }
-      return FileAttachment(id: "file-\(idx)", filename: file.filename, mediaType: file.mediaType)
+      return file
     }
   }
 }

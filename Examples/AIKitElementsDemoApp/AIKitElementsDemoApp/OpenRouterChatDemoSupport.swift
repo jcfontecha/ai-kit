@@ -62,12 +62,12 @@ final class OpenRouterChatStore: ObservableObject {
     }
   }
 
-  func send(text: String) {
+  func send(text: String, attachments: [ChatFilePart]) {
     guard let chat else { return }
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard trimmed.isEmpty == false else { return }
+    guard trimmed.isEmpty == false || attachments.isEmpty == false else { return }
 
-    chat.sendMessage(trimmed)
+    chat.sendMessage(trimmed.isEmpty ? nil : trimmed, files: attachments)
   }
 
   func stop() {
@@ -164,7 +164,7 @@ private struct UserMessage: View {
   var body: some View {
     VStack(alignment: .trailing, spacing: 8) {
       if attachments.isEmpty == false {
-        FileAttachmentsRow(attachments: attachments)
+        FileAttachmentPreviewRow(attachments: attachments, alignment: .trailing)
           .frame(maxWidth: .infinity, alignment: .trailing)
       }
       if text.isEmpty == false {
@@ -181,10 +181,10 @@ private struct UserMessage: View {
     }.joined()
   }
 
-  private var attachments: [FileAttachment] {
-    parts.enumerated().compactMap { idx, part in
+  private var attachments: [ChatFilePart] {
+    parts.compactMap { part in
       guard case let .file(file) = part else { return nil }
-      return FileAttachment(id: "file-\(idx)", filename: file.filename, mediaType: file.mediaType)
+      return file
     }
   }
 }
