@@ -19,6 +19,7 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/markiv/SwiftUI-Shimmer.git", from: "1.5.1"),
+    .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.0.0"),
   ],
   targets: [
     .target(
@@ -33,6 +34,7 @@ let package = Package(
       dependencies: [
         "AIKit",
         .product(name: "Shimmer", package: "SwiftUI-Shimmer"),
+        .product(name: "MarkdownUI", package: "swift-markdown-ui"),
       ]
     ),
     .target(

@@ -204,7 +204,6 @@ public struct AssistantMessage<AssistantText: View>: View {
   @Environment(\.assistantMessageToolStatusStrings) private var environmentToolStatusStrings
   @Environment(\.assistantMessageDefaultToolRenderer) private var environmentDefaultToolRenderer
   @Environment(\.assistantMessageOnToolApprovalResponse) private var environmentOnToolApprovalResponse
-
   public init(
     parts: [ChatMessagePart],
     showsReasoning: Bool? = nil,
@@ -272,6 +271,33 @@ public struct AssistantMessage<AssistantText: View>: View {
       onToolApprovalResponse: onToolApprovalResponse,
       assistantReasoningText: assistantReasoningText,
       assistantText: { Text($0) }
+    )
+  }
+
+  public init(
+    parts: [ChatMessagePart],
+    showsReasoning: Bool? = nil,
+    toolRenderers: [String: ToolRenderer]? = nil,
+    toolStatusStrings: [String: ToolStatusStrings]? = nil,
+    toolDefaultStatusStrings: ToolStatusStrings,
+    toolDefaultRenderer: ToolDefaultRenderer? = nil,
+    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
+    markdownStyle: AssistantMarkdownStyle = .init()
+  ) where AssistantText == AssistantMarkdown {
+    self.init(
+      parts: parts,
+      showsReasoning: showsReasoning,
+      toolRenderers: toolRenderers,
+      toolStatusStrings: toolStatusStrings,
+      toolDefaultStatusStrings: toolDefaultStatusStrings,
+      toolDefaultRenderer: toolDefaultRenderer,
+      onToolApprovalResponse: onToolApprovalResponse,
+      assistantReasoningText: { text in
+        AssistantMarkdown(text: text, isSecondary: true, style: markdownStyle)
+      },
+      assistantText: { text in
+        AssistantMarkdown(text: text, style: markdownStyle)
+      }
     )
   }
 
