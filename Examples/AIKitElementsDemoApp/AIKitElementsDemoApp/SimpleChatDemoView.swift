@@ -27,8 +27,14 @@ struct SimpleChatDemoView: View {
   @ViewBuilder
   private var content: some View {
     let base = ZStack {
-      Conversation(messages: store.messages, status: store.status, bottomOverlayHeight: composerHeight + 8, showsScrollButton: true) { message in
-        DemoMessageRow(message: message)
+      Conversation(messages: store.messages, status: store.status, bottomOverlayHeight: composerHeight + 8, showsScrollButton: true)
+      .assistantMessageToolRenderer("sleep_ms") { context in
+        ToolPartReasoningView(
+          tool: context.tool,
+          icon: Image(systemName: "timer"),
+          sendApproval: context.sendApproval,
+          statusStrings: .init(loading: "Sleeping…", success: "Slept", error: "Sleep failed")
+        )
       }
       .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
         store.respondToToolApproval(approvalID: approvalID, approved: approved, reason: reason)

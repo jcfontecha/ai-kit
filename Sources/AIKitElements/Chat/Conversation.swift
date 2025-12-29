@@ -10,6 +10,12 @@ public struct Conversation<MessageView: View>: View {
   public var status: ChatSessionStatus
   public var bottomOverlayHeight: CGFloat
   public var showsScrollButton: Bool
+  public var toolRenderers: [String: ToolRenderer]
+  public var toolStatusStrings: [String: ToolStatusStrings]
+  public var toolDefaultStatusStrings: ToolStatusStrings
+  public var showsReasoning: Bool
+  public var markdownStyle: AssistantMarkdownStyle
+  public var onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)?
   @ViewBuilder public var messageView: (ChatMessage) -> MessageView
 
   @State private var visibleCount: Int = conversationMessagePageSize
@@ -29,12 +35,24 @@ public struct Conversation<MessageView: View>: View {
     status: ChatSessionStatus,
     bottomOverlayHeight: CGFloat,
     showsScrollButton: Bool = false,
+    toolRenderers: [String: ToolRenderer] = [:],
+    toolStatusStrings: [String: ToolStatusStrings] = [:],
+    toolDefaultStatusStrings: ToolStatusStrings = .init(loading: "Working…", success: "Done", error: "Error"),
+    showsReasoning: Bool = true,
+    markdownStyle: AssistantMarkdownStyle = .init(),
+    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
     @ViewBuilder messageView: @escaping (ChatMessage) -> MessageView
   ) {
     self.messages = messages
     self.status = status
     self.bottomOverlayHeight = bottomOverlayHeight
     self.showsScrollButton = showsScrollButton
+    self.toolRenderers = toolRenderers
+    self.toolStatusStrings = toolStatusStrings
+    self.toolDefaultStatusStrings = toolDefaultStatusStrings
+    self.showsReasoning = showsReasoning
+    self.markdownStyle = markdownStyle
+    self.onToolApprovalResponse = onToolApprovalResponse
     self.messageView = messageView
   }
 
@@ -42,6 +60,12 @@ public struct Conversation<MessageView: View>: View {
     messages: [ChatMessage],
     bottomOverlayHeight: CGFloat,
     showsScrollButton: Bool = false,
+    toolRenderers: [String: ToolRenderer] = [:],
+    toolStatusStrings: [String: ToolStatusStrings] = [:],
+    toolDefaultStatusStrings: ToolStatusStrings = .init(loading: "Working…", success: "Done", error: "Error"),
+    showsReasoning: Bool = true,
+    markdownStyle: AssistantMarkdownStyle = .init(),
+    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
     @ViewBuilder messageView: @escaping (ChatMessage) -> MessageView
   ) {
     self.init(
@@ -49,7 +73,68 @@ public struct Conversation<MessageView: View>: View {
       status: .ready,
       bottomOverlayHeight: bottomOverlayHeight,
       showsScrollButton: showsScrollButton,
+      toolRenderers: toolRenderers,
+      toolStatusStrings: toolStatusStrings,
+      toolDefaultStatusStrings: toolDefaultStatusStrings,
+      showsReasoning: showsReasoning,
+      markdownStyle: markdownStyle,
+      onToolApprovalResponse: onToolApprovalResponse,
       messageView: messageView
+    )
+  }
+
+  public init(
+    messages: [ChatMessage],
+    status: ChatSessionStatus,
+    bottomOverlayHeight: CGFloat,
+    showsScrollButton: Bool = false,
+    toolStatusStrings: [String: ToolStatusStrings] = [:],
+    toolDefaultStatusStrings: ToolStatusStrings = .init(loading: "Working…", success: "Done", error: "Error"),
+    showsReasoning: Bool = true,
+    markdownStyle: AssistantMarkdownStyle = .init(),
+    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil
+  ) where MessageView == AnyView {
+    self.init(
+      messages: messages,
+      status: status,
+      bottomOverlayHeight: bottomOverlayHeight,
+      showsScrollButton: showsScrollButton,
+      toolRenderers: [:],
+      toolStatusStrings: toolStatusStrings,
+      toolDefaultStatusStrings: toolDefaultStatusStrings,
+      showsReasoning: showsReasoning,
+      markdownStyle: markdownStyle,
+      onToolApprovalResponse: onToolApprovalResponse
+    ) { message in
+      AnyView(Self.defaultMessageView(
+        message: message,
+        toolStatusStrings: toolStatusStrings,
+        toolDefaultStatusStrings: toolDefaultStatusStrings,
+        markdownStyle: markdownStyle
+      ))
+    }
+  }
+
+  public init(
+    messages: [ChatMessage],
+    bottomOverlayHeight: CGFloat,
+    showsScrollButton: Bool = false,
+    toolStatusStrings: [String: ToolStatusStrings] = [:],
+    toolDefaultStatusStrings: ToolStatusStrings = .init(loading: "Working…", success: "Done", error: "Error"),
+    showsReasoning: Bool = true,
+    markdownStyle: AssistantMarkdownStyle = .init(),
+    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil
+  ) where MessageView == AnyView {
+    self.init(
+      messages: messages,
+      status: .ready,
+      bottomOverlayHeight: bottomOverlayHeight,
+      showsScrollButton: showsScrollButton,
+      toolStatusStrings: toolStatusStrings,
+      toolDefaultStatusStrings: toolDefaultStatusStrings,
+      showsReasoning: showsReasoning,
+      markdownStyle: markdownStyle,
+      onToolApprovalResponse: onToolApprovalResponse
     )
   }
 
@@ -81,6 +166,12 @@ public struct Conversation<MessageView: View>: View {
         .scrollTargetLayout()
       }
       .scrollPosition(id: $scrollPosition, anchor: .bottom)
+      .assistantMessageToolRenderers(toolRenderers)
+      .assistantMessageToolStatusStrings(toolStatusStrings)
+      .assistantMessageShowsReasoning(showsReasoning)
+      .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
+        onToolApprovalResponse?(approvalID, approved, reason)
+      }
       .modifier(ScrollEdgeEffectCompat())
       .defaultScrollAnchor(.bottom)
       #if os(iOS)
@@ -224,6 +315,79 @@ public struct Conversation<MessageView: View>: View {
     } else {
       scrollPosition = targetID
       proxy.scrollTo(targetID, anchor: .bottom)
+    }
+  }
+
+  @ViewBuilder
+  private static func defaultMessageView(
+    message: ChatMessage,
+    toolStatusStrings: [String: ToolStatusStrings],
+    toolDefaultStatusStrings: ToolStatusStrings,
+    markdownStyle: AssistantMarkdownStyle
+  ) -> some View {
+    switch message.role {
+    case .user:
+      HStack(alignment: .top) {
+        Spacer(minLength: 24)
+        VStack(alignment: .trailing, spacing: 8) {
+          if userAttachments(message).isEmpty == false {
+            FileAttachmentsRow(attachments: userAttachments(message))
+              .frame(maxWidth: .infinity, alignment: .trailing)
+          }
+          if userText(message).isEmpty == false {
+            UserBubble(text: userText(message))
+          }
+        }
+      }
+
+    case .assistant:
+      HStack(alignment: .top) {
+        AssistantMessage(
+          parts: message.parts,
+          toolStatusStrings: toolStatusStrings,
+          toolDefaultStatusStrings: toolDefaultStatusStrings,
+          markdownStyle: markdownStyle
+        )
+      }
+
+    case .system:
+      Text(messageText(message))
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+    case .tool:
+      Text("Tool role message")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+    @unknown default:
+      Text("Unsupported role: \(message.role.rawValue)")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private static func messageText(_ message: ChatMessage) -> String {
+    message.parts.compactMap { part in
+      guard case let .text(text) = part else { return nil }
+      return text.text
+    }.joined()
+  }
+
+  private static func userText(_ message: ChatMessage) -> String {
+    message.parts.compactMap { part in
+      guard case let .text(text) = part else { return nil }
+      return text.text
+    }.joined()
+  }
+
+  private static func userAttachments(_ message: ChatMessage) -> [FileAttachment] {
+    message.parts.enumerated().compactMap { idx, part in
+      guard case let .file(file) = part else { return nil }
+      return FileAttachment(id: "file-\(idx)", filename: file.filename, mediaType: file.mediaType)
     }
   }
 }

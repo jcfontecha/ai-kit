@@ -47,9 +47,7 @@ struct ChatView: View {
       messages: chat.messages,
       status: chat.status,
       bottomOverlayHeight: composerHeight
-    ) { message in
-      messageRow(message)
-    }
+    )
     .promptInputBottomBar(
       text: $composerText,
       status: chat.status,
@@ -57,33 +55,6 @@ struct ChatView: View {
       onSend: { chat.sendMessage($0) },
       onStop: { chat.stop() }
     )
-  }
-
-  @ViewBuilder
-  private func messageRow(_ message: ChatMessage) -> some View {
-    switch message.role {
-    case .user:
-      UserBubble(text: messageText(message))
-        .frame(maxWidth: .infinity, alignment: .trailing)
-    case .assistant:
-      AssistantMessage(
-        parts: message.parts,
-        toolDefaultStatusStrings: .init(
-          loading: "Working…",
-          success: "Done",
-          error: "Error"
-        )
-      )
-    default:
-      EmptyView()
-    }
-  }
-
-  private func messageText(_ message: ChatMessage) -> String {
-    message.parts.compactMap { part in
-      guard case let .text(text) = part else { return nil }
-      return text.text
-    }.joined()
   }
 }
 ```
@@ -122,6 +93,32 @@ AssistantMessage(parts: message.parts)
   .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
     chat.addToolApprovalResponse(approvalID: approvalID, approved: approved, reason: reason)
   }
+```
+
+## Tool renderers
+
+Prefer attaching tool renderers at a parent view so every `AssistantMessage` inherits them:
+
+```swift
+Conversation(
+  messages: chat.messages,
+  status: chat.status,
+  bottomOverlayHeight: composerHeight,
+  toolRenderers: [
+    "fetch_weather": { context in
+      AnyView(
+        ToolPartReasoningView(
+          tool: context.tool,
+          icon: Image(systemName: "cloud.sun"),
+          sendApproval: context.sendApproval,
+          statusStrings: .init(loading: "Fetching…", success: "Done", error: "Failed")
+        )
+      )
+    }
+  ]
+) { message in
+  messageRow(message)
+}
 ```
 
 ## Readiness
