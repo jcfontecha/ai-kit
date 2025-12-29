@@ -6,106 +6,6 @@ import AIKit
 import AIKitOpenRouter
 import AIKitElements
 
-struct OpenRouterChatDemoView: View {
-  @AppStorage(AppSettings.openRouterAPIKeyKey) private var apiKey: String = ""
-  @AppStorage(AppSettings.openRouterModelIDKey) private var modelID: String = AppSettings.defaultOpenRouterModelID
-
-  @StateObject private var store = OpenRouterChatStore()
-  @State private var text: String = ""
-  @State private var composerHeight: CGFloat = 0
-
-  var body: some View {
-    content
-      .task {
-        store.configureIfPossible(apiKey: apiKey, modelID: modelID)
-      }
-      .onChange(of: apiKey) { _, _ in
-        store.configureIfPossible(apiKey: apiKey, modelID: modelID)
-      }
-      .onChange(of: modelID) { _, _ in
-        store.configureIfPossible(apiKey: apiKey, modelID: modelID)
-      }
-  }
-
-  @ViewBuilder
-  private var content: some View {
-    let base = ZStack {
-      Conversation(messages: store.messages, status: store.status, bottomOverlayHeight: composerHeight + 8) { message in
-        DemoMessageRow(message: message)
-      }
-      .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
-        Task { await store.respondToToolApproval(approvalID: approvalID, approved: approved, reason: reason) }
-      }
-
-      if store.messages.isEmpty {
-        Text("Start a conversation")
-          .font(.headline)
-          .foregroundStyle(.secondary)
-          .padding(.horizontal, 24)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-      }
-    }
-    .overlay(alignment: .top) {
-      if let error = store.errorDescription {
-        Text(error)
-          .font(.caption)
-          .foregroundStyle(.white)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(10)
-          .background(Color.red.opacity(0.85))
-      }
-    }
-    .overlay(alignment: .topTrailing) {
-      HStack(spacing: 8) {
-        Button("Clear") {
-          Task { await store.clear() }
-        }
-        .buttonStyle(.bordered)
-
-        if store.status == .streaming || store.status == .submitted {
-          Button("Stop") { Task { await store.stop() } }
-          .buttonStyle(.borderedProminent)
-        }
-      }
-      .padding(10)
-    }
-    #if os(iOS)
-    base
-      .safeAreaBar(edge: .bottom) {
-        PromptInput(text: $text, status: store.status, onSend: { message in
-          Task { await store.send(text: message) }
-          }, onStop: {
-            Task { await store.stop() }
-          })
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background {
-          GeometryReader { proxy in
-            Color.clear
-              .onAppear { composerHeight = proxy.size.height }
-              .onChange(of: proxy.size.height) {
-                composerHeight = proxy.size.height
-              }
-          }
-        }
-      }
-    #else
-    base
-      .promptInputBottomBar(
-        text: $text,
-        status: store.status,
-        height: $composerHeight,
-        onSend: { message in
-          Task { await store.send(text: message) }
-        },
-        onStop: {
-          Task { await store.stop() }
-        }
-      )
-    #endif
-  }
-}
-
 @MainActor
 final class OpenRouterChatStore: ObservableObject {
   @Published var snapshot: ChatSessionSnapshot = .init(status: .ready, messages: [], errorDescription: nil)
@@ -162,7 +62,7 @@ final class OpenRouterChatStore: ObservableObject {
     }
   }
 
-  func send(text: String) async {
+  func send(text: String) {
     guard let chat else { return }
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard trimmed.isEmpty == false else { return }
@@ -170,15 +70,15 @@ final class OpenRouterChatStore: ObservableObject {
     chat.sendMessage(trimmed)
   }
 
-  func stop() async {
+  func stop() {
     chat?.stop()
   }
 
-  func respondToToolApproval(approvalID: String, approved: Bool, reason: String?) async {
+  func respondToToolApproval(approvalID: String, approved: Bool, reason: String?) {
     chat?.addToolApprovalResponse(approvalID: approvalID, approved: approved, reason: reason)
   }
 
-  func clear() async {
+  func clear() {
     chatUpdates?.cancel()
     chatUpdates = nil
     chat = nil
@@ -186,7 +86,7 @@ final class OpenRouterChatStore: ObservableObject {
   }
 }
 
-private struct DemoMessageRow: View {
+struct DemoMessageRow: View {
   let message: ChatMessage
 
   var body: some View {
@@ -282,8 +182,4 @@ private struct UserMessage: View {
       return FileAttachment(id: "file-\(idx)", filename: file.filename, mediaType: file.mediaType)
     }
   }
-}
-
-#Preview {
-  OpenRouterChatDemoView()
 }

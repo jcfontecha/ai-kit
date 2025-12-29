@@ -12,8 +12,9 @@ public struct PromptInputElements: View {
   private let pillContentVerticalPadding: CGFloat = 10
   private let pillToControlPadding: CGFloat = 5
   private let trailingControlInset: CGFloat = 6
+  private let controlSize: CGFloat = 30
   private let controlIconSize: CGFloat = 16
-  private let controlIconPadding: CGFloat = 7
+  private var controlIconPadding: CGFloat { (controlSize - controlIconSize) / 2 }
 
   public init(
     text: Binding<String>,
@@ -28,28 +29,25 @@ public struct PromptInputElements: View {
   }
 
   public var body: some View {
-    ZStack(alignment: .bottomTrailing) {
-      composerField
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .fixedSize(horizontal: false, vertical: true)
-        .disabled(status == .streaming || status == .submitted)
-        // Reserve space so multi-line text doesn't flow under the trailing control.
-        .padding(.trailing, trailingControlWidth + trailingControlInset)
-        .padding(.leading, pillContentLeadingPadding)
-        .padding(.vertical, pillContentVerticalPadding)
-
-      trailingControl
-        .padding([.trailing, .top, .bottom], pillToControlPadding)
-    }
+    composerField
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .fixedSize(horizontal: false, vertical: true)
+      .disabled(status == .streaming || status == .submitted)
+      // Reserve space so multi-line text doesn't flow under the trailing control.
+      .padding(.trailing, trailingControlWidth + trailingControlInset)
+      .padding(.leading, pillContentLeadingPadding)
+      .padding(.vertical, pillContentVerticalPadding)
+      .overlay(alignment: .bottomTrailing) {
+        trailingControl
+          .padding([.trailing, .top, .bottom], pillToControlPadding)
+      }
   }
 
   private var sendEnabled: Bool {
     text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
   }
 
-  private var trailingControlWidth: CGFloat {
-    controlIconSize + (controlIconPadding * 2)
-  }
+  private var trailingControlWidth: CGFloat { controlSize }
 
   @ViewBuilder
   private var trailingControl: some View {
@@ -119,8 +117,8 @@ public struct PromptInput: View {
   public var onAdd: (() -> Void)?
 
   private let cornerRadius: CGFloat = 24
-  private let plusButtonIconSize: CGFloat = 16
-  private let plusButtonPadding: CGFloat = 11
+  private let plusButtonIconSize: CGFloat = 18
+  private let plusButtonPadding: CGFloat = 12
   private let plusButtonSpacing: CGFloat = 8
   private var plusButtonSize: CGFloat { plusButtonIconSize + (plusButtonPadding * 2) }
 

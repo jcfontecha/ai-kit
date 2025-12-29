@@ -59,11 +59,11 @@ struct ContentView: View {
         } detail: {
             if selection == "demo/chat" {
                 #if os(iOS)
-                OpenRouterChatDemoView()
+                SimpleChatDemoView()
                     .navigationTitle("Chat Demo")
                     .navigationBarTitleDisplayMode(.inline)
                 #else
-                OpenRouterChatDemoView()
+                SimpleChatDemoView()
                     .navigationTitle("Chat Demo")
                 #endif
             } else if selection == "settings/openrouter" {
