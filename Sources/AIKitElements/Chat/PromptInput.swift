@@ -58,8 +58,8 @@ public struct PromptInputElements: View {
 
   // Tuning knobs
   private let pillContentLeadingPadding: CGFloat = 10
-  private let pillContentVerticalPadding: CGFloat = 10
-  private let pillToControlPadding: CGFloat = 5
+  private let pillContentVerticalPadding: CGFloat = 12
+  private let pillToControlPadding: CGFloat = 8
   private let trailingControlInset: CGFloat = 6
   private let controlSize: CGFloat = 30
   private let controlIconSize: CGFloat = 16
@@ -174,7 +174,7 @@ public struct PromptInput: View {
 
   private let cornerRadius: CGFloat = 24
   private let plusButtonIconSize: CGFloat = 18
-  private let plusButtonPadding: CGFloat = 12
+  private let plusButtonPadding: CGFloat = 14
   private let plusButtonSpacing: CGFloat = 8
   private var plusButtonSize: CGFloat { plusButtonIconSize + (plusButtonPadding * 2) }
   private let bottomInset: CGFloat = 4
