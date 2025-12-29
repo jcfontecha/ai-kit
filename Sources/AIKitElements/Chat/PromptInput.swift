@@ -102,7 +102,17 @@ public struct PromptInputElements: View {
     #elseif os(macOS)
     Color(nsColor: .windowBackgroundColor)
     #else
-    Color.primary
+    Color.white
+    #endif
+  }
+
+  private var enabledControlBackground: Color {
+    #if os(iOS) || os(tvOS) || os(watchOS)
+    Color(uiColor: .label)
+    #elseif os(macOS)
+    Color(nsColor: .labelColor)
+    #else
+    Color.black
     #endif
   }
 
@@ -116,9 +126,7 @@ public struct PromptInputElements: View {
           .frame(width: controlIconSize, height: controlIconSize)
           .padding(controlIconPadding)
           .foregroundStyle(Color.platformBackground)
-          .background {
-            Circle().fill(Color.primary)
-          }
+          .background { Circle().fill(enabledControlBackground) }
           .contentShape(Circle())
       }
       .buttonStyle(.plain)
@@ -132,11 +140,8 @@ public struct PromptInputElements: View {
         Image(systemName: "arrow.up")
           .frame(width: controlIconSize, height: controlIconSize)
           .padding(controlIconPadding)
-          .foregroundStyle(sendEnabled ? enabledControlForeground : enabledControlForeground.opacity(0.55))
-          .background {
-            Circle()
-              .fill(sendEnabled ? Color.primary : Color.primary.opacity(0.30))
-          }
+          .foregroundStyle(enabledControlForeground)
+          .background { Circle().fill(enabledControlBackground) }
           .contentShape(Circle())
       }
       .buttonStyle(.plain)
