@@ -1,19 +1,15 @@
-#if os(iOS) || os(tvOS) || os(visionOS)
-import UIKit
-#elseif os(macOS)
+import SwiftUI
+
+#if os(macOS)
 import AppKit
 #endif
 
-import SwiftUI
-
 extension Color {
   static var platformBackground: Color {
-    #if os(iOS) || os(tvOS) || os(visionOS)
-    Color(uiColor: .systemBackground)
-    #elseif os(macOS)
+    #if os(macOS)
     Color(nsColor: .windowBackgroundColor)
     #else
-    Color.black
+    Color(white: 1.0)
     #endif
   }
 }

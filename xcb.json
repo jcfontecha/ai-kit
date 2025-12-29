@@ -9,13 +9,6 @@
       "configuration": "Debug"
     },
     {
-      "id": "demo-uikit",
-      "scheme": "DemoUIKit",
-      "project": "Examples/DemoUIKit/DemoUIKit.xcodeproj",
-      "destination": "generic/platform=iOS Simulator",
-      "configuration": "Debug"
-    },
-    {
       "id": "swift-packages",
       "scheme": "AIKit",
       "packageDir": ".",
