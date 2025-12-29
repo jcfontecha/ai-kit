@@ -1,0 +1,130 @@
+---
+title: Overview
+description: Core components, composition patterns, and built-in Markdown rendering.
+---
+
+# AIKitElements overview
+
+AIKitElements provides SwiftUI-first building blocks for chat UIs that pair with AIKit’s
+`ChatStore`, `ChatMessage`, and tool-approval flows.
+
+## Requirements
+
+- iOS 26+
+- macOS 26+
+
+## What you get
+
+Core primitives:
+- `Conversation` (stream-aware scrolling + paging)
+- `AssistantMessage` (interleaved parts: text, reasoning, tools, sources, files)
+- `UserBubble`
+- `PromptInput` / `PromptInputElements`
+- `ApprovalBanner`
+- `ToolPartView` / `ToolPartReasoningView`
+- `FileAttachmentsRow`, `SourceLinkRow`, `SourceDocumentRow`
+- `AssistantMarkdown` (built-in Markdown rendering)
+- `GlassSurface` (styling helper)
+
+## Basic composition
+
+```swift
+import SwiftUI
+import AIKit
+import AIKitElements
+
+struct ChatView: View {
+  @State private var composerText = ""
+  @State private var composerHeight: CGFloat = 0
+  @StateObject private var chat = ChatStore(
+    model: /* your chat model */,
+    tools: [],
+    initialMessages: []
+  )
+
+  var body: some View {
+    Conversation(
+      messages: chat.messages,
+      status: chat.status,
+      bottomOverlayHeight: composerHeight
+    ) { message in
+      messageRow(message)
+    }
+    .promptInputBottomBar(
+      text: $composerText,
+      status: chat.status,
+      height: $composerHeight,
+      onSend: { chat.sendMessage($0) },
+      onStop: { chat.stop() }
+    )
+  }
+
+  @ViewBuilder
+  private func messageRow(_ message: ChatMessage) -> some View {
+    switch message.role {
+    case .user:
+      UserBubble(text: messageText(message))
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    case .assistant:
+      AssistantMessage(
+        parts: message.parts,
+        toolDefaultStatusStrings: .init(
+          loading: "Working…",
+          success: "Done",
+          error: "Error"
+        )
+      )
+    default:
+      EmptyView()
+    }
+  }
+
+  private func messageText(_ message: ChatMessage) -> String {
+    message.parts.compactMap { part in
+      guard case let .text(text) = part else { return nil }
+      return text.text
+    }.joined()
+  }
+}
+```
+
+## AssistantMessage
+
+`AssistantMessage` renders interleaved parts (text, reasoning, tools, sources, files).
+See the dedicated internal reference for details:
+
+- `internal_docs/AssistantMessage.md`
+
+## Assistant Markdown
+
+`AssistantMessage` provides a Markdown-backed initializer using `AssistantMarkdown`:
+
+```swift
+let style = AssistantMarkdownStyle(
+  lineSpacingEm: 0.26,
+  paragraphSpacingEm: 0.6,
+  listItemSpacingEm: 0.35
+)
+
+AssistantMessage(
+  parts: message.parts,
+  toolDefaultStatusStrings: .init(loading: "Loading", success: "Done", error: "Error"),
+  markdownStyle: style
+)
+```
+
+## Tool approvals
+
+Wire approval responses back into your `ChatStore`:
+
+```swift
+AssistantMessage(parts: message.parts)
+  .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
+    chat.addToolApprovalResponse(approvalID: approvalID, approved: approved, reason: reason)
+  }
+```
+
+## Readiness
+
+AIKitElements is ready for **early** use in apps with the expectation of API iteration.
+If you need stability, isolate usage in a thin adapter layer.

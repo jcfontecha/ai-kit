@@ -51,4 +51,4 @@ let finalText = try await stream.text
 
 ## Docs
 
-Start here: `docs/README.md`
+Docs live under `content/docs/`.
