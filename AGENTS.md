@@ -52,6 +52,7 @@ These repos are vendored in this repository for reference:
 - `Sources/AIKit`: convenience umbrella target (re-exports / combines).
 - `Sources/AIKitTestKit`: internal test utilities (snapshots, deterministic clocks/IDs, async helpers).
 - `AIKitMacros/`: separate Swift package that contains schema-authoring macros.
+- `content/docs/`: user-facing documentation (MDX format).
 
 ## Schema strategy (single way)
 
@@ -113,7 +114,7 @@ Recommended incremental implementation order:
 
 ## House rules
 
-- **Agent autonomy**: NEVER ask the user to do anything that the agent can do itself. This includes (but is not limited to): gathering context, reading files, building the project, fetching online documentation, running tests, searching the codebase, or any other task that can be accomplished using available tools. The agent should proactively gather all necessary information and perform all actions independently.
+- NEVER ask the user to do anything that the agent can do itself. This includes (but is not limited to): gathering context, reading files, building the project, fetching online documentation, running tests, searching the codebase, or any other task that can be accomplished using available tools.
 - Keep naming clean and intentional (avoid confusing target/module proliferation).
 - Avoid "mindless" churn: don't rename/restructure without a clear, agreed reason.
 - Keep APIs and tests aligned with `AIKIT_PROPOSAL.md` and the AI SDK behavior inventory in `AI_SDK_TESTS_RAMPUP.md`.
