@@ -9,6 +9,13 @@
       "configuration": "Debug"
     },
     {
+      "id": "demo-macos",
+      "scheme": "AIKitElementsDemoApp",
+      "project": "Examples/AIKitElementsDemoApp/AIKitElementsDemoApp.xcodeproj",
+      "destination": "platform=macOS",
+      "configuration": "Debug"
+    },
+    {
       "id": "swift-packages",
       "scheme": "AIKit",
       "packageDir": ".",

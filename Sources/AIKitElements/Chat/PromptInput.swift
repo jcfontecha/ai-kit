@@ -1,6 +1,51 @@
 import SwiftUI
 import AIKit
 
+#if os(macOS)
+import AppKit
+#endif
+
+#if os(macOS)
+private struct PromptInputMacTextField: NSViewRepresentable {
+  @Binding var text: String
+  let placeholder: String
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(text: $text)
+  }
+
+  func makeNSView(context: Context) -> NSTextField {
+    let field = NSTextField(string: text)
+    field.placeholderString = placeholder
+    field.isBordered = false
+    field.drawsBackground = false
+    field.focusRingType = .none
+    field.font = NSFont.preferredFont(forTextStyle: .callout)
+    field.delegate = context.coordinator
+    return field
+  }
+
+  func updateNSView(_ nsView: NSTextField, context: Context) {
+    if nsView.stringValue != text {
+      nsView.stringValue = text
+    }
+  }
+
+  final class Coordinator: NSObject, NSTextFieldDelegate {
+    @Binding private var text: String
+
+    init(text: Binding<String>) {
+      self._text = text
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+      guard let field = notification.object as? NSTextField else { return }
+      text = field.stringValue
+    }
+  }
+}
+#endif
+
 public struct PromptInputElements: View {
   @Binding public var text: String
   public var status: ChatSessionStatus
@@ -106,9 +151,7 @@ public struct PromptInputElements: View {
         .fixedSize(horizontal: false, vertical: true)
         .padding(.leading, 6)
     #else
-    TextField("Message", text: $text)
-      .textFieldStyle(.plain)
-      .font(.callout)
+    PromptInputMacTextField(text: $text, placeholder: "Message")
     #endif
   }
 }
@@ -165,8 +208,9 @@ public struct PromptInput: View {
         .font(.system(size: plusButtonIconSize, weight: .medium))
         .foregroundStyle(plusIconColor)
         .glassEffect(.clear.interactive(), in: .circle)
+        .contentShape(Circle())
     }
-    .accessibilityLabel("Add")
+    .buttonStyle(.plain)
   }
 
   private var plusIconColor: Color {

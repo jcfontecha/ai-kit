@@ -72,7 +72,6 @@ struct SimpleChatDemoView: View {
       }
       .padding(10)
     }
-    #if os(iOS)
     base
       .safeAreaBar(edge: .bottom) {
         PromptInput(text: $text, status: store.status, onSend: { message in
@@ -92,20 +91,6 @@ struct SimpleChatDemoView: View {
           }
         }
       }
-    #else
-    base
-      .promptInputBottomBar(
-        text: $text,
-        status: store.status,
-        height: $composerHeight,
-        onSend: { message in
-          store.send(text: message)
-        },
-        onStop: {
-          store.stop()
-        }
-      )
-    #endif
   }
 }
 

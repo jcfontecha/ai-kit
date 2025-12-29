@@ -11,19 +11,16 @@ struct OpenRouterSettingsView: View {
       Section("OpenRouter") {
         if showKey {
           TextField("API Key", text: $apiKey)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
+            .demoTextInputBehavior()
         } else {
           SecureField("API Key", text: $apiKey)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
+            .demoTextInputBehavior()
         }
 
         Toggle("Show API key", isOn: $showKey)
 
         TextField("Model ID", text: $modelID)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
+          .demoTextInputBehavior()
 
         Text("Keys are stored in UserDefaults (insecure). This is fine for a demo app.")
           .font(.caption)
@@ -39,7 +36,19 @@ struct OpenRouterSettingsView: View {
   }
 }
 
+private extension View {
+  @ViewBuilder
+  func demoTextInputBehavior() -> some View {
+    #if os(iOS)
+    self
+      .textInputAutocapitalization(.never)
+      .autocorrectionDisabled()
+    #else
+    self
+    #endif
+  }
+}
+
 #Preview {
   NavigationStack { OpenRouterSettingsView() }
 }
-
