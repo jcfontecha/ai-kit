@@ -27,7 +27,7 @@ struct SimpleChatDemoView: View {
   @ViewBuilder
   private var content: some View {
     let base = ZStack {
-      Conversation(messages: store.messages, status: store.status, bottomOverlayHeight: composerHeight + 8) { message in
+      Conversation(messages: store.messages, status: store.status, bottomOverlayHeight: composerHeight + 8, showsScrollButton: true) { message in
         DemoMessageRow(message: message)
       }
       .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in

@@ -9,12 +9,14 @@ public struct Conversation<MessageView: View>: View {
   public var messages: [ChatMessage]
   public var status: ChatSessionStatus
   public var bottomOverlayHeight: CGFloat
+  public var showsScrollButton: Bool
   @ViewBuilder public var messageView: (ChatMessage) -> MessageView
 
   @State private var visibleCount: Int = conversationMessagePageSize
   @State private var didPerformInitialScroll: Bool = false
   @State private var isAtBottom: Bool = true
   @State private var pendingScrollTask: Task<Void, Never>?
+  @State private var scrollPosition: String? = conversationBottomSentinelID
 
   private let extraBottomPadding: CGFloat = 0
   private let bottomInsetAnimation: Animation = .easeOut(duration: 0.18)
@@ -26,31 +28,35 @@ public struct Conversation<MessageView: View>: View {
     messages: [ChatMessage],
     status: ChatSessionStatus,
     bottomOverlayHeight: CGFloat,
+    showsScrollButton: Bool = false,
     @ViewBuilder messageView: @escaping (ChatMessage) -> MessageView
   ) {
     self.messages = messages
     self.status = status
     self.bottomOverlayHeight = bottomOverlayHeight
+    self.showsScrollButton = showsScrollButton
     self.messageView = messageView
   }
 
   public init(
     messages: [ChatMessage],
     bottomOverlayHeight: CGFloat,
+    showsScrollButton: Bool = false,
     @ViewBuilder messageView: @escaping (ChatMessage) -> MessageView
   ) {
     self.init(
       messages: messages,
       status: .ready,
       bottomOverlayHeight: bottomOverlayHeight,
+      showsScrollButton: showsScrollButton,
       messageView: messageView
     )
   }
 
   public var body: some View {
-      ScrollViewReader { proxy in
-    ScrollView {
-      VStack(alignment: .leading, spacing: 16) {
+    ScrollViewReader { proxy in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
           if shouldShowLoadMoreSentinel {
             Color.clear
               .frame(height: 1)
@@ -69,20 +75,25 @@ public struct Conversation<MessageView: View>: View {
             .frame(height: bottomInset)
             .animation(bottomInsetAnimation, value: bottomInset)
             .id(conversationBottomSentinelID)
-            .onAppear { isAtBottom = true }
-            .onDisappear { isAtBottom = false }
         }
         .padding(.top, 20)
         .padding(.horizontal, 16)
+        .scrollTargetLayout()
       }
+      .scrollPosition(id: $scrollPosition, anchor: .bottom)
       .modifier(ScrollEdgeEffectCompat())
+      .defaultScrollAnchor(.bottom)
       #if os(iOS)
       .modifier(ScrollDismissesKeyboardCompat())
       #endif
       .onAppear {
         syncVisibleCountWithMessages()
         scrollToBottom(proxy, animated: false)
+        scrollPosition = conversationBottomSentinelID
         didPerformInitialScroll = true
+      }
+      .onChange(of: scrollPosition) {
+        isAtBottom = scrollPosition == conversationBottomSentinelID
       }
       .onChange(of: messages.count) {
         syncVisibleCountWithMessages()
@@ -105,12 +116,32 @@ public struct Conversation<MessageView: View>: View {
         guard isAtBottom else { return }
         scrollToBottom(proxy, animated: true, animation: scrollAnimation)
       }
+      .overlay(alignment: .bottom) {
+        if showsScrollButton, isAtBottom == false {
+          Button {
+            scrollToBottom(proxy, animated: true, animation: scrollAnimation)
+          } label: {
+            Image(systemName: "arrow.down")
+              .font(.system(size: 13, weight: .semibold))
+              .frame(width: 32, height: 32)
+              .glassEffect(.clear.interactive(), in: .circle)
+              .contentShape(Circle())
+              .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 0)
+          }
+          .buttonStyle(.plain)
+          .padding(.bottom, 12)
+          .accessibilityLabel("Scroll to latest")
+          .transition(.opacity)
+        }
+      }
+      .animation(.easeInOut(duration: 0.2), value: isAtBottom)
     }
   }
 
   private var bottomInset: CGFloat {
     max(1, extraBottomPadding)
   }
+
 
   private var resolvedVisibleCount: Int {
     guard messages.isEmpty == false else { return 0 }
@@ -187,9 +218,11 @@ public struct Conversation<MessageView: View>: View {
 
     if animated {
       withAnimation(animation) {
+        scrollPosition = targetID
         proxy.scrollTo(targetID, anchor: .bottom)
       }
     } else {
+      scrollPosition = targetID
       proxy.scrollTo(targetID, anchor: .bottom)
     }
   }
@@ -200,6 +233,7 @@ private struct ScrollEdgeEffectCompat: ViewModifier {
     content.scrollEdgeEffectStyle(.soft, for: .bottom)
   }
 }
+
 
 #if os(iOS)
 private struct ScrollDismissesKeyboardCompat: ViewModifier {
