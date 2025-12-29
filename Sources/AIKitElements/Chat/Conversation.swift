@@ -343,6 +343,7 @@ public struct Conversation<MessageView: View>: View {
     case .assistant:
       HStack(alignment: .top) {
         AssistantMessage(
+          messageID: message.id,
           parts: message.parts,
           toolStatusStrings: toolStatusStrings,
           toolDefaultStatusStrings: toolDefaultStatusStrings,

@@ -74,6 +74,10 @@ final class OpenRouterChatStore: ObservableObject {
     chat?.stop()
   }
 
+  func regenerate(messageID: String?) {
+    chat?.regenerate(messageID: messageID)
+  }
+
   func respondToToolApproval(approvalID: String, approved: Bool, reason: String?) {
     chat?.addToolApprovalResponse(approvalID: approvalID, approved: approved, reason: reason)
   }
@@ -100,6 +104,7 @@ struct DemoMessageRow: View {
     case .assistant:
       HStack(alignment: .top) {
         AssistantMessage(
+          messageID: message.id,
           parts: message.parts,
           toolStatusStrings: demoToolStatusStrings,
           toolDefaultStatusStrings: .init(

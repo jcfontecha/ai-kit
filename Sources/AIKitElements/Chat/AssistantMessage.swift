@@ -1,6 +1,12 @@
 import SwiftUI
 import AIKit
 
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
 public struct ToolRenderContext {
   public var tool: ChatToolPart
   public var isLoading: Bool
@@ -189,6 +195,7 @@ private struct AssistantMessageToolStatusStringsModifier: ViewModifier {
 ///
 /// This is the primary home for “interleaved part rendering” complexity (especially tools + approvals).
 public struct AssistantMessage<AssistantText: View>: View {
+  public var messageID: String?
   public var parts: [ChatMessagePart]
   public var showsReasoning: Bool?
   public var toolRenderers: [String: ToolRenderer]?
@@ -204,7 +211,10 @@ public struct AssistantMessage<AssistantText: View>: View {
   @Environment(\.assistantMessageToolStatusStrings) private var environmentToolStatusStrings
   @Environment(\.assistantMessageDefaultToolRenderer) private var environmentDefaultToolRenderer
   @Environment(\.assistantMessageOnToolApprovalResponse) private var environmentOnToolApprovalResponse
+  @Environment(\.assistantMessageOnCopy) private var environmentOnCopy
+  @Environment(\.assistantMessageOnRegenerate) private var environmentOnRegenerate
   public init(
+    messageID: String? = nil,
     parts: [ChatMessagePart],
     showsReasoning: Bool? = nil,
     toolRenderers: [String: ToolRenderer]? = nil,
@@ -215,6 +225,7 @@ public struct AssistantMessage<AssistantText: View>: View {
     assistantReasoningText: ReasoningTextRenderer? = nil,
     @ViewBuilder assistantText: @escaping (String) -> AssistantText
   ) {
+    self.messageID = messageID
     self.parts = parts
     self.showsReasoning = showsReasoning
     self.toolRenderers = toolRenderers
@@ -227,6 +238,7 @@ public struct AssistantMessage<AssistantText: View>: View {
   }
 
   public init<AssistantReasoningText: View>(
+    messageID: String? = nil,
     parts: [ChatMessagePart],
     showsReasoning: Bool? = nil,
     toolRenderers: [String: ToolRenderer]? = nil,
@@ -239,6 +251,7 @@ public struct AssistantMessage<AssistantText: View>: View {
   ) {
     let renderer: ReasoningTextRenderer = { text in AnyView(assistantReasoningText(text)) }
     self.init(
+      messageID: messageID,
       parts: parts,
       showsReasoning: showsReasoning,
       toolRenderers: toolRenderers,
@@ -252,6 +265,7 @@ public struct AssistantMessage<AssistantText: View>: View {
   }
 
   public init(
+    messageID: String? = nil,
     parts: [ChatMessagePart],
     showsReasoning: Bool? = nil,
     toolRenderers: [String: ToolRenderer]? = nil,
@@ -262,6 +276,7 @@ public struct AssistantMessage<AssistantText: View>: View {
     assistantReasoningText: ReasoningTextRenderer? = nil
   ) where AssistantText == Text {
     self.init(
+      messageID: messageID,
       parts: parts,
       showsReasoning: showsReasoning,
       toolRenderers: toolRenderers,
@@ -275,6 +290,7 @@ public struct AssistantMessage<AssistantText: View>: View {
   }
 
   public init(
+    messageID: String? = nil,
     parts: [ChatMessagePart],
     showsReasoning: Bool? = nil,
     toolRenderers: [String: ToolRenderer]? = nil,
@@ -285,6 +301,7 @@ public struct AssistantMessage<AssistantText: View>: View {
     markdownStyle: AssistantMarkdownStyle = .init()
   ) where AssistantText == AssistantMarkdown {
     self.init(
+      messageID: messageID,
       parts: parts,
       showsReasoning: showsReasoning,
       toolRenderers: toolRenderers,
@@ -308,6 +325,8 @@ public struct AssistantMessage<AssistantText: View>: View {
     let resolvedToolDefaultStatusStrings = toolDefaultStatusStrings
     let resolvedToolDefaultRenderer = toolDefaultRenderer ?? environmentDefaultToolRenderer
     let resolvedOnToolApprovalResponse = onToolApprovalResponse ?? environmentOnToolApprovalResponse
+    let resolvedOnCopy = environmentOnCopy
+    let resolvedOnRegenerate = environmentOnRegenerate
 
     VStack(alignment: .leading, spacing: 14) {
       ForEach(groupedParts(parts)) { part in
@@ -352,6 +371,25 @@ public struct AssistantMessage<AssistantText: View>: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
+    .background(Color.clear)
+    .contextMenu {
+      let copyText = assistantCopyText(parts)
+      if copyText.isEmpty == false {
+        Button("Copy") {
+          if let resolvedOnCopy {
+            resolvedOnCopy(copyText, messageID)
+          } else {
+            copyToPasteboard(copyText)
+          }
+        }
+      }
+      if let resolvedOnRegenerate {
+        Button("Regenerate") {
+          resolvedOnRegenerate(messageID)
+        }
+      }
+    }
   }
 
   @ViewBuilder
@@ -382,6 +420,61 @@ public struct AssistantMessage<AssistantText: View>: View {
       ToolPartView(tool: tool, sendApproval: sendApproval, statusStrings: statusStrings)
     }
   }
+}
+
+private struct AssistantMessageCopyActionStore: @unchecked Sendable {
+  var value: ((_ text: String, _ messageID: String?) -> Void)?
+}
+
+private struct AssistantMessageRegenerateActionStore: @unchecked Sendable {
+  var value: ((_ messageID: String?) -> Void)?
+}
+
+private struct AssistantMessageOnCopyKey: EnvironmentKey {
+  static let defaultValue = AssistantMessageCopyActionStore(value: nil)
+}
+
+private struct AssistantMessageOnRegenerateKey: EnvironmentKey {
+  static let defaultValue = AssistantMessageRegenerateActionStore(value: nil)
+}
+
+private extension EnvironmentValues {
+  var assistantMessageOnCopy: ((_ text: String, _ messageID: String?) -> Void)? {
+    get { self[AssistantMessageOnCopyKey.self].value }
+    set { self[AssistantMessageOnCopyKey.self] = .init(value: newValue) }
+  }
+
+  var assistantMessageOnRegenerate: ((_ messageID: String?) -> Void)? {
+    get { self[AssistantMessageOnRegenerateKey.self].value }
+    set { self[AssistantMessageOnRegenerateKey.self] = .init(value: newValue) }
+  }
+}
+
+public extension View {
+  func assistantMessageOnCopy(_ handler: @escaping (_ text: String, _ messageID: String?) -> Void) -> some View {
+    environment(\.assistantMessageOnCopy, handler)
+  }
+
+  func assistantMessageOnRegenerate(_ handler: @escaping (_ messageID: String?) -> Void) -> some View {
+    environment(\.assistantMessageOnRegenerate, handler)
+  }
+}
+
+private func assistantCopyText(_ parts: [ChatMessagePart]) -> String {
+  parts.compactMap { part in
+    guard case let .text(text) = part else { return nil }
+    return text.text
+  }.joined()
+}
+
+private func copyToPasteboard(_ text: String) {
+  #if os(iOS)
+  UIPasteboard.general.string = text
+  #elseif os(macOS)
+  let board = NSPasteboard.general
+  board.clearContents()
+  board.setString(text, forType: .string)
+  #endif
 }
 
 private struct GroupedPart: Identifiable {

@@ -39,6 +39,9 @@ struct SimpleChatDemoView: View {
       .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
         store.respondToToolApproval(approvalID: approvalID, approved: approved, reason: reason)
       }
+      .assistantMessageOnRegenerate { messageID in
+        store.regenerate(messageID: messageID)
+      }
 
       if store.messages.isEmpty {
         Text("Start a conversation")

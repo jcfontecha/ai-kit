@@ -20,7 +20,11 @@ private struct PromptInputMacTextField: NSViewRepresentable {
     field.isBordered = false
     field.drawsBackground = false
     field.focusRingType = .none
-    field.font = NSFont.preferredFont(forTextStyle: .callout)
+    field.font = NSFont.preferredFont(forTextStyle: .body)
+    field.placeholderAttributedString = NSAttributedString(
+      string: placeholder,
+      attributes: [.foregroundColor: NSColor.labelColor.withAlphaComponent(0.6)]
+    )
     field.delegate = context.coordinator
     return field
   }
@@ -144,9 +148,14 @@ public struct PromptInputElements: View {
   @ViewBuilder
   private var composerField: some View {
     #if os(iOS)
-      TextField("Message", text: $text, axis: .vertical)
+      TextField(
+        "Message",
+        text: $text,
+        prompt: Text("Message").foregroundStyle(Color.primary.opacity(0.6)),
+        axis: .vertical
+      )
         .textFieldStyle(.plain)
-        .font(.callout)
+        .font(.body)
         .lineLimit(1...6)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.leading, 6)
@@ -168,6 +177,7 @@ public struct PromptInput: View {
   private let plusButtonPadding: CGFloat = 12
   private let plusButtonSpacing: CGFloat = 8
   private var plusButtonSize: CGFloat { plusButtonIconSize + (plusButtonPadding * 2) }
+  private let bottomInset: CGFloat = 4
 
   public init(
     text: Binding<String>,
@@ -193,6 +203,7 @@ public struct PromptInput: View {
           .glassEffect(.clear.interactive(), in: .rect(cornerRadius: cornerRadius))
       }
     }
+    .padding(.bottom, bottomInset)
     .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 0)
   }
 
@@ -263,7 +274,7 @@ private struct PromptInputBottomBarModifier: ViewModifier {
         PromptInput(text: $text, status: status, onSend: onSend, onStop: onStop, onAdd: onAdd)
           .padding(.horizontal, 12)
           .padding(.top, 8)
-          .padding(.bottom, 6)
+          .padding(.bottom, 26)
           .background {
             GeometryReader { proxy in
               Color.clear
