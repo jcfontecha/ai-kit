@@ -47,6 +47,16 @@ public struct PromptInputElements: View {
     text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
   }
 
+  private var enabledControlForeground: Color {
+    #if os(iOS) || os(tvOS) || os(watchOS)
+    Color(uiColor: .systemBackground)
+    #elseif os(macOS)
+    Color(nsColor: .windowBackgroundColor)
+    #else
+    Color.primary
+    #endif
+  }
+
   private var trailingControlWidth: CGFloat { controlSize }
 
   @ViewBuilder
@@ -73,7 +83,7 @@ public struct PromptInputElements: View {
         Image(systemName: "arrow.up")
           .frame(width: controlIconSize, height: controlIconSize)
           .padding(controlIconPadding)
-          .foregroundStyle(sendEnabled ? Color.platformBackground : Color.platformBackground.opacity(0.55))
+          .foregroundStyle(sendEnabled ? enabledControlForeground : enabledControlForeground.opacity(0.55))
           .background {
             Circle()
               .fill(sendEnabled ? Color.primary : Color.primary.opacity(0.30))
@@ -89,18 +99,12 @@ public struct PromptInputElements: View {
   @ViewBuilder
   private var composerField: some View {
     #if os(iOS)
-    if #available(iOS 16.0, *) {
       TextField("Message", text: $text, axis: .vertical)
         .textFieldStyle(.plain)
         .font(.callout)
         .lineLimit(1...6)
         .fixedSize(horizontal: false, vertical: true)
         .padding(.leading, 6)
-    } else {
-      TextField("Message", text: $text)
-        .textFieldStyle(.plain)
-        .font(.callout)
-    }
     #else
     TextField("Message", text: $text)
       .textFieldStyle(.plain)
@@ -137,17 +141,16 @@ public struct PromptInput: View {
   }
 
   public var body: some View {
-    HStack(alignment: .bottom, spacing: plusButtonSpacing) {
-      plusButton
-      PromptInputElements(text: $text, status: status, onSend: onSend, onStop: onStop)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: plusButtonSize, alignment: .center)
-        .background {
-          RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Color.clear)
-            .glassSurface(cornerRadius: cornerRadius)
-        }
+    GlassEffectContainer(spacing: plusButtonSpacing) {
+      HStack(alignment: .bottom, spacing: plusButtonSpacing) {
+        plusButton
+        PromptInputElements(text: $text, status: status, onSend: onSend, onStop: onStop)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .frame(minHeight: plusButtonSize, alignment: .center)
+          .glassEffect(.clear.interactive(), in: .rect(cornerRadius: cornerRadius))
+      }
     }
+    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 0)
   }
 
   private var plusButtonCornerRadius: CGFloat {
@@ -158,17 +161,22 @@ public struct PromptInput: View {
     let action = onAdd ?? {}
     return Button(action: action) {
       Image(systemName: "plus")
-        .frame(width: plusButtonIconSize, height: plusButtonIconSize)
-        .padding(plusButtonPadding)
-        .foregroundStyle(Color.primary)
-    }
-    .buttonStyle(.plain)
-    .background {
-      RoundedRectangle(cornerRadius: plusButtonCornerRadius, style: .continuous)
-        .fill(Color.clear)
-        .glassSurface(cornerRadius: plusButtonCornerRadius, interactive: true)
+        .frame(width: plusButtonSize, height: plusButtonSize)
+        .font(.system(size: plusButtonIconSize, weight: .medium))
+        .foregroundStyle(plusIconColor)
+        .glassEffect(.clear.interactive(), in: .circle)
     }
     .accessibilityLabel("Add")
+  }
+
+  private var plusIconColor: Color {
+    #if os(iOS) || os(tvOS) || os(watchOS)
+    Color(uiColor: .label)
+    #elseif os(macOS)
+    Color(nsColor: .labelColor)
+    #else
+    Color.primary
+    #endif
   }
 }
 
