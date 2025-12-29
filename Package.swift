@@ -1,5 +1,6 @@
 // swift-tools-version: 6.2
 import PackageDescription
+import CompilerPluginSupport
 
 let package = Package(
   name: "AIKit",
@@ -15,11 +16,13 @@ let package = Package(
     .library(name: "AIKitOpenRouter", targets: ["AIKitOpenRouter"]),
     .library(name: "AIKitReplicate", targets: ["AIKitReplicate"]),
     .library(name: "AIKitFal", targets: ["AIKitFal"]),
+    .library(name: "AIKitMacro", targets: ["AIKitMacro"]),
     .executable(name: "aikit-codegen", targets: ["AIKitCodegen"]),
   ],
   dependencies: [
     .package(url: "https://github.com/markiv/SwiftUI-Shimmer.git", from: "1.5.1"),
     .package(url: "https://github.com/gonzalezreal/swift-markdown-ui.git", from: "2.0.0"),
+    .package(url: "https://github.com/apple/swift-syntax.git", from: "602.0.0"),
   ],
   targets: [
     .target(
@@ -66,6 +69,22 @@ let package = Package(
       name: "AIKitCodegen",
       dependencies: []
     ),
+    .macro(
+      name: "AIKitMacros",
+      dependencies: [
+        .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+        .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+      ],
+      path: "AIKitMacros/Sources/AIKitMacros"
+    ),
+    .target(
+      name: "AIKitMacro",
+      dependencies: [
+        "AIKit",
+        "AIKitMacros",
+      ],
+      path: "AIKitMacros/Sources/AIKitMacro"
+    ),
     .testTarget(
       name: "AIKitCoreTests",
       dependencies: ["AIKitCore", "AIKitTestKit"]
@@ -85,6 +104,15 @@ let package = Package(
     .testTarget(
       name: "AIKitFalTests",
       dependencies: ["AIKitFal", "AIKitProviders"]
+    ),
+    .testTarget(
+      name: "AIKitMacroTests",
+      dependencies: [
+        "AIKitMacro",
+        "AIKitMacros",
+        .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
+      ],
+      path: "AIKitMacros/Tests/AIKitMacroTests"
     ),
   ]
 )
