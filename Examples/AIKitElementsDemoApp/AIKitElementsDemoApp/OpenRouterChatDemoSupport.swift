@@ -8,7 +8,13 @@ import AIKitElements
 
 @MainActor
 final class OpenRouterChatStore: ObservableObject {
-  @Published var snapshot: ChatSessionSnapshot = .init(status: .ready, messages: [], errorDescription: nil)
+  struct Snapshot: Sendable, Equatable {
+    var status: ChatStatus
+    var messages: [ChatMessage]
+    var errorDescription: String?
+  }
+
+  @Published var snapshot: Snapshot = .init(status: .ready, messages: [], errorDescription: nil)
 
   private var chat: ChatStore?
   private var chatUpdates: AnyCancellable?
@@ -16,7 +22,7 @@ final class OpenRouterChatStore: ObservableObject {
   private var configuredModelID: String = ""
 
   var messages: [ChatMessage] { snapshot.messages }
-  var status: ChatSessionStatus { snapshot.status }
+  var status: ChatStatus { snapshot.status }
   var errorDescription: String? { snapshot.errorDescription }
 
   func configureIfPossible(apiKey: String, modelID: String) {
