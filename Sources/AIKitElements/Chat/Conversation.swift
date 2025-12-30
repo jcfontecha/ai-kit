@@ -7,7 +7,7 @@ private let conversationMessagePageSize = 60
 
 public struct Conversation<MessageView: View>: View {
   public var messages: [ChatMessage]
-  public var status: ChatSessionStatus
+  public var status: ChatStatus
   public var bottomOverlayHeight: CGFloat
   public var showsScrollButton: Bool
   public var toolRenderers: [String: ToolRenderer]
@@ -32,7 +32,7 @@ public struct Conversation<MessageView: View>: View {
 
   public init(
     messages: [ChatMessage],
-    status: ChatSessionStatus,
+    status: ChatStatus,
     bottomOverlayHeight: CGFloat,
     showsScrollButton: Bool = false,
     toolRenderers: [String: ToolRenderer] = [:],
@@ -85,7 +85,7 @@ public struct Conversation<MessageView: View>: View {
 
   public init(
     messages: [ChatMessage],
-    status: ChatSessionStatus,
+    status: ChatStatus,
     bottomOverlayHeight: CGFloat,
     showsScrollButton: Bool = false,
     toolStatusStrings: [String: ToolStatusStrings] = [:],

@@ -1,12 +1,12 @@
 import Foundation
 
-public struct ChatSessionSnapshot: Sendable, Equatable {
-  public var status: ChatSessionStatus
-  public var messages: [ChatMessage]
-  public var errorDescription: String?
+struct ChatSessionSnapshot: Sendable, Equatable {
+  var status: ChatStatus
+  var messages: [ChatMessage]
+  var errorDescription: String?
 
-  public init(
-    status: ChatSessionStatus,
+  init(
+    status: ChatStatus,
     messages: [ChatMessage],
     errorDescription: String?
   ) {
@@ -15,4 +15,3 @@ public struct ChatSessionSnapshot: Sendable, Equatable {
     self.errorDescription = errorDescription
   }
 }
-

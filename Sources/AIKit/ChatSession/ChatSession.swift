@@ -1,15 +1,15 @@
 import Foundation
 import AIKitProviders
 
-public struct ChatSessionFinishEvent: Sendable {
-  public var message: ChatMessage
-  public var messages: [ChatMessage]
-  public var isAbort: Bool
-  public var isDisconnect: Bool
-  public var isError: Bool
-  public var finishReason: FinishReason?
+struct ChatSessionFinishEvent: Sendable {
+  var message: ChatMessage
+  var messages: [ChatMessage]
+  var isAbort: Bool
+  var isDisconnect: Bool
+  var isError: Bool
+  var finishReason: FinishReason?
 
-  public init(
+  init(
     message: ChatMessage,
     messages: [ChatMessage],
     isAbort: Bool,
@@ -26,14 +26,14 @@ public struct ChatSessionFinishEvent: Sendable {
   }
 }
 
-public struct ChatSessionInit: Sendable {
-  public typealias ValidateJSONValue = @Sendable (_ value: JSONValue) async throws -> Void
-  public typealias ReconnectToStream = @Sendable (
+struct ChatSessionInit: Sendable {
+  typealias ValidateJSONValue = @Sendable (_ value: JSONValue) async throws -> Void
+  typealias ReconnectToStream = @Sendable (
     _ chatID: String,
     _ options: ChatRequestOptions?
   ) async throws -> AsyncThrowingStream<AIUIMessageStreamPart, Error>?
 
-  public typealias RequestStream = @Sendable (
+  typealias RequestStream = @Sendable (
     _ chatID: String,
     _ messages: [ChatMessage],
     _ trigger: ChatRequestTrigger,
@@ -42,39 +42,39 @@ public struct ChatSessionInit: Sendable {
     _ cancellationToken: CancellationToken?
   ) async throws -> AsyncThrowingStream<AIUIMessageStreamPart, Error>
 
-  public var id: String?
+  var id: String?
 
-  public var model: (any LanguageModel)?
-  public var tools: ToolRegistry?
-  public var toolChoice: ToolChoice
-  public var activeTools: [String]?
+  var model: (any LanguageModel)?
+  var tools: ToolRegistry?
+  var toolChoice: ToolChoice
+  var activeTools: [String]?
 
-  public var system: SystemPrompt?
-  public var settings: CallSettings
-  public var headers: [String: String]?
-  public var providerOptions: ProviderOptions?
+  var system: SystemPrompt?
+  var settings: CallSettings
+  var headers: [String: String]?
+  var providerOptions: ProviderOptions?
 
-  public var onToolCall: (@Sendable (_ toolCall: ChatToolPart) async -> Void)?
-  public var onData: (@Sendable (_ dataPart: AIUIMessageStreamDataPart) async -> Void)?
-  public var sendAutomaticallyWhen: (@Sendable (_ messages: [ChatMessage]) async -> Bool)?
+  var onToolCall: (@Sendable (_ toolCall: ChatToolPart) async -> Void)?
+  var onData: (@Sendable (_ dataPart: AIUIMessageStreamDataPart) async -> Void)?
+  var sendAutomaticallyWhen: (@Sendable (_ messages: [ChatMessage]) async -> Bool)?
 
   /// Mirrors AI SDK `messageMetadataSchema` (`validateTypes`): validates message metadata chunks before merging.
-  public var validateMessageMetadata: ValidateJSONValue?
+  var validateMessageMetadata: ValidateJSONValue?
 
   /// Mirrors AI SDK `dataPartSchemas` (`validateTypes`): keyed by full `data-*` type string.
-  public var validateDataParts: [String: ValidateJSONValue]?
+  var validateDataParts: [String: ValidateJSONValue]?
 
-  public var requestStream: RequestStream?
-  public var reconnectToStream: ReconnectToStream?
+  var requestStream: RequestStream?
+  var reconnectToStream: ReconnectToStream?
 
-  public var onError: (@Sendable (_ error: Error) async -> Void)?
-  public var onFinish: (@Sendable (_ event: ChatSessionFinishEvent) async -> Void)?
+  var onError: (@Sendable (_ error: Error) async -> Void)?
+  var onFinish: (@Sendable (_ event: ChatSessionFinishEvent) async -> Void)?
 
-  public var generateID: (@Sendable () -> String)?
+  var generateID: (@Sendable () -> String)?
 
-  public var messages: [ChatMessage]
+  var messages: [ChatMessage]
 
-  public init(
+  init(
     id: String? = nil,
     model: (any LanguageModel)? = nil,
     tools: ToolRegistry? = nil,
@@ -123,7 +123,7 @@ public struct ChatSessionInit: Sendable {
   /// This mirrors the AI SDK setup where the server decides whether responses come from
   /// `streamText(...)` directly or from an agent wrapper; here, the app makes that choice
   /// explicitly when running locally.
-  public init<CALL_OPTIONS: Sendable>(
+  init<CALL_OPTIONS: Sendable>(
     id: String? = nil,
     agent: Agent<CALL_OPTIONS, Output.Text>,
     sendAutomaticallyWhen: (@Sendable (_ messages: [ChatMessage]) async -> Bool)? = nil,
@@ -172,7 +172,7 @@ public struct ChatSessionInit: Sendable {
   /// and iOS consumes the AI SDK UI message stream protocol (SSE v1).
   ///
   /// This mirrors AI SDK `useChat({ transport })` at the API level.
-  public init(
+  init(
     id: String? = nil,
     transport: some ChatTransport,
     tools: ToolRegistry? = nil,
@@ -217,12 +217,12 @@ public struct ChatSessionInit: Sendable {
   }
 }
 
-public actor ChatSession {
-  public nonisolated let id: String
+actor ChatSession {
+  nonisolated let id: String
 
-  public private(set) var status: ChatSessionStatus
-  public private(set) var error: Error?
-  public private(set) var messages: [ChatMessage]
+  private(set) var status: ChatStatus
+  private(set) var error: Error?
+  private(set) var messages: [ChatMessage]
 
   private let broadcaster = ChatSessionUpdateBroadcaster()
 
@@ -279,7 +279,7 @@ public actor ChatSession {
     return false
   }
 
-  public init(_ init: ChatSessionInit) {
+  init(_ init: ChatSessionInit) {
     self.id = `init`.id ?? UUID().uuidString
     self.status = .ready
     self.error = nil
@@ -326,18 +326,18 @@ public actor ChatSession {
     }
   }
 
-  public func snapshot() -> ChatSessionSnapshot {
+  func snapshot() -> ChatSessionSnapshot {
     .init(status: status, messages: messages, errorDescription: error?.localizedDescription)
   }
 
-  public func updates(
+  func updates(
     bufferingPolicy: AsyncStream<ChatSessionSnapshot>.Continuation.BufferingPolicy = .bufferingNewest(1)
   ) async -> AsyncStream<ChatSessionSnapshot> {
     let initial = snapshot()
     return await broadcaster.makeStream(initial: initial, bufferingPolicy: bufferingPolicy)
   }
 
-  public func send(_ message: ChatDraftMessage?, options: ChatRequestOptions? = nil) async {
+  func send(_ message: ChatDraftMessage?, options: ChatRequestOptions? = nil) async {
     if let message {
       if let replaceID = message.replaceMessageID {
         guard let index = messages.firstIndex(where: { $0.id == replaceID }) else {
@@ -359,11 +359,11 @@ public actor ChatSession {
     await submit(trigger: .submitMessage, messageID: message?.replaceMessageID, options: options)
   }
 
-  public func submit(options: ChatRequestOptions? = nil) async {
+  func submit(options: ChatRequestOptions? = nil) async {
     await submit(trigger: .submitMessage, messageID: messages.last?.id, options: options)
   }
 
-  public func regenerate(messageID: String? = nil, options: ChatRequestOptions? = nil) async {
+  func regenerate(messageID: String? = nil, options: ChatRequestOptions? = nil) async {
     let targetIndex: Int?
     if let messageID {
       targetIndex = messages.firstIndex(where: { $0.id == messageID })
@@ -388,7 +388,7 @@ public actor ChatSession {
     await submit(trigger: .regenerateMessage, messageID: messageID, options: options)
   }
 
-  public func resumeStream(options: ChatRequestOptions? = nil) async {
+  func resumeStream(options: ChatRequestOptions? = nil) async {
     guard status != .submitted && status != .streaming else { return }
     clearError()
 
@@ -409,12 +409,12 @@ public actor ChatSession {
     await task.value
   }
 
-  public func setMessages(_ update: @Sendable ([ChatMessage]) -> [ChatMessage]) {
+  func setMessages(_ update: @Sendable ([ChatMessage]) -> [ChatMessage]) {
     self.messages = update(self.messages)
     Task { [weak self] in await self?.emitUpdate() }
   }
 
-  public func addToolOutput<I: Codable & Sendable, O: Codable & Sendable>(
+  func addToolOutput<I: Codable & Sendable, O: Codable & Sendable>(
     tool: ToolID<I, O>,
     toolCallID: String,
     output: O
@@ -433,7 +433,7 @@ public actor ChatSession {
     }
   }
 
-  public func addToolOutputError<I: Codable & Sendable, O: Codable & Sendable>(
+  func addToolOutputError<I: Codable & Sendable, O: Codable & Sendable>(
     tool: ToolID<I, O>,
     toolCallID: String,
     errorText: String
@@ -444,7 +444,7 @@ public actor ChatSession {
     await maybeAutoSubmit()
   }
 
-  public func addToolApprovalResponse(
+  func addToolApprovalResponse(
     approvalID: String,
     approved: Bool,
     reason: String? = nil
@@ -456,7 +456,7 @@ public actor ChatSession {
     await maybeAutoSubmit()
   }
 
-  public func stop() async {
+  func stop() async {
     guard status == .submitted || status == .streaming else { return }
     await activeCancellationToken?.cancel()
     activeRequestTask?.cancel()
@@ -464,7 +464,7 @@ public actor ChatSession {
     await emitUpdate()
   }
 
-  public func clearError() {
+  func clearError() {
     if status == .error {
       error = nil
       status = .ready

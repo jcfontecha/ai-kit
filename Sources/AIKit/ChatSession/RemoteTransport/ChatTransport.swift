@@ -9,7 +9,7 @@ import AIKitProviders
 /// Source of truth:
 /// - `ai-sdk/packages/ai/src/ui/chat-transport.ts`
 /// - `ai-sdk/packages/ai/src/ui/http-chat-transport.ts`
-public protocol ChatTransport: Sendable {
+protocol ChatTransport: Sendable {
   func sendMessages(
     _ options: ChatTransportSendMessagesOptions
   ) async throws -> AsyncThrowingStream<AIUIMessageStreamPart, Error>
@@ -19,7 +19,7 @@ public protocol ChatTransport: Sendable {
   ) async throws -> AsyncThrowingStream<AIUIMessageStreamPart, Error>?
 }
 
-public struct ChatTransportSendMessagesOptions: Sendable {
+struct ChatTransportSendMessagesOptions: Sendable {
   /// AI SDK `chatId`.
   public var chatID: String
 
@@ -55,7 +55,7 @@ public struct ChatTransportSendMessagesOptions: Sendable {
   }
 }
 
-public struct ChatTransportReconnectToStreamOptions: Sendable {
+struct ChatTransportReconnectToStreamOptions: Sendable {
   public var chatID: String
   public var options: ChatRequestOptions?
 
@@ -65,7 +65,7 @@ public struct ChatTransportReconnectToStreamOptions: Sendable {
   }
 }
 
-public extension ChatTransport {
+extension ChatTransport {
   func makeRequestStream() -> ChatSessionInit.RequestStream {
     { chatID, messages, trigger, messageID, options, cancellationToken in
       try await sendMessages(.init(

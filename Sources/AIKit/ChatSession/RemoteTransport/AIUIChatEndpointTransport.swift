@@ -5,7 +5,7 @@ import AIKitProviders
 ///
 /// Source of truth for request shape defaults:
 /// `ai-sdk/packages/ai/src/ui/http-chat-transport.ts`
-public struct AIUIChatEndpointTransport: Sendable {
+struct AIUIChatEndpointTransport: Sendable {
   public enum TransportBodyError: Error, Sendable, Equatable {
     case expectedJSONObject
   }
@@ -332,7 +332,7 @@ public struct AIUIChatEndpointTransport: Sendable {
     )
   }
 
-  public func makeRequestStream() -> ChatSessionInit.RequestStream {
+  func makeRequestStream() -> ChatSessionInit.RequestStream {
     { chatID, messages, trigger, messageID, options, _ in
       try await requestStream(
         chatID: chatID,
@@ -344,7 +344,7 @@ public struct AIUIChatEndpointTransport: Sendable {
     }
   }
 
-  public func makeReconnectToStream() -> ChatSessionInit.ReconnectToStream {
+  func makeReconnectToStream() -> ChatSessionInit.ReconnectToStream {
     { chatID, options in
       try await reconnectToStream(chatID: chatID, options: options)
     }

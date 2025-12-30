@@ -24,7 +24,7 @@ Concretely:
 ## Current state (what we already have)
 - AIKit `ChatSession` is an `actor` that owns:
   - transcript (`[ChatMessage]`),
-  - lifecycle (`ChatSessionStatus`: submitted/streaming/ready/error),
+  - lifecycle (`ChatStatus`: submitted/streaming/ready/error),
   - tool injection (`addToolOutput`, `addToolApprovalResponse`),
   - optional `reconnectToStream` hook.
 - `ChatSession` can call AIKit `streamText` locally in `ChatSession.runRequest(...)`; local `TextStreamPart` events are adapted into `AIUIMessageStreamPart` and applied to UI state via `ChatMessageStreamingReducer`.

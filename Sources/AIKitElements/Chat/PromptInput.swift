@@ -52,7 +52,7 @@ private struct PromptInputMacTextField: NSViewRepresentable {
 
 public struct PromptInputElements: View {
   @Binding public var text: String
-  public var status: ChatSessionStatus
+  public var status: ChatStatus
   public var onSend: (String) -> Void
   public var onStop: () -> Void
 
@@ -67,7 +67,7 @@ public struct PromptInputElements: View {
 
   public init(
     text: Binding<String>,
-    status: ChatSessionStatus,
+    status: ChatStatus,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void
   ) {
@@ -172,7 +172,7 @@ public struct PromptInputElements: View {
 
 public struct PromptInput: View {
   @Binding public var text: String
-  public var status: ChatSessionStatus
+  public var status: ChatStatus
   public var onSend: (String) -> Void
   public var onStop: () -> Void
   public var onAdd: (() -> Void)?
@@ -186,7 +186,7 @@ public struct PromptInput: View {
 
   public init(
     text: Binding<String>,
-    status: ChatSessionStatus,
+    status: ChatStatus,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
     onAdd: (() -> Void)? = nil
@@ -243,7 +243,7 @@ public struct PromptInput: View {
 public extension View {
   func promptInputBottomBar(
     text: Binding<String>,
-    status: ChatSessionStatus,
+    status: ChatStatus,
     height: Binding<CGFloat>,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
@@ -264,7 +264,7 @@ public extension View {
 
 private struct PromptInputBottomBarModifier: ViewModifier {
   @Binding var text: String
-  let status: ChatSessionStatus
+  let status: ChatStatus
   @Binding var height: CGFloat
   let onSend: (String) -> Void
   let onStop: () -> Void

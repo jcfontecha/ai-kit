@@ -241,7 +241,7 @@ public final class ChatStore: ObservableObject {
 
   @Published public var messages: [ChatMessage] = []
   @Published public var input: String = ""
-  @Published public var status: ChatSessionStatus = .ready
+  @Published public var status: ChatStatus = .ready
   @Published public var errorDescription: String?
 
   public var isLoading: Bool { status == .submitted || status == .streaming }

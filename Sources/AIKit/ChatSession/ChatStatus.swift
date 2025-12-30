@@ -1,9 +1,8 @@
 import Foundation
 
-public enum ChatSessionStatus: Sendable, Equatable {
+public enum ChatStatus: Sendable, Equatable {
   case submitted
   case streaming
   case ready
   case error
 }
-

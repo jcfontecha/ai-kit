@@ -76,12 +76,12 @@ We add a **UI-agnostic session container** named `ChatSession` in `AIKit`.
 
 This is an API sketch (types + method signatures + responsibilities). It is not implementation code.
 
-### 3.1 `ChatSessionStatus`
+### 3.1 `ChatStatus`
 
 Mirror AI SDK status values:
 
 ```swift
-public enum ChatSessionStatus: Sendable, Equatable {
+public enum ChatStatus: Sendable, Equatable {
   /// Messages submitted; waiting for first streaming chunk.
   case submitted
   /// Currently receiving streaming chunks.
@@ -233,7 +233,7 @@ public struct ChatSessionFinishEvent: Sendable {
 public actor ChatSession {
   public nonisolated let id: String
 
-  public private(set) var status: ChatSessionStatus
+  public private(set) var status: ChatStatus
   public private(set) var error: Error?
   public private(set) var messages: [ChatMessage]
 
