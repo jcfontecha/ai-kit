@@ -109,24 +109,13 @@ struct DemoMessageRow: View {
 
     case .assistant:
       HStack(alignment: .top) {
-        AssistantMessage(
-          messageID: message.id,
-          parts: message.parts,
-          toolStatusStrings: demoToolStatusStrings,
-          toolDefaultStatusStrings: .init(
+        AssistantMessage(messageID: message.id, parts: message.parts)
+          .assistantMessageToolStatusStrings(demoToolStatusStrings)
+          .assistantMessageDefaultToolStatusStrings(.init(
             loading: "Working…",
             success: "Done",
             error: "Error"
-          ),
-          assistantReasoningText: { text in
-            Markdown(text)
-              .markdownTextStyle { ForegroundColor(.secondary) }
-              .frame(maxWidth: .infinity, alignment: .leading)
-          }
-        ) { text in
-          Markdown(text)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+          ))
       }
 
     case .system:

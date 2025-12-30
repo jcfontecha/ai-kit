@@ -6,16 +6,17 @@ public struct ToolPartReasoningView: View {
   public var tool: ChatToolPart
   public var icon: Image
   public var sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)?
-  public var statusStrings: ToolStatusStrings
+  public var statusStrings: ToolStatusStrings?
   public var contentRenderer: ToolPartContentRenderer?
 
   @Environment(\.colorScheme) private var colorScheme
+  @Environment(\.chatTheme) private var chatTheme
 
   public init(
     tool: ChatToolPart,
     icon: Image = Image(systemName: "wrench.and.screwdriver"),
     sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
-    statusStrings: ToolStatusStrings,
+    statusStrings: ToolStatusStrings? = nil,
     contentRenderer: ToolPartContentRenderer? = nil
   ) {
     self.tool = tool
@@ -29,7 +30,7 @@ public struct ToolPartReasoningView: View {
     tool: ChatToolPart,
     icon: Image = Image(systemName: "wrench.and.screwdriver"),
     sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
-    statusStrings: ToolStatusStrings,
+    statusStrings: ToolStatusStrings? = nil,
     @ViewBuilder content: @escaping (_ context: ToolPartContentContext) -> Content
   ) {
     self.init(
@@ -42,9 +43,11 @@ public struct ToolPartReasoningView: View {
   }
 
   public var body: some View {
+    let resolvedStatusStrings = statusStrings ?? chatTheme.tool.defaultStatusStrings
+
     DisclosureGroup {
       if let contentRenderer {
-        contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: statusStrings))
+        contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: resolvedStatusStrings))
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.top, 16)
       } else {
@@ -54,7 +57,7 @@ public struct ToolPartReasoningView: View {
     } label: {
       HStack(spacing: 8) {
         icon
-        statusLabel
+        statusLabel(resolvedStatusStrings)
           .lineLimit(1)
         Spacer(minLength: 0)
       }
@@ -66,27 +69,27 @@ public struct ToolPartReasoningView: View {
   }
 
   @ViewBuilder
-  private var statusLabel: some View {
+  private func statusLabel(_ resolvedStatusStrings: ToolStatusStrings) -> some View {
     if labelIsLoading {
       ZStack(alignment: .leading) {
-        Text(labelText)
+        Text(labelText(resolvedStatusStrings))
           .foregroundStyle(.secondary)
 
-        Text(labelText)
+        Text(labelText(resolvedStatusStrings))
           .foregroundStyle(shimmerHighlightColor)
           .shimmering()
           .accessibilityHidden(true)
       }
     } else {
-      Text(labelText)
+      Text(labelText(resolvedStatusStrings))
         .foregroundStyle(labelIsError ? .red : .secondary)
     }
   }
 
-  private var labelText: String {
-    if labelIsError { return statusStrings.error }
-    if labelIsLoading { return statusStrings.loading }
-    return statusStrings.success
+  private func labelText(_ resolvedStatusStrings: ToolStatusStrings) -> String {
+    if labelIsError { return resolvedStatusStrings.error }
+    if labelIsLoading { return resolvedStatusStrings.loading }
+    return resolvedStatusStrings.success
   }
 
   private var labelIsLoading: Bool {

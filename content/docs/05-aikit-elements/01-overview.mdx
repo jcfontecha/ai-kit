@@ -19,12 +19,13 @@ Core primitives:
 - `Conversation` (stream-aware scrolling + paging)
 - `AssistantMessage` (interleaved parts: text, reasoning, tools, sources, files)
 - `UserBubble`
-- `PromptInput` / `PromptInputElements`
+- `PromptInput` / `PromptInputField`
 - `ApprovalBanner`
 - `ToolPartView` / `ToolPartReasoningView`
 - `FileAttachmentsRow`, `SourceLinkRow`, `SourceDocumentRow`
 - `AssistantMarkdown` (built-in Markdown rendering)
 - `GlassSurface` (styling helper)
+- `ChatTheme` + `.chatTheme(...)` (theming via `Environment`)
 
 ## Basic composition
 
@@ -35,26 +36,20 @@ import AIKitElements
 
 struct ChatView: View {
   @State private var composerText = ""
-  @State private var composerHeight: CGFloat = 0
   @StateObject private var chat = ChatStore(
     model: /* your chat model */,
-    tools: [],
+    tools: nil,
     initialMessages: []
   )
 
   var body: some View {
-    Conversation(
-      messages: chat.messages,
-      status: chat.status,
-      bottomOverlayHeight: composerHeight
-    )
-    .promptInputBottomBar(
-      text: $composerText,
-      status: chat.status,
-      height: $composerHeight,
-      onSend: { chat.sendMessage($0) },
-      onStop: { chat.stop() }
-    )
+    Conversation(messages: chat.messages, status: chat.status)
+      .chatComposer(
+        text: $composerText,
+        status: chat.status,
+        onSend: { chat.sendMessage($0) },
+        onStop: { chat.stop() }
+      )
   }
 }
 ```
@@ -68,7 +63,8 @@ See the dedicated internal reference for details:
 
 ## Assistant Markdown
 
-`AssistantMessage` provides a Markdown-backed initializer using `AssistantMarkdown`:
+By default, `AssistantMessage` uses `AssistantMarkdown`.
+Customize Markdown layout via `ChatTheme`:
 
 ```swift
 let style = AssistantMarkdownStyle(
@@ -77,11 +73,8 @@ let style = AssistantMarkdownStyle(
   listItemSpacingEm: 0.35
 )
 
-AssistantMessage(
-  parts: message.parts,
-  toolDefaultStatusStrings: .init(loading: "Loading", success: "Done", error: "Error"),
-  markdownStyle: style
-)
+Conversation(messages: chat.messages, status: chat.status)
+  .chatTheme(.init(markdown: .init(style: style)))
 ```
 
 ## Tool approvals
@@ -100,25 +93,15 @@ AssistantMessage(parts: message.parts)
 Prefer attaching tool renderers at a parent view so every `AssistantMessage` inherits them:
 
 ```swift
-Conversation(
-  messages: chat.messages,
-  status: chat.status,
-  bottomOverlayHeight: composerHeight,
-  toolRenderers: [
-    "fetch_weather": { context in
-      AnyView(
-        ToolPartReasoningView(
-          tool: context.tool,
-          icon: Image(systemName: "cloud.sun"),
-          sendApproval: context.sendApproval,
-          statusStrings: .init(loading: "Fetching…", success: "Done", error: "Failed")
-        )
-      )
-    }
-  ]
-) { message in
-  messageRow(message)
-}
+Conversation(messages: chat.messages, status: chat.status)
+  .assistantMessageToolRenderer("fetch_weather") { context in
+    ToolPartReasoningView(
+      tool: context.tool,
+      icon: Image(systemName: "cloud.sun"),
+      sendApproval: context.sendApproval,
+      statusStrings: .init(loading: "Fetching…", success: "Done", error: "Failed")
+    )
+  }
 ```
 
 ## Readiness

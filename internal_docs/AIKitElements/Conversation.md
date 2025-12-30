@@ -39,7 +39,7 @@ This document tracks the SwiftUI `Conversation` parity goals vs `ai-elements`’
 ### Changes We Made That WERE Necessary (But Not Related To The Jitter)
 
 - Bottom inset not applying initially:
-  - Root cause: `PromptInputBottomBar` height measurement wasn’t reliably propagating through `safeAreaInset` in some configurations.
+  - Root cause: the chat composer height measurement wasn’t reliably propagating through `safeAreaInset` in some configurations.
   - Fix: measure composer height directly via `GeometryReader` and write into the `height` binding from `.onAppear` / `.onChange(of: proxy.size.height)`.
 
 ## Next Things To Test (Narrow Down Root Cause)
@@ -57,4 +57,4 @@ These are meant as controlled A/B experiments (change one variable at a time):
 4. Remove the bottom inset animation entirely
    - Keep bottom inset itself, but ensure height changes are not animated by SwiftUI layout during unrelated scroll interactions.
 5. Force a constant bottom inset
-   - Temporarily hardcode `bottomOverlayHeight` to a constant and stop measuring composer height, to see if composer measurement is fluctuating during bounce.
+  - Temporarily hardcode `.conversationBottomOverlayHeight(...)` to a constant and stop measuring composer height, to see if composer measurement is fluctuating during bounce.

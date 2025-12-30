@@ -14,7 +14,7 @@ struct ConversationDemoView: View {
           icon: AnyView(Image(systemName: "message").font(.system(size: 36, weight: .regular)))
         )
       } else {
-        Conversation(messages: items, bottomOverlayHeight: 0) { message in
+        Conversation(messages: items, status: .ready) { message in
           DemoChatMessageView(message: message)
         }
       }

@@ -17,22 +17,21 @@ struct AssistantMessageDemoView: View {
         .font(.headline)
 
       AssistantMessage(
-        parts: demoParts,
-        toolDefaultStatusStrings: .init(
-          loading: "Loading",
-          success: "Completed",
-          error: "Error"
-        ),
-        assistantReasoningText: { text in
-          Markdown(text)
-            .markdownTextStyle { ForegroundColor(.secondary) }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        },
-        assistantText: { text in
-          Markdown(text)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        parts: demoParts
       )
+      .assistantMessageDefaultToolStatusStrings(.init(
+        loading: "Loading",
+        success: "Completed",
+        error: "Error"
+      ))
+      .assistantMessageTextRenderer { text in
+        Markdown(text)
+      }
+      .assistantMessageReasoningTextRenderer { text in
+        Markdown(text)
+          .markdownTextStyle { ForegroundColor(.secondary) }
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
       .assistantMessageShowsReasoning(showsReasoning)
       .assistantMessageToolRenderer("fetch_weather_data") { ctx in
         VStack(alignment: .leading, spacing: 10) {
@@ -72,32 +71,31 @@ struct AssistantMessageDemoView: View {
         .padding(.top, 8)
 
       AssistantMessage(
-        parts: demoParts,
-        toolDefaultStatusStrings: .init(
-          loading: "Working…",
-          success: "Done",
-          error: "Failed"
-        ),
-        toolDefaultRenderer: { context in
-          AnyView(
-            ToolPartReasoningView(
-              tool: context.tool,
-              icon: Image(systemName: "sparkles"),
-              sendApproval: context.sendApproval,
-              statusStrings: context.statusStrings
-            )
-          )
-        },
-        assistantReasoningText: { text in
-          Markdown(text)
-            .markdownTextStyle { ForegroundColor(.secondary) }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        },
-        assistantText: { text in
-          Markdown(text)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
+        parts: demoParts
       )
+      .assistantMessageDefaultToolStatusStrings(.init(
+        loading: "Working…",
+        success: "Done",
+        error: "Failed"
+      ))
+      .assistantMessageDefaultToolRenderer { context in
+        AnyView(
+          ToolPartReasoningView(
+            tool: context.tool,
+            icon: Image(systemName: "sparkles"),
+            sendApproval: context.sendApproval,
+            statusStrings: context.statusStrings
+          )
+        )
+      }
+      .assistantMessageTextRenderer { text in
+        Markdown(text)
+      }
+      .assistantMessageReasoningTextRenderer { text in
+        Markdown(text)
+          .markdownTextStyle { ForegroundColor(.secondary) }
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
       .assistantMessageShowsReasoning(showsReasoning)
       .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
         approvalResponses[approvalID] = (approved: approved, reason: reason)

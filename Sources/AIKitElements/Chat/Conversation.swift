@@ -8,15 +8,11 @@ private let conversationMessagePageSize = 60
 public struct Conversation<MessageView: View>: View {
   public var messages: [ChatMessage]
   public var status: ChatStatus
-  public var bottomOverlayHeight: CGFloat
-  public var showsScrollButton: Bool
-  public var toolRenderers: [String: ToolRenderer]
-  public var toolStatusStrings: [String: ToolStatusStrings]
-  public var toolDefaultStatusStrings: ToolStatusStrings
-  public var showsReasoning: Bool
-  public var markdownStyle: AssistantMarkdownStyle
-  public var onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)?
   @ViewBuilder public var messageView: (ChatMessage) -> MessageView
+
+  @Environment(\.chatTheme) private var theme
+  @Environment(\.conversationBottomOverlayHeight) private var bottomOverlayHeight
+  @Environment(\.conversationShowsScrollButton) private var showsScrollButton
 
   @State private var visibleCount: Int = conversationMessagePageSize
   @State private var didPerformInitialScroll: Bool = false
@@ -32,116 +28,27 @@ public struct Conversation<MessageView: View>: View {
 
   public init(
     messages: [ChatMessage],
-    status: ChatStatus,
-    bottomOverlayHeight: CGFloat,
-    showsScrollButton: Bool = false,
-    toolRenderers: [String: ToolRenderer] = [:],
-    toolStatusStrings: [String: ToolStatusStrings] = [:],
-    toolDefaultStatusStrings: ToolStatusStrings = .init(loading: "Working…", success: "Done", error: "Error"),
-    showsReasoning: Bool = true,
-    markdownStyle: AssistantMarkdownStyle = .init(),
-    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
+    status: ChatStatus = .ready,
     @ViewBuilder messageView: @escaping (ChatMessage) -> MessageView
   ) {
     self.messages = messages
     self.status = status
-    self.bottomOverlayHeight = bottomOverlayHeight
-    self.showsScrollButton = showsScrollButton
-    self.toolRenderers = toolRenderers
-    self.toolStatusStrings = toolStatusStrings
-    self.toolDefaultStatusStrings = toolDefaultStatusStrings
-    self.showsReasoning = showsReasoning
-    self.markdownStyle = markdownStyle
-    self.onToolApprovalResponse = onToolApprovalResponse
     self.messageView = messageView
   }
 
   public init(
     messages: [ChatMessage],
-    bottomOverlayHeight: CGFloat,
-    showsScrollButton: Bool = false,
-    toolRenderers: [String: ToolRenderer] = [:],
-    toolStatusStrings: [String: ToolStatusStrings] = [:],
-    toolDefaultStatusStrings: ToolStatusStrings = .init(loading: "Working…", success: "Done", error: "Error"),
-    showsReasoning: Bool = true,
-    markdownStyle: AssistantMarkdownStyle = .init(),
-    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
-    @ViewBuilder messageView: @escaping (ChatMessage) -> MessageView
-  ) {
-    self.init(
-      messages: messages,
-      status: .ready,
-      bottomOverlayHeight: bottomOverlayHeight,
-      showsScrollButton: showsScrollButton,
-      toolRenderers: toolRenderers,
-      toolStatusStrings: toolStatusStrings,
-      toolDefaultStatusStrings: toolDefaultStatusStrings,
-      showsReasoning: showsReasoning,
-      markdownStyle: markdownStyle,
-      onToolApprovalResponse: onToolApprovalResponse,
-      messageView: messageView
-    )
-  }
-
-  public init(
-    messages: [ChatMessage],
-    status: ChatStatus,
-    bottomOverlayHeight: CGFloat,
-    showsScrollButton: Bool = false,
-    toolStatusStrings: [String: ToolStatusStrings] = [:],
-    toolDefaultStatusStrings: ToolStatusStrings = .init(loading: "Working…", success: "Done", error: "Error"),
-    showsReasoning: Bool = true,
-    markdownStyle: AssistantMarkdownStyle = .init(),
-    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil
+    status: ChatStatus = .ready
   ) where MessageView == AnyView {
-    self.init(
-      messages: messages,
-      status: status,
-      bottomOverlayHeight: bottomOverlayHeight,
-      showsScrollButton: showsScrollButton,
-      toolRenderers: [:],
-      toolStatusStrings: toolStatusStrings,
-      toolDefaultStatusStrings: toolDefaultStatusStrings,
-      showsReasoning: showsReasoning,
-      markdownStyle: markdownStyle,
-      onToolApprovalResponse: onToolApprovalResponse
-    ) { message in
-      AnyView(Self.defaultMessageView(
-        message: message,
-        toolStatusStrings: toolStatusStrings,
-        toolDefaultStatusStrings: toolDefaultStatusStrings,
-        markdownStyle: markdownStyle
-      ))
+    self.init(messages: messages, status: status) { message in
+      AnyView(Self.defaultMessageView(message: message))
     }
-  }
-
-  public init(
-    messages: [ChatMessage],
-    bottomOverlayHeight: CGFloat,
-    showsScrollButton: Bool = false,
-    toolStatusStrings: [String: ToolStatusStrings] = [:],
-    toolDefaultStatusStrings: ToolStatusStrings = .init(loading: "Working…", success: "Done", error: "Error"),
-    showsReasoning: Bool = true,
-    markdownStyle: AssistantMarkdownStyle = .init(),
-    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil
-  ) where MessageView == AnyView {
-    self.init(
-      messages: messages,
-      status: .ready,
-      bottomOverlayHeight: bottomOverlayHeight,
-      showsScrollButton: showsScrollButton,
-      toolStatusStrings: toolStatusStrings,
-      toolDefaultStatusStrings: toolDefaultStatusStrings,
-      showsReasoning: showsReasoning,
-      markdownStyle: markdownStyle,
-      onToolApprovalResponse: onToolApprovalResponse
-    )
   }
 
   public var body: some View {
     ScrollViewReader { proxy in
       ScrollView {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: theme.spacing.messageRow) {
           if shouldShowLoadMoreSentinel {
             Color.clear
               .frame(height: 1)
@@ -161,17 +68,10 @@ public struct Conversation<MessageView: View>: View {
             .animation(bottomInsetAnimation, value: bottomInset)
             .id(conversationBottomSentinelID)
         }
-        .padding(.top, 20)
-        .padding(.horizontal, 16)
+        .padding(theme.spacing.contentPadding)
         .scrollTargetLayout()
       }
       .scrollPosition(id: $scrollPosition, anchor: .bottom)
-      .assistantMessageToolRenderers(toolRenderers)
-      .assistantMessageToolStatusStrings(toolStatusStrings)
-      .assistantMessageShowsReasoning(showsReasoning)
-      .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
-        onToolApprovalResponse?(approvalID, approved, reason)
-      }
       .modifier(ScrollEdgeEffectCompat())
       .defaultScrollAnchor(.bottom)
       #if os(iOS)
@@ -230,9 +130,8 @@ public struct Conversation<MessageView: View>: View {
   }
 
   private var bottomInset: CGFloat {
-    max(1, extraBottomPadding)
+    max(1, extraBottomPadding + bottomOverlayHeight)
   }
-
 
   private var resolvedVisibleCount: Int {
     guard messages.isEmpty == false else { return 0 }
@@ -319,12 +218,7 @@ public struct Conversation<MessageView: View>: View {
   }
 
   @ViewBuilder
-  private static func defaultMessageView(
-    message: ChatMessage,
-    toolStatusStrings: [String: ToolStatusStrings],
-    toolDefaultStatusStrings: ToolStatusStrings,
-    markdownStyle: AssistantMarkdownStyle
-  ) -> some View {
+  private static func defaultMessageView(message: ChatMessage) -> some View {
     switch message.role {
     case .user:
       HStack(alignment: .top) {
@@ -342,13 +236,7 @@ public struct Conversation<MessageView: View>: View {
 
     case .assistant:
       HStack(alignment: .top) {
-        AssistantMessage(
-          messageID: message.id,
-          parts: message.parts,
-          toolStatusStrings: toolStatusStrings,
-          toolDefaultStatusStrings: toolDefaultStatusStrings,
-          markdownStyle: markdownStyle
-        )
+        AssistantMessage(messageID: message.id, parts: message.parts)
       }
 
     case .system:
@@ -399,7 +287,6 @@ private struct ScrollEdgeEffectCompat: ViewModifier {
   }
 }
 
-
 #if os(iOS)
 private struct ScrollDismissesKeyboardCompat: ViewModifier {
   func body(content: Content) -> some View {
@@ -411,73 +298,3 @@ private struct ScrollDismissesKeyboardCompat: ViewModifier {
   }
 }
 #endif
-
-public struct ConversationContent<Content: View>: View {
-  public var spacing: CGFloat
-  public var padding: EdgeInsets
-  @ViewBuilder public var content: () -> Content
-
-  public init(
-    spacing: CGFloat = 32,
-    padding: EdgeInsets = .init(top: 16, leading: 16, bottom: 16, trailing: 16),
-    @ViewBuilder content: @escaping () -> Content
-  ) {
-    self.spacing = spacing
-    self.padding = padding
-    self.content = content
-  }
-
-  public var body: some View {
-    VStack(alignment: .leading, spacing: spacing) {
-      content()
-    }
-    .padding(padding)
-  }
-}
-
-public struct ConversationEmptyState<Content: View>: View {
-  public var title: String
-  public var description: String?
-  public var icon: AnyView?
-  @ViewBuilder public var content: () -> Content
-
-  public init(
-    title: String = "No messages yet",
-    description: String? = "Start a conversation to see messages here",
-    icon: AnyView? = nil,
-    @ViewBuilder content: @escaping () -> Content = { EmptyView() }
-  ) {
-    self.title = title
-    self.description = description
-    self.icon = icon
-    self.content = content
-  }
-
-  public var body: some View {
-    VStack(spacing: 12) {
-      if let icon {
-        icon
-          .foregroundStyle(.secondary)
-      }
-
-      VStack(spacing: 4) {
-        Text(title)
-          .font(.subheadline.weight(.medium))
-
-        if let description {
-          Text(description)
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-        }
-      }
-
-      content()
-    }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-    .padding(32)
-    .multilineTextAlignment(.center)
-  }
-}
-
-// ConversationScrollButton is currently handled inside Conversation, mirroring ../Assistant behavior.

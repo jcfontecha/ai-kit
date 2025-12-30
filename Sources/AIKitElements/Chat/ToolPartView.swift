@@ -23,14 +23,16 @@ public struct ToolPartView: View {
   public var tool: ChatToolPart
   public var icon: Image
   public var sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)?
-  public var statusStrings: ToolStatusStrings
+  public var statusStrings: ToolStatusStrings?
   public var contentRenderer: ToolPartContentRenderer?
+
+  @Environment(\.chatTheme) private var chatTheme
 
   public init(
     tool: ChatToolPart,
     icon: Image = Image(systemName: "wrench.and.screwdriver"),
     sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
-    statusStrings: ToolStatusStrings,
+    statusStrings: ToolStatusStrings? = nil,
     contentRenderer: ToolPartContentRenderer? = nil
   ) {
     self.tool = tool
@@ -44,7 +46,7 @@ public struct ToolPartView: View {
     tool: ChatToolPart,
     icon: Image = Image(systemName: "wrench.and.screwdriver"),
     sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
-    statusStrings: ToolStatusStrings,
+    statusStrings: ToolStatusStrings? = nil,
     @ViewBuilder content: @escaping (_ context: ToolPartContentContext) -> Content
   ) {
     self.init(
@@ -57,11 +59,12 @@ public struct ToolPartView: View {
   }
 
   public var body: some View {
-    let (isLoading, statusLabel, tint) = toolStatus(tool.state, statusStrings: statusStrings)
+    let resolvedStatusStrings = statusStrings ?? chatTheme.tool.defaultStatusStrings
+    let (_, statusLabel, tint) = toolStatus(tool.state, statusStrings: resolvedStatusStrings)
 
     DisclosureGroup {
       if let contentRenderer {
-        contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: statusStrings))
+        contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: resolvedStatusStrings))
           .frame(maxWidth: .infinity, alignment: .leading)
           .padding(.top, 10)
       } else {
