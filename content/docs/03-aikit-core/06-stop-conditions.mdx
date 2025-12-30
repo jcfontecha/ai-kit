@@ -10,7 +10,6 @@ Tool loops can run for multiple steps. Stop conditions are expressed as `[StopCo
 - `generateText(..., stopWhen: ...)`
 - `streamText(..., stopWhen: ...)`
 - `ToolLoopAgent(stopWhen: ...)`
-- `AIClient(defaults.maxSteps:)` (sugar over `Stop.stepCountIs(n)`)
 
 By default, `generateText` and `streamText` run a single step (`Stop.stepCountIs(1)`).
 

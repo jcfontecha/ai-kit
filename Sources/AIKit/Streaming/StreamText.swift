@@ -409,7 +409,6 @@ private actor StreamTextCollector<OUT: OutputSpec> {
   }
 }
 
-@_spi(Advanced)
 public func streamText<OUT: OutputSpec>(_ options: StreamTextOptions<OUT>) -> StreamTextResult<OUT> {
   let collector = StreamTextCollector<OUT>()
 

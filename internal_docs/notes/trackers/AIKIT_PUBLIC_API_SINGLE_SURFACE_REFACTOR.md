@@ -230,7 +230,6 @@ This refactor is primarily structural, but we must be explicit about tiers to av
 
 **Stable (documented, supported) — expected to be used by apps**
 
-- `AIClient`
 - `generateText` / `streamText` (+ `GenerateTextOptions`, `StreamTextOptions`, results, finish events)
 - Tools: `ToolRegistry`, `ToolID`, `ToolSpec`, `ToolContext`, `ToolExecution`, `ToolProgress`, approvals types
 - Outputs: `OutputSpec`, `Output`, `ObjectSchema`, `SchemaProviding`
@@ -307,9 +306,9 @@ Minimum required doc changes:
 
 - Update the “import story” everywhere:
   - Prefer `import AIKit` in app-facing docs and examples.
-  - Mention `AIKitProviders` only in “provider authoring” documentation.
+- Mention `AIKitProviders` only in “provider authoring” documentation.
 - Ensure every *Stable* entry point has at least a short doc section:
-  - `generateText`, `streamText`, `AIClient`
+  - `generateText`, `streamText`
   - tools (tool registry + approvals)
   - outputs/schemas/macros
   - chat store/session (and which is recommended)
@@ -546,7 +545,7 @@ From the symbol graph at the time of writing (2025-12-29), `AIKit` exposes at to
 
 - `ChatStore`
 - `generateImage(...)`
-- `AIClient`, `ToolLoopAgent`, `Agent`, `AgentCall`
+- `ToolLoopAgent`, `Agent`, `AgentCall`
 - `generateText`/`streamText` option/result/event types (mostly via typealias)
 - tools/types/errors output/schema types
 
@@ -593,7 +592,6 @@ Current `Sources/AIKitCore/**` Swift files (as of 2025-12-29):
 - `Sources/AIKitCore/ChatSession/RemoteTransport/ChatTransport.swift` → `Sources/AIKit/ChatSession/RemoteTransport/ChatTransport.swift`
 - `Sources/AIKitCore/ChatSession/RemoteTransport/SSEUIMessageStreamDecoder.swift` → `Sources/AIKit/ChatSession/RemoteTransport/SSEUIMessageStreamDecoder.swift`
 - `Sources/AIKitCore/ChatSession/TextStreamPart+AIUIMessageStreamPart.swift` → `Sources/AIKit/ChatSession/TextStreamPart+AIUIMessageStreamPart.swift`
-- `Sources/AIKitCore/Client/AIClient.swift` → `Sources/AIKit/Client/AIClient.swift`
 - `Sources/AIKitCore/ControlFlow/PruneMessages.swift` → `Sources/AIKit/ControlFlow/PruneMessages.swift`
 - `Sources/AIKitCore/ControlFlow/StopConditions.swift` → `Sources/AIKit/ControlFlow/StopConditions.swift`
 - `Sources/AIKitCore/Errors/AIKitError.swift` → **MOVE TO** `Sources/AIKitProviders/…` (see Phase 5)

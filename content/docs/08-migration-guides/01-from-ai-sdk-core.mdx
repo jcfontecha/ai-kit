@@ -15,7 +15,7 @@ AIKit is designed as a translation of AI SDK Core semantics into Swift. The name
 - `Output` (JS) → `Output` / `OutputSpec` (Swift)
 - tool schema (Zod/JSON Schema) → `ObjectSchema<T>` wrapping `JSONSchema`
 - `useChat(...)` (JS) → `ChatStore` (SwiftUI/Combine-friendly façade)
-- “configure once” patterns → `AIClient` (stores defaults, calls `generateText` / `streamText`)
+- “configure once” patterns → `ToolLoopAgent` (stores defaults and loop policy), or your own small wrapper around `GenerateTextOptions` / `StreamTextOptions`
 
 ## Key differences
 

@@ -14,8 +14,11 @@ description: Stream deltas, tool events, and step boundaries.
 ## Basic usage (text deltas)
 
 ```swift
-let ai = AIClient(model: model)
-let stream = ai.stream("Write a short poem.")
+let stream = streamText(.init(
+  model: model,
+  prompt: "Write a short poem.",
+  output: Output.text()
+))
 
 for try await delta in stream.textStream {
   print(delta, terminator: "")
@@ -25,8 +28,13 @@ for try await delta in stream.textStream {
 ## Full event stream (tools, approvals, steps)
 
 ```swift
-let ai = AIClient(model: model, defaults: .init(tools: tools, maxSteps: 10))
-let stream = ai.stream("Use tools if needed.")
+let stream = streamText(.init(
+  model: model,
+  prompt: "Use tools if needed.",
+  tools: tools,
+  stopWhen: [Stop.stepCountIs(10)],
+  output: Output.text()
+))
 
 for try await part in stream.fullStream {
   switch part {
@@ -49,8 +57,11 @@ for try await part in stream.fullStream {
 `StreamTextResult` is also a collector. After the streams finish, you can await the final value:
 
 ```swift
-let ai = AIClient(model: model)
-let stream = ai.stream("Write a short poem.")
+let stream = streamText(.init(
+  model: model,
+  prompt: "Write a short poem.",
+  output: Output.text()
+))
 
 let finalText = try await stream.text
 let output = try await stream.output

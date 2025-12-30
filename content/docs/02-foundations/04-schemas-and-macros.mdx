@@ -38,11 +38,11 @@ struct Person: Codable, Sendable {
 You can now use the type directly with `Output.typedObject`:
 
 ```swift
-let ai = AIClient(model: model)
-let result = try await ai.generate(
-  "Return a JSON object for a person.",
+let result = try await generateText(.init(
+  model: model,
+  prompt: "Return a JSON object for a person.",
   output: Output.typedObject(Person.self)
-)
+))
 
 let person = try result.output
 ```

@@ -25,8 +25,11 @@ import AIKitOpenRouter
 let openrouter = createOpenRouter(.init(apiKey: "<OPENROUTER_API_KEY>"))
 let model = openrouter.chat("openai/gpt-4o-mini")
 
-let ai = AIClient(model: model)
-let result = try await ai.generate("Write one sentence about Swift concurrency.")
+let result = try await generateText(.init(
+  model: model,
+  prompt: "Write one sentence about Swift concurrency.",
+  output: Output.text()
+))
 
 print(result.text)
 ```
@@ -40,8 +43,11 @@ import AIKitOpenRouter
 let openrouter = createOpenRouter(.init(apiKey: "<OPENROUTER_API_KEY>"))
 let model = openrouter.chat("openai/gpt-4o-mini")
 
-let ai = AIClient(model: model)
-let stream = ai.stream("Stream 3 short bullet points about SSE.")
+let stream = streamText(.init(
+  model: model,
+  prompt: "Stream 3 short bullet points about SSE.",
+  output: Output.text()
+))
 
 for try await delta in stream.textStream {
   print(delta, terminator: "")

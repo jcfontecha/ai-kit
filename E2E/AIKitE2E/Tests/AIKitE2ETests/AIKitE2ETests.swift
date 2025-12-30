@@ -53,11 +53,11 @@ final class AIKitE2ETests: XCTestCase {
       )
     }
 
-    let ai = AIClient(model: model)
-    let result = try await ai.generate(
-      "Return a JSON object for a person.",
+    let result = try await generateText(.init(
+      model: model,
+      prompt: "Return a JSON object for a person.",
       output: Output.typedObject(E2EPerson.self)
-    )
+    ))
 
     XCTAssertEqual(try result.output, E2EPerson(name: "Ada", age: nil))
   }
@@ -85,11 +85,11 @@ final class AIKitE2ETests: XCTestCase {
       }
     )
 
-    let ai = AIClient(model: model)
-    let stream = ai.stream(
-      "Return a person JSON object.",
+    let stream = streamText(.init(
+      model: model,
+      prompt: "Return a person JSON object.",
       output: Output.typedObject(E2EPerson.self)
-    )
+    ))
 
     var partials: [E2EPerson.Partial] = []
     for try await partial in stream.partialOutputStream {

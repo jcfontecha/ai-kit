@@ -76,12 +76,19 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
       ])
     })
 
-    let ai = AIClient(model: model)
-    let result = try await ai.generate("Write a haiku about Swift concurrency.")
+    let result = try await generateText(.init(
+      model: model,
+      prompt: "Write a haiku about Swift concurrency.",
+      output: Output.text()
+    ))
 
     XCTAssertEqual(result.text, "Hello from generateText.")
 
-    let stream = ai.stream("Write a short story in three sentences.")
+    let stream = streamText(.init(
+      model: model,
+      prompt: "Write a short story in three sentences.",
+      output: Output.text()
+    ))
 
     var combined = ""
     for try await delta in stream.textStream {
@@ -97,11 +104,14 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
       return .init(content: [.text("ok")], finishReason: .stop, rawFinishReason: "stop")
     }
 
-    let ai = AIClient(model: model)
-    let result = try await ai.generate(messages: [
-      .system("You are concise."),
-      .user("Give me three names for a coffee shop."),
-    ])
+    let result = try await generateText(.init(
+      model: model,
+      messages: [
+        .system("You are concise."),
+        .user("Give me three names for a coffee shop."),
+      ],
+      output: Output.text()
+    ))
 
     XCTAssertEqual(result.text, "ok")
   }
@@ -143,8 +153,13 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
       },
     ])
 
-    let ai = AIClient(model: model, defaults: .init(tools: tools, maxSteps: 5))
-    let result = try await ai.generate("Call the tool, then explain the result.")
+    let result = try await generateText(.init(
+      model: model,
+      prompt: "Call the tool, then explain the result.",
+      tools: tools,
+      stopWhen: [Stop.stepCountIs(5)],
+      output: Output.text()
+    ))
 
     let allToolResults = result.steps.flatMap(\.toolResults)
     XCTAssertEqual(allToolResults.first?.toolName, "weather")
