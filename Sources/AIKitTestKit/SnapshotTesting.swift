@@ -15,7 +15,8 @@ public enum SnapshotTesting {
       let snapshotPath = try resolveSnapshotPath(
         filePath: "\(file)",
         testName: testName,
-        named: name
+        named: name,
+        fileExtension: "json"
       )
 
       let encoder = JSONEncoder()
@@ -50,17 +51,77 @@ public enum SnapshotTesting {
     }
   }
 
+  public static func assertSnapshotPNG(
+    _ pngData: Data,
+    named name: String? = nil,
+    file: StaticString = #filePath,
+    testName: String = #function,
+    line: UInt = #line
+  ) {
+    assertSnapshotData(
+      pngData,
+      named: name,
+      file: file,
+      testName: testName,
+      fileExtension: "png",
+      line: line
+    )
+  }
+
+  private static func assertSnapshotData(
+    _ data: Data,
+    named name: String?,
+    file: StaticString,
+    testName: String,
+    fileExtension: String,
+    line: UInt
+  ) {
+    do {
+      let snapshotPath = try resolveSnapshotPath(
+        filePath: "\(file)",
+        testName: testName,
+        named: name,
+        fileExtension: fileExtension
+      )
+
+      let record = ProcessInfo.processInfo.environment["AIKIT_SNAPSHOT_RECORD"] == "1"
+      if record {
+        try FileManager.default.createDirectory(
+          at: snapshotPath.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try data.write(to: snapshotPath, options: [.atomic])
+        return
+      }
+
+      guard FileManager.default.fileExists(atPath: snapshotPath.path) else {
+        XCTFail(
+          "Missing snapshot at \(snapshotPath.path). Re-run with AIKIT_SNAPSHOT_RECORD=1 to record.",
+          file: file,
+          line: line
+        )
+        return
+      }
+
+      let expected = try Data(contentsOf: snapshotPath)
+      XCTAssertEqual(data, expected, file: file, line: line)
+    } catch {
+      XCTFail("Snapshot error: \(error)", file: file, line: line)
+    }
+  }
+
   private static func resolveSnapshotPath(
     filePath: String,
     testName: String,
-    named: String?
+    named: String?,
+    fileExtension: String
   ) throws -> URL {
     let fileURL = URL(fileURLWithPath: filePath)
     let testFileBase = fileURL.deletingPathExtension().lastPathComponent
 
     let sanitizedTestName = sanitizeFilename(testName)
     let suffix = named.map { "-" + sanitizeFilename($0) } ?? ""
-    let snapshotFile = sanitizedTestName + suffix + ".json"
+    let snapshotFile = sanitizedTestName + suffix + "." + fileExtension
 
     // Prefer repo-root-relative `Tests/__Snapshots__` (derived from `.../Tests/...`).
     if let testsIndex = fileURL.pathComponents.lastIndex(of: "Tests") {

@@ -94,6 +94,10 @@ let package = Package(
       dependencies: ["AIKitOpenRouter", "AIKitProviders", "AIKitTestKit"]
     ),
     .testTarget(
+      name: "AIKitElementsTests",
+      dependencies: ["AIKitElements", "AIKit", "AIKitProviders", "AIKitTestKit"]
+    ),
+    .testTarget(
       name: "AIKitReplicateTests",
       dependencies: ["AIKitReplicate", "AIKitProviders"]
     ),
