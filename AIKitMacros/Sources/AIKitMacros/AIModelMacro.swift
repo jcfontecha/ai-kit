@@ -15,14 +15,14 @@ public struct AIModelMacro: ExtensionMacro, MemberMacro {
     [try ExtensionDeclSyntax("extension \(type.trimmed): SchemaProviding {}")]
   }
 
-  public static func expansion(
-    of node: AttributeSyntax,
-    providingMembersOf declaration: some DeclGroupSyntax,
-    conformingTo protocols: [TypeSyntax],
-    in context: some MacroExpansionContext
-  ) throws -> [DeclSyntax] {
-    let typeName = extractTypeName(from: declaration)
-    let properties: [PropertyInfo]
+	  public static func expansion(
+	    of node: AttributeSyntax,
+	    providingMembersOf declaration: some DeclGroupSyntax,
+	    conformingTo protocols: [TypeSyntax],
+	    in context: some MacroExpansionContext
+	  ) throws -> [DeclSyntax] {
+	    let typeName = extractTypeName(from: declaration)
+	    let properties: [PropertyInfo]
 
     if let structDecl = declaration.as(StructDeclSyntax.self) {
       properties = try extractProperties(from: structDecl)
@@ -32,11 +32,13 @@ public struct AIModelMacro: ExtensionMacro, MemberMacro {
       throw AIModelMacroError.notAStructOrClass
     }
 
-    let schemaDecl = try generateSchemaProperty(typeName: typeName, properties: properties)
-    let partialDecl = try generatePartialType(properties: properties)
+	    let schemaDecl = try generateSchemaProperty(typeName: typeName, properties: properties)
+	    let partialDecl = try generatePartialType(properties: properties)
 
-    return [DeclSyntax(schemaDecl), DeclSyntax(partialDecl)]
-  }
+	    let schema = DeclSyntax(stringLiteral: schemaDecl.trimmedDescription)
+	    let partial = DeclSyntax(stringLiteral: partialDecl.trimmedDescription)
+	    return [schema, partial]
+	  }
 
   private static func extractTypeName(from declaration: some DeclGroupSyntax) -> String {
     if let structDecl = declaration.as(StructDeclSyntax.self) { return structDecl.name.text }
@@ -275,19 +277,19 @@ private struct FieldMetadata {
   var maxItems: Int?
 }
 
-private enum AIModelMacroError: Error, CustomStringConvertible {
-  case notAStructOrClass
-  case missingTypeAnnotation(property: String)
+	private enum AIModelMacroError: Error, CustomStringConvertible {
+	  case notAStructOrClass
+	  case missingTypeAnnotation(property: String)
 
-  var description: String {
-    switch self {
-    case .notAStructOrClass:
-      "@AIModel can only be applied to structs or classes"
-    case .missingTypeAnnotation(let property):
-      "Property '\(property)' must have an explicit type annotation"
-    }
-  }
-}
+	  var description: String {
+	    switch self {
+	    case .notAStructOrClass:
+	      "@AIModel can only be applied to structs or classes"
+	    case .missingTypeAnnotation(let property):
+	      "Property '\(property)' must have an explicit type annotation"
+	    }
+	  }
+	}
 
 private func isOptionalType(_ type: String) -> Bool {
   type.hasSuffix("?") || (type.hasPrefix("Optional<") && type.hasSuffix(">"))
@@ -373,4 +375,3 @@ private extension String {
     Int(trimmingCharacters(in: .whitespacesAndNewlines))
   }
 }
-

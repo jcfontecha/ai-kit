@@ -123,7 +123,7 @@ private struct PromptInputMacTextField: NSViewRepresentable {
   }
 
   func makeNSView(context: Context) -> NSTextField {
-    let field = PasteAwareTextField(string: text)
+    let field = NSTextField(string: text)
     field.placeholderString = placeholder
     field.isBordered = false
     field.drawsBackground = false
@@ -134,16 +134,12 @@ private struct PromptInputMacTextField: NSViewRepresentable {
       attributes: [.foregroundColor: NSColor.labelColor.withAlphaComponent(0.6)]
     )
     field.delegate = context.coordinator
-    field.onPasteImages = context.coordinator.onPasteImages
     return field
   }
 
   func updateNSView(_ nsView: NSTextField, context: Context) {
     if nsView.stringValue != text {
       nsView.stringValue = text
-    }
-    if let pasteField = nsView as? PasteAwareTextField {
-      pasteField.onPasteImages = context.coordinator.onPasteImages
     }
   }
 
@@ -160,19 +156,17 @@ private struct PromptInputMacTextField: NSViewRepresentable {
       guard let field = notification.object as? NSTextField else { return }
       text = field.stringValue
     }
-  }
 
-  final class PasteAwareTextField: NSTextField {
-    var onPasteImages: (([NSImage]) -> Void)?
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+      guard commandSelector == #selector(NSText.paste(_:)) else { return false }
 
-    override func paste(_ sender: Any?) {
       let pasteboard = NSPasteboard.general
       let objects = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage] ?? []
       if objects.isEmpty == false {
         onPasteImages?(objects)
-        return
+        return true
       }
-      super.paste(sender)
+      return false
     }
   }
 }
