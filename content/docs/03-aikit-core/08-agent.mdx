@@ -1,20 +1,22 @@
 ---
-title: ToolLoopAgent
+title: Agent
 description: Reusable multi-step agent wrapper around generateText/streamText.
 ---
 
-# ToolLoopAgent
+# Agent
 
-`ToolLoopAgent` is a reusable wrapper for multi-step calls that:
+`Agent` is a reusable wrapper for multi-step calls that:
 
 - holds defaults (model, tools, stop conditions, etc.)
 - exposes `generate(prompt:)` and `stream(prompt:)`
 - supports `prepareCall` to mutate per-call parameters
 
+In the vendored AI SDK (JS), this concept is called `ToolLoopAgent`. In Swift, we expose it as `Agent` but keep the same semantics.
+
 ## Example
 
 ```swift
-let agent = ToolLoopAgent(
+let agent = Agent(
   model: model,
   instructions: .instructions("You are a helpful assistant."),
   tools: tools,

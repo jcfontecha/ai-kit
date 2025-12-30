@@ -1,12 +1,6 @@
 import Foundation
 import AIKitProviders
 
-public protocol Agent: Sendable {
-  associatedtype Output: OutputSpec
-  func generate(prompt: String) async throws -> GenerateTextResult<Output>
-  func stream(prompt: String) async -> StreamTextResult<Output>
-}
-
 public struct AgentCall<OUT: OutputSpec, CALL_OPTIONS: Sendable>: Sendable {
   public var prompt: String?
   public var messages: [ModelMessage]?
@@ -57,8 +51,7 @@ public struct AgentCall<OUT: OutputSpec, CALL_OPTIONS: Sendable>: Sendable {
   }
 }
 
-public struct ToolLoopAgent<CALL_OPTIONS: Sendable, OUT: OutputSpec>: Agent {
-  public typealias Output = OUT
+public struct Agent<CALL_OPTIONS: Sendable, OUT: OutputSpec>: Sendable {
   public var id: String?
   public var model: any LanguageModel
   public var instructions: SystemPrompt?

@@ -42,8 +42,8 @@ This document is intentionally long and explicit. It is meant to survive context
 
 AIKit currently has **duplicated ways** to do the same thing:
 
-- Text generation: `generateText(...)` (one-shot) vs `ToolLoopAgent.generate(...)` (configure-once loop policy)
-- Text streaming: `streamText(...)` (one-shot) vs `ToolLoopAgent.stream(...)` (configure-once loop policy)
+- Text generation: `generateText(...)` (one-shot) vs `Agent.generate(...)` (configure-once loop policy)
+- Text streaming: `streamText(...)` (one-shot) vs `Agent.stream(...)` (configure-once loop policy)
 - Tool loop wrapper: competing “Agent protocol + Agent wrapper type” history
 - Chat: `ChatSession` (engine) vs `ChatStore` (app-facing façade)
 
@@ -108,7 +108,7 @@ There are exactly three canonical entry points:
 
 1) `generateText` / `streamText` / `generateImage` — one-shot model calls
 2) `ChatStore` — chat UX state (SwiftUI/Combine-facing)
-3) `ToolLoopAgent` (and/or `Agent`) — loop policy wrapper (multi-step, tool loop)
+3) `Agent` — loop policy wrapper (multi-step, tool loop; maps to AI SDK’s `ToolLoopAgent`)
 
 ### 3.2 Supporting public vocabulary (required)
 
@@ -171,7 +171,7 @@ Design goals:
 - Minimal boilerplate for common use.
 - Strong typing for outputs.
 - Power knobs remain available via `GenerateTextOptions` / `StreamTextOptions`.
-- Configure-once and loop policy lives on `ToolLoopAgent` (and/or `Agent`).
+- Configure-once and loop policy lives on `Agent`.
 
 #### 4.1.1 Minimal path
 
@@ -299,7 +299,7 @@ Goal: ensure the canonical entry points can express every capability currently e
 
 - [ ] For each knob, decide:
   - GenerateTextOptions / StreamTextOptions
-  - ToolLoopAgent configuration
+  - Agent configuration
   - Agent configuration
   - ChatStore configuration
 
@@ -309,7 +309,7 @@ Write the final decision into this doc (update Section 4) before implementing.
 
 For each missing capability:
 
-- [ ] Add a test that uses **only the canonical entry points** (`generateText`/`streamText`/`ToolLoopAgent`/`ChatStore`) and asserts the same behavior.
+- [ ] Add a test that uses **only the canonical entry points** (`generateText`/`streamText`/`Agent`/`ChatStore`) and asserts the same behavior.
 - [ ] Run tests and see it fail.
 - [ ] Implement the minimal API addition to make it pass.
 
@@ -323,7 +323,7 @@ Goal: tests stop using duplicate entry points while preserving scenario coverage
 
 2.1 GenerateText tests
 
-- [ ] Replace one-off `ToolLoopAgent.generate(...)` usage with `generateText(.init(...))` where loop policy is not required.
+- [ ] Replace one-off `Agent.generate(...)` usage with `generateText(.init(...))` where loop policy is not required.
 
 Validation:
 - [ ] `rg -n "\\bAIClient\\b" Tests -S` returns **zero** matches.
@@ -331,7 +331,7 @@ Validation:
 
 2.2 StreamText tests
 
-- [ ] Replace one-off `ToolLoopAgent.stream(...)` usage with `streamText(.init(...))` where loop policy is not required.
+- [ ] Replace one-off `Agent.stream(...)` usage with `streamText(.init(...))` where loop policy is not required.
 
 Validation:
 - [ ] `rg -n "\\bAIClient\\b" Tests -S` returns **zero** matches.

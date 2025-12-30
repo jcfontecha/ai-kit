@@ -118,14 +118,14 @@ public struct ChatSessionInit: Sendable {
     self.messages = messages
   }
 
-  /// Convenience initializer for local chat driven by a configured `ToolLoopAgent`.
+  /// Convenience initializer for local chat driven by a configured `Agent`.
   ///
   /// This mirrors the AI SDK setup where the server decides whether responses come from
   /// `streamText(...)` directly or from an agent wrapper; here, the app makes that choice
   /// explicitly when running locally.
   public init<CALL_OPTIONS: Sendable>(
     id: String? = nil,
-    agent: ToolLoopAgent<CALL_OPTIONS, Output.Text>,
+    agent: Agent<CALL_OPTIONS, Output.Text>,
     sendAutomaticallyWhen: (@Sendable (_ messages: [ChatMessage]) async -> Bool)? = nil,
     onError: (@Sendable (_ error: Error) async -> Void)? = nil,
     onFinish: (@Sendable (_ event: ChatSessionFinishEvent) async -> Void)? = nil,

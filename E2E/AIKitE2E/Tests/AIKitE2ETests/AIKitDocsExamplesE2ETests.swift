@@ -24,7 +24,7 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
       "content/docs/03-aikit-core/04-tools.mdx": 1,
       "content/docs/03-aikit-core/05-tool-approvals.mdx": 2,
       "content/docs/03-aikit-core/06-stop-conditions.mdx": 1,
-      "content/docs/03-aikit-core/08-tool-loop-agent.mdx": 1,
+      "content/docs/03-aikit-core/08-agent.mdx": 1,
       "content/docs/03-aikit-core/09-chat-session.mdx": 2,
       "content/docs/04-providers/01-openrouter.mdx": 2,
     ]
@@ -178,7 +178,7 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
     XCTAssertEqual(approvalMessage.role, .tool)
   }
 
-  func testDocsToolLoopAgent_exampleRuns() async throws {
+  func testDocsAgent_exampleRuns() async throws {
     var tools = ToolRegistry()
     _ = tools // mirrors docs default usage; tool loop behavior is covered elsewhere
 
@@ -186,7 +186,7 @@ final class AIKitDocsExamplesE2ETests: XCTestCase {
       .init(content: [.text("agent ok")], finishReason: .stop, rawFinishReason: "stop")
     }
 
-    let agent = ToolLoopAgent<Void, Output.Text>(
+    let agent = Agent<Void, Output.Text>(
       model: model,
       instructions: .instructions("You are a helpful assistant."),
       tools: tools,

@@ -159,7 +159,7 @@ public final class ChatStore: ObservableObject {
   /// Local, agent-powered chat. The agent owns loop policy (`stopWhen`, `prepareCall`, etc.).
   @_spi(Advanced)
   public init<CALL_OPTIONS: Sendable>(
-    agent: ToolLoopAgent<CALL_OPTIONS, Output.Text>,
+    agent: Agent<CALL_OPTIONS, Output.Text>,
     bufferingPolicy: AsyncStream<ChatSessionSnapshot>.Continuation.BufferingPolicy = .bufferingNewest(1),
     sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
       ChatAutoSubmitPredicates

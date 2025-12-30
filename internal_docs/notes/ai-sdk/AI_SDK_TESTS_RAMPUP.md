@@ -404,7 +404,7 @@ Create a test tree that matches the AI SDK layout (minus server adapters):
 - `Tests/AIKitTests/GenerateText/RunToolsTransformationTests.swift`
 - `Tests/AIKitTests/GenerateText/CollectToolApprovalsTests.swift`
 - `Tests/AIKitTests/GenerateText/PruneMessagesTests.swift`
-- `Tests/AIKitTests/Agent/ToolLoopAgentTests.swift`
+- `Tests/AIKitTests/Agent/ToolLoopAgentTests.swift` (Swift type is now `Agent`)
 
 Each test method name should preserve the “scenario headings” from JS (so we can diff parity by grep-able strings).
 
@@ -450,7 +450,7 @@ Suggested incremental TDD order:
 4. `RunToolsTransformationTests` (ordering, delayed results, `onInputAvailable`, provider approval requests)
 5. `GenerateTextTests` (1-step → tool loop → stopWhen/prepareStep → approvals → provider-executed tools)
 6. `StreamTextTests` (fullStream/textStream → abort/errors → output parsing during streaming)
-7. `ToolLoopAgentTests` (wrapper-only forwarding)
+7. `ToolLoopAgentTests` (wrapper-only forwarding; Swift type is now `Agent`)
 
 ### 6) Client-only scope trimming
 
@@ -470,7 +470,7 @@ This is the **required** implementation/test order moving forward. Do not reorde
 4) `runToolsTransformation` + `RunToolsTransformationTests`
 5) `generateText` + `GenerateTextTests`
 6) `streamText` + `StreamTextTests`
-7) `ToolLoopAgent` + `ToolLoopAgentTests` (wrapper-only forwarding)
+7) `Agent` + `ToolLoopAgentTests` (wrapper-only forwarding)
 8) `generateObject` / `streamObject` parity (post-core)
 
 ## AIKit parity tracker (JS → Swift cross‑reference)
@@ -552,7 +552,7 @@ Remaining:
 ### ToolLoopAgent wrapper
 
 - JS: `ai-sdk/packages/ai/src/agent/tool-loop-agent.test.ts`
-- Swift API: `Sources/AIKit/Agent/ToolLoopAgent.swift`
+- Swift API: `Sources/AIKit/Agent/Agent.swift` (maps to AI SDK’s `ToolLoopAgent`)
 - Swift tests: `Tests/AIKitTests/Agent/ToolLoopAgentTests.swift`
 - Status: ✅ implementation, ✅ tests
 

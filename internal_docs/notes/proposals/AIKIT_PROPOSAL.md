@@ -4,7 +4,7 @@ This document proposes an **AIKit** Swift Package that matches the behavior of t
 
 - `generateText`
 - `streamText` (including structured output schema definitions and partial output streaming)
-- `ToolLoopAgent` (multi-step tool loop with approvals and stop conditions)
+- `Agent` (multi-step tool loop with approvals and stop conditions; maps to AI SDK’s `ToolLoopAgent`)
 
 It is designed to be **Swift-forward**, **type-safe**, and suitable for **iOS/macOS client apps**.
 
@@ -35,7 +35,7 @@ Swift Package targets:
 
 - `AIKit`
   - `generateText`, `streamText`
-  - `ToolLoopAgent`
+  - `Agent` (maps to AI SDK’s `ToolLoopAgent`)
   - prompt/message types, streaming event types
   - tool registry + tool execution
   - output specs + schema abstraction
@@ -389,12 +389,12 @@ public struct StreamTextResult<OUT: OutputSpec>: Sendable {
 
 ---
 
-## `ToolLoopAgent`
+## `Agent` (AI SDK: `ToolLoopAgent`)
 
 Agents provide a reusable “configured” wrapper around `generateText` / `streamText`.
 
 ```swift
-public struct ToolLoopAgent<OUT: OutputSpec>: Sendable {
+public struct Agent<OUT: OutputSpec>: Sendable {
   public var id: String?
   public var model: any LanguageModel
   public var instructions: SystemPrompt?
@@ -515,7 +515,7 @@ let output = try result.output
 print(output.summary)
 ```
 
-### 3) Tools + `ToolLoopAgent`
+### 3) Tools + `Agent`
 
 ```swift
 import AIKitMacro
@@ -546,7 +546,7 @@ let weatherTool = ToolSpec<WeatherInput, WeatherOutput>(
 var tools = ToolRegistry()
 tools.register(ToolID<WeatherInput, WeatherOutput>("weather"), weatherTool)
 
-let agent = ToolLoopAgent(
+let agent = Agent(
   id: "weather-agent",
   model: model,
   instructions: .text("You are a helpful assistant."),

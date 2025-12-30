@@ -101,7 +101,7 @@ final class AIKitE2ETests: XCTestCase {
     XCTAssertEqual(output, E2EPerson(name: "Ada", age: nil))
   }
 
-  func testToolLoopAgent_streamEmitsToolApprovalRequest_fromMacroSchemaToolInput() async throws {
+  func testAgent_streamEmitsToolApprovalRequest_fromMacroSchemaToolInput() async throws {
     let toolID = ToolID<E2EWeatherInput, String>("weather")
     var tools = ToolRegistry()
     tools.register(
@@ -141,7 +141,7 @@ final class AIKitE2ETests: XCTestCase {
       }
     )
 
-    let agent = ToolLoopAgent<Void, Output.Text>(
+    let agent = Agent<Void, Output.Text>(
       model: model,
       tools: tools,
       stopWhen: [Stop.stepCountIs(1)],

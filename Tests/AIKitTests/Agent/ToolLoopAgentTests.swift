@@ -3,7 +3,7 @@ import AIKitProviders
 import AIKitTestKit
 @testable @_spi(Advanced) import AIKit
 
-final class ToolLoopAgentTests: XCTestCase {
+final class AgentTests: XCTestCase {
   private struct CallOptions: Sendable, Equatable {
     let value: String
   }
@@ -77,7 +77,7 @@ final class ToolLoopAgentTests: XCTestCase {
       return Self.response()
     })
 
-    let agent = ToolLoopAgent<CallOptions, Output.Text>(
+    let agent = Agent<CallOptions, Output.Text>(
       model: model,
       toolChoice: .auto,
       output: Output.text(),
@@ -100,7 +100,7 @@ final class ToolLoopAgentTests: XCTestCase {
       return Self.response()
     })
 
-    let agent = ToolLoopAgent<CallOptions, Output.Text>(
+    let agent = Agent<CallOptions, Output.Text>(
       model: model,
       output: Output.text(),
       prepareCall: { call in
@@ -126,7 +126,7 @@ final class ToolLoopAgentTests: XCTestCase {
       return Self.response()
     })
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       cancellationToken: token,
       output: Output.text()
@@ -144,7 +144,7 @@ final class ToolLoopAgentTests: XCTestCase {
       return Self.response()
     })
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       instructions: .text("INSTRUCTIONS"),
       output: Output.text()
@@ -174,7 +174,7 @@ final class ToolLoopAgentTests: XCTestCase {
       providerOptions: ["test": ["value": .string("test")]]
     )
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       instructions: .message(systemMessage),
       output: Output.text()
@@ -211,7 +211,7 @@ final class ToolLoopAgentTests: XCTestCase {
       )
     ]
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       instructions: .messages(systemMessages),
       output: Output.text()
@@ -233,7 +233,7 @@ final class ToolLoopAgentTests: XCTestCase {
       return Self.response()
     })
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       download: { requests in
         downloadsBox.set(requests)
@@ -270,7 +270,7 @@ final class ToolLoopAgentTests: XCTestCase {
       return Self.response()
     })
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       output: Output.text()
     )
@@ -302,7 +302,7 @@ final class ToolLoopAgentTests: XCTestCase {
       }
     )
 
-    let agent = ToolLoopAgent<CallOptions, Output.Text>(
+    let agent = Agent<CallOptions, Output.Text>(
       model: model,
       toolChoice: .auto,
       output: Output.text(),
@@ -336,7 +336,7 @@ final class ToolLoopAgentTests: XCTestCase {
       }
     )
 
-    let agent = ToolLoopAgent<CallOptions, Output.Text>(
+    let agent = Agent<CallOptions, Output.Text>(
       model: model,
       output: Output.text(),
       prepareCall: { call in
@@ -372,7 +372,7 @@ final class ToolLoopAgentTests: XCTestCase {
       }
     )
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       output: Output.text()
     )
@@ -406,7 +406,7 @@ final class ToolLoopAgentTests: XCTestCase {
       }
     )
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       cancellationToken: token,
       output: Output.text()
@@ -435,7 +435,7 @@ final class ToolLoopAgentTests: XCTestCase {
       }
     )
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       instructions: .text("INSTRUCTIONS"),
       output: Output.text()
@@ -476,7 +476,7 @@ final class ToolLoopAgentTests: XCTestCase {
       providerOptions: ["test": ["value": .string("test")]]
     )
 
-    let agent = ToolLoopAgent<Never, Output.Text>(
+    let agent = Agent<Never, Output.Text>(
       model: model,
       instructions: .message(systemMessage),
       output: Output.text()

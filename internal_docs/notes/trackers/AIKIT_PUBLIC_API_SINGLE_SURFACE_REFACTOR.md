@@ -545,7 +545,7 @@ From the symbol graph at the time of writing (2025-12-29), `AIKit` exposes at to
 
 - `ChatStore`
 - `generateImage(...)`
-- `ToolLoopAgent`, `Agent`, `AgentCall`
+- `Agent`, `AgentCall`
 - `generateText`/`streamText` option/result/event types (mostly via typealias)
 - tools/types/errors output/schema types
 
@@ -572,7 +572,7 @@ These are “go/no-go” gates during execution:
 Current `Sources/AIKitCore/**` Swift files (as of 2025-12-29):
 
 - `Sources/AIKitCore/AIKitCore.swift` → `Sources/AIKit/AIKitCore.swift` (or removed if empty namespace)
-- `Sources/AIKitCore/Agent/ToolLoopAgent.swift` → `Sources/AIKit/Agent/ToolLoopAgent.swift`
+- `Sources/AIKitCore/Agent/ToolLoopAgent.swift` → `Sources/AIKit/Agent/Agent.swift`
 - `Sources/AIKitCore/ChatSession/ChatAutoSubmitPredicates.swift` → `Sources/AIKit/ChatSession/ChatAutoSubmitPredicates.swift`
 - `Sources/AIKitCore/ChatSession/ChatDraftMessage.swift` → `Sources/AIKit/ChatSession/ChatDraftMessage.swift`
 - `Sources/AIKitCore/ChatSession/ChatMessage.swift` → `Sources/AIKit/ChatSession/ChatMessage.swift`
