@@ -133,23 +133,27 @@ public struct Conversation<MessageView: View>: View {
     max(1, extraBottomPadding + bottomOverlayHeight)
   }
 
+  private var displayMessages: [ChatMessage] {
+    messages.filter { $0.role != .system }
+  }
+
   private var resolvedVisibleCount: Int {
-    guard messages.isEmpty == false else { return 0 }
-    let baseline = min(conversationMessagePageSize, messages.count)
+    guard displayMessages.isEmpty == false else { return 0 }
+    let baseline = min(conversationMessagePageSize, displayMessages.count)
     let desired = max(visibleCount, baseline)
-    return min(desired, messages.count)
+    return min(desired, displayMessages.count)
   }
 
   private var visibleMessages: ArraySlice<ChatMessage> {
-    messages.suffix(resolvedVisibleCount)
+    displayMessages.suffix(resolvedVisibleCount)
   }
 
   private var shouldShowLoadMoreSentinel: Bool {
-    resolvedVisibleCount < messages.count
+    resolvedVisibleCount < displayMessages.count
   }
 
   private func syncVisibleCountWithMessages() {
-    guard messages.isEmpty == false else {
+    guard displayMessages.isEmpty == false else {
       if visibleCount != 0 {
         visibleCount = 0
       }
@@ -157,20 +161,20 @@ public struct Conversation<MessageView: View>: View {
       return
     }
 
-    let baseline = min(conversationMessagePageSize, messages.count)
+    let baseline = min(conversationMessagePageSize, displayMessages.count)
     if visibleCount < baseline {
       visibleCount = baseline
-    } else if visibleCount > messages.count {
-      visibleCount = messages.count
+    } else if visibleCount > displayMessages.count {
+      visibleCount = displayMessages.count
     }
   }
 
   private func loadOlderMessages(with proxy: ScrollViewProxy) {
     guard didPerformInitialScroll else { return }
-    guard visibleCount < messages.count else { return }
+    guard visibleCount < displayMessages.count else { return }
 
     let currentFirstID = visibleMessages.first?.id
-    let newCount = min(messages.count, visibleCount + conversationMessagePageSize)
+    let newCount = min(displayMessages.count, visibleCount + conversationMessagePageSize)
     guard newCount != visibleCount else { return }
 
     visibleCount = newCount
@@ -200,7 +204,7 @@ public struct Conversation<MessageView: View>: View {
     let targetID: String
     if bottomInset > 0 {
       targetID = conversationBottomSentinelID
-    } else if let lastID = messages.last?.id {
+    } else if let lastID = displayMessages.last?.id {
       targetID = lastID
     } else {
       targetID = conversationBottomSentinelID
