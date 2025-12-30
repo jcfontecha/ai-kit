@@ -17,24 +17,24 @@ Concretely:
 - AIKit adds a small “transport” layer so `ChatSession` can consume that stream instead of calling a local `LanguageModel`.
 
 ## Non-goals (initially)
-- Replacing AIKitCore’s `streamText` implementation.
+- Replacing AIKit’s `streamText` implementation.
 - Implementing AI SDK server adapters (`toUIMessageStreamResponse`) in Swift.
 - Full parity with every AI SDK UI stream part (`data-*`, files/sources) on day one.
 
 ## Current state (what we already have)
 - AIKit `ChatSession` is an `actor` that owns:
   - transcript (`[ChatMessage]`),
-  - lifecycle (`ChatSessionStatus`: submitted/streaming/ready/error),
+  - lifecycle (`ChatStatus`: submitted/streaming/ready/error),
   - tool injection (`addToolOutput`, `addToolApprovalResponse`),
   - optional `reconnectToStream` hook.
-- `ChatSession` can call AIKitCore `streamText` locally in `ChatSession.runRequest(...)`; local `TextStreamPart` events are adapted into `AIUIMessageStreamPart` and applied to UI state via `ChatMessageStreamingReducer`.
+- `ChatSession` can call AIKit `streamText` locally in `ChatSession.runRequest(...)`; local `TextStreamPart` events are adapted into `AIUIMessageStreamPart` and applied to UI state via `ChatMessageStreamingReducer`.
 - `ChatSession` consumes **AI SDK UI message stream protocol** parts and applies them to UI state via `ChatMessageStreamingReducer`.
   - Local model streaming (`streamText`) is adapted into UI message stream parts to reuse the same reducer logic.
 
 Key files:
-- `Sources/AIKitCore/ChatSession/ChatSession.swift`
-- `Sources/AIKitCore/ChatSession/ChatMessageStreamingReducer.swift`
-- `Sources/AIKitCore/Streaming/StreamText.swift` (`TextStreamPart`)
+- `Sources/AIKit/ChatSession/ChatSession.swift`
+- `Sources/AIKit/ChatSession/ChatMessageStreamingReducer.swift`
+- `Sources/AIKit/Streaming/StreamText.swift` (`TextStreamPart`)
 
 ## Reference: AI SDK server-side pieces we’re targeting
 - Server executes `streamText({ model, messages, tools, stopWhen, ... })`.
@@ -120,7 +120,7 @@ Cons:
 
 ### Option B: send AI SDK `ModelMessage[]`
 Pros:
-- iOS can reuse AIKitCore `convertToModelMessages(...)` to produce model-shaped messages.
+- iOS can reuse AIKit `convertToModelMessages(...)` to produce model-shaped messages.
 - Server can pass `messages` directly to `streamText` without conversion.
 
 Cons:
@@ -240,7 +240,7 @@ Implement a conversion from AIKit `ChatMessage[]` into the chosen request format
     - tool-role messages (if present in transcript) → UI equivalents
 
 - If sending AI SDK `ModelMessage[]`:
-  - Use AIKitCore `convertToModelMessages(...)` (already exists) and then map to AI SDK’s JSON shape.
+  - Use AIKit `convertToModelMessages(...)` (already exists) and then map to AI SDK’s JSON shape.
 
 Deliverable: request body builder used by the transport.
 

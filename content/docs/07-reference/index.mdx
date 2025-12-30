@@ -7,18 +7,17 @@ description: Entry points, key types, and where to find the source.
 
 AIKit’s public API surface lives primarily under:
 
-- `Sources/AIKitCore` (core orchestration and types)
+- `Sources/AIKit` (core orchestration and types)
 - `Sources/AIKitProviders` (provider protocol + shared wire types)
 - `Sources/AIKitOpenRouter` (OpenRouter provider)
 
 Key entry points:
 
-- `AIClient` (`Sources/AIKitCore/Client/AIClient.swift`)
-- `generateText` (`Sources/AIKitCore/Generation/GenerateText.swift`)
-- `streamText` (`Sources/AIKitCore/Streaming/StreamText.swift`)
-- `ToolLoopAgent` (`Sources/AIKitCore/Agent/ToolLoopAgent.swift`)
+- `generateText` (`Sources/AIKit/Generation/GenerateText.swift`)
+- `streamText` (`Sources/AIKit/Streaming/StreamText.swift`)
+- `Agent` (`Sources/AIKit/Agent/Agent.swift`)
 - `ChatStore` (`Sources/AIKit/ChatStore.swift`)
-- outputs (`Sources/AIKitCore/Output/OutputSpec.swift`)
-- tools (`Sources/AIKitCore/Tools/Tools.swift`)
+- outputs (`Sources/AIKit/Output/OutputSpec.swift`)
+- tools (`Sources/AIKit/Tools/Tools.swift`)
 
 If you’re looking for behavior parity details, the translation source-of-truth is the vendored AI SDK under `vendored/ai-sdk/`.

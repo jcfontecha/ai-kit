@@ -172,9 +172,10 @@ private struct PromptInputMacTextField: NSViewRepresentable {
 }
 #endif
 
-public struct PromptInputElements: View {
+public struct PromptInputField: View {
   @Binding public var text: String
-  public var status: ChatSessionStatus
+  public var status: ChatStatus
+  public var placeholder: String
   public var attachments: [ChatFilePart]
   public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
@@ -191,7 +192,8 @@ public struct PromptInputElements: View {
 
   public init(
     text: Binding<String>,
-    status: ChatSessionStatus,
+    status: ChatStatus,
+    placeholder: String = "Message",
     attachments: [ChatFilePart] = [],
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
@@ -199,6 +201,7 @@ public struct PromptInputElements: View {
   ) {
     self._text = text
     self.status = status
+    self.placeholder = placeholder
     self.attachments = attachments
     self.onPasteImages = onPasteImages
     self.onSend = onSend
@@ -301,26 +304,28 @@ public struct PromptInputElements: View {
     #if os(iOS)
       PromptInputiOSTextField(
         text: $text,
-        placeholder: "Message",
+        placeholder: placeholder,
         onPasteImages: onPasteImages
       )
       .font(.body)
       .frame(maxWidth: .infinity, alignment: .leading)
       .padding(.leading, 6)
     #else
-    PromptInputMacTextField(text: $text, placeholder: "Message", onPasteImages: onPasteImages)
+    PromptInputMacTextField(text: $text, placeholder: placeholder, onPasteImages: onPasteImages)
     #endif
   }
 }
 
-public struct PromptInput: View {
-  @Binding public var text: String
-  public var status: ChatSessionStatus
-  public var attachments: [ChatFilePart]
-  public var onPasteImages: (([PlatformImage]) -> Void)?
-  public var onSend: (String) -> Void
-  public var onStop: () -> Void
-  public var onAdd: (() -> Void)?
+public struct StandardPromptInputStyle: PromptInputStyle {
+  public init() {}
+
+  public func makeBody(configuration: PromptInputStyleConfiguration) -> some View {
+    StandardPromptInput(configuration: configuration)
+  }
+}
+
+private struct StandardPromptInput: View {
+  let configuration: PromptInputStyleConfiguration
 
   private let cornerRadius: CGFloat = 24
   private let plusButtonIconSize: CGFloat = 18
@@ -329,51 +334,32 @@ public struct PromptInput: View {
   private var plusButtonSize: CGFloat { plusButtonIconSize + (plusButtonPadding * 2) }
   private let bottomInset: CGFloat = 4
 
-  public init(
-    text: Binding<String>,
-    status: ChatSessionStatus,
-    attachments: [ChatFilePart] = [],
-    onPasteImages: (([PlatformImage]) -> Void)? = nil,
-    onSend: @escaping (String) -> Void,
-    onStop: @escaping () -> Void,
-    onAdd: (() -> Void)? = nil
-  ) {
-    self._text = text
-    self.status = status
-    self.attachments = attachments
-    self.onPasteImages = onPasteImages
-    self.onSend = onSend
-    self.onStop = onStop
-    self.onAdd = onAdd
-  }
-
-  public var body: some View {
+  var body: some View {
     GlassEffectContainer(spacing: plusButtonSpacing) {
       HStack(alignment: .bottom, spacing: plusButtonSpacing) {
-        plusButton
-        PromptInputElements(
-          text: $text,
-          status: status,
-          attachments: attachments,
-          onPasteImages: onPasteImages,
-          onSend: onSend,
-          onStop: onStop
+        if configuration.onAdd != nil {
+          plusButton
+        }
+        PromptInputField(
+          text: configuration.text,
+          status: configuration.status,
+          placeholder: configuration.placeholder,
+          attachments: configuration.attachments,
+          onPasteImages: configuration.onPasteImages,
+          onSend: configuration.onSend,
+          onStop: configuration.onStop
         )
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .frame(minHeight: plusButtonSize, alignment: .center)
-          .glassEffect(.clear.interactive(), in: .rect(cornerRadius: cornerRadius))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: plusButtonSize, alignment: .center)
+        .glassEffect(.clear.interactive(), in: .rect(cornerRadius: cornerRadius))
       }
     }
     .padding(.bottom, bottomInset)
     .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 0)
   }
 
-  private var plusButtonCornerRadius: CGFloat {
-    plusButtonSize / 2
-  }
-
   private var plusButton: some View {
-    let action = onAdd ?? {}
+    let action = configuration.onAdd ?? {}
     return Button(action: action) {
       Image(systemName: "plus")
         .frame(width: plusButtonSize, height: plusButtonSize)
@@ -396,22 +382,100 @@ public struct PromptInput: View {
   }
 }
 
+public struct PromptInput: View {
+  @Binding public var text: String
+  public var status: ChatStatus
+  public var placeholder: String
+  public var attachments: [ChatFilePart]
+  public var onPasteImages: (([PlatformImage]) -> Void)?
+  public var onSend: (String) -> Void
+  public var onStop: () -> Void
+  public var onAdd: (() -> Void)?
+
+  @Environment(\.promptInputStyle) private var style
+
+  public init(
+    text: Binding<String>,
+    status: ChatStatus,
+    placeholder: String = "Message",
+    attachments: [ChatFilePart] = [],
+    onPasteImages: (([PlatformImage]) -> Void)? = nil,
+    onSend: @escaping (String) -> Void,
+    onStop: @escaping () -> Void,
+    onAdd: (() -> Void)? = nil
+  ) {
+    self._text = text
+    self.status = status
+    self.placeholder = placeholder
+    self.attachments = attachments
+    self.onPasteImages = onPasteImages
+    self.onSend = onSend
+    self.onStop = onStop
+    self.onAdd = onAdd
+  }
+
+  public var body: some View {
+    style.makeBody(configuration: .init(
+      text: $text,
+      status: status,
+      placeholder: placeholder,
+      attachments: attachments,
+      onPasteImages: onPasteImages,
+      onSend: onSend,
+      onStop: onStop,
+      onAdd: onAdd
+    ))
+  }
+}
+
 public extension View {
+  func chatComposer(
+    text: Binding<String>,
+    status: ChatStatus,
+    placeholder: String = "Message",
+    attachments: [ChatFilePart] = [],
+    onPasteImages: (([PlatformImage]) -> Void)? = nil,
+    showsScrollToLatestButton: Bool = true,
+    overlayPadding: CGFloat = 8,
+    onSend: @escaping (String) -> Void,
+    onStop: @escaping () -> Void,
+    onAdd: (() -> Void)? = nil
+  ) -> some View {
+    modifier(ChatComposerModifier(
+      text: text,
+      status: status,
+      placeholder: placeholder,
+      attachments: attachments,
+      onPasteImages: onPasteImages,
+      height: nil,
+      showsScrollToLatestButton: showsScrollToLatestButton,
+      overlayPadding: overlayPadding,
+      onSend: onSend,
+      onStop: onStop,
+      onAdd: onAdd
+    ))
+  }
+
   func promptInputBottomBar(
     text: Binding<String>,
-    status: ChatSessionStatus,
+    status: ChatStatus,
     attachments: [ChatFilePart] = [],
+    onPasteImages: (([PlatformImage]) -> Void)? = nil,
     height: Binding<CGFloat>,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
     onAdd: (() -> Void)? = nil
   ) -> some View {
     modifier(
-      PromptInputBottomBarModifier(
+      ChatComposerModifier(
         text: text,
         status: status,
+        placeholder: "Message",
         attachments: attachments,
+        onPasteImages: onPasteImages,
         height: height,
+        showsScrollToLatestButton: false,
+        overlayPadding: 0,
         onSend: onSend,
         onStop: onStop,
         onAdd: onAdd
@@ -420,25 +484,37 @@ public extension View {
   }
 }
 
-private struct PromptInputBottomBarModifier: ViewModifier {
+private struct ChatComposerModifier: ViewModifier {
   @Binding var text: String
-  let status: ChatSessionStatus
+  let status: ChatStatus
+  let placeholder: String
   let attachments: [ChatFilePart]
-  @Binding var height: CGFloat
+  let onPasteImages: (([PlatformImage]) -> Void)?
+  var height: Binding<CGFloat>?
+  let showsScrollToLatestButton: Bool
+  let overlayPadding: CGFloat
   let onSend: (String) -> Void
   let onStop: () -> Void
   let onAdd: (() -> Void)?
 
+  @State private var measuredHeight: CGFloat = 0
+
   func body(content: Content) -> some View {
+    let resolvedHeight = height?.wrappedValue ?? measuredHeight
+
     #if os(iOS)
     content
       // Keep the main content (e.g. `Conversation`) extending behind the composer for depth.
       .ignoresSafeArea(.container, edges: .bottom)
+      .conversationBottomOverlayHeight(resolvedHeight + overlayPadding)
+      .conversationShowsScrollToLatestButton(showsScrollToLatestButton)
       .safeAreaInset(edge: .bottom, spacing: 0) {
         PromptInput(
           text: $text,
           status: status,
+          placeholder: placeholder,
           attachments: attachments,
+          onPasteImages: onPasteImages,
           onSend: onSend,
           onStop: onStop,
           onAdd: onAdd
@@ -449,20 +525,24 @@ private struct PromptInputBottomBarModifier: ViewModifier {
           .background {
             GeometryReader { proxy in
               Color.clear
-                .onAppear { height = proxy.size.height }
-                .onChange(of: proxy.size.height) { newHeight in
-                  height = newHeight
+                .onAppear { updateMeasuredHeight(proxy.size.height) }
+                .onChange(of: proxy.size.height) { _, newHeight in
+                  updateMeasuredHeight(newHeight)
                 }
             }
           }
       }
     #else
     content
+      .conversationBottomOverlayHeight(resolvedHeight + overlayPadding)
+      .conversationShowsScrollToLatestButton(showsScrollToLatestButton)
       .safeAreaInset(edge: .bottom) {
         PromptInput(
           text: $text,
           status: status,
+          placeholder: placeholder,
           attachments: attachments,
+          onPasteImages: onPasteImages,
           onSend: onSend,
           onStop: onStop,
           onAdd: onAdd
@@ -473,14 +553,19 @@ private struct PromptInputBottomBarModifier: ViewModifier {
           .background {
             GeometryReader { proxy in
               Color.clear
-                .onAppear { height = proxy.size.height }
-                .onChange(of: proxy.size.height) { newHeight in
-                  height = newHeight
+                .onAppear { updateMeasuredHeight(proxy.size.height) }
+                .onChange(of: proxy.size.height) { _, newHeight in
+                  updateMeasuredHeight(newHeight)
                 }
             }
           }
       }
     #endif
+  }
+
+  private func updateMeasuredHeight(_ newHeight: CGFloat) {
+    measuredHeight = newHeight
+    height?.wrappedValue = newHeight
   }
 }
 

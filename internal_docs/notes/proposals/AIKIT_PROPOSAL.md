@@ -4,7 +4,7 @@ This document proposes an **AIKit** Swift Package that matches the behavior of t
 
 - `generateText`
 - `streamText` (including structured output schema definitions and partial output streaming)
-- `ToolLoopAgent` (multi-step tool loop with approvals and stop conditions)
+- `Agent` (multi-step tool loop with approvals and stop conditions; maps to AI SDK’s `ToolLoopAgent`)
 
 It is designed to be **Swift-forward**, **type-safe**, and suitable for **iOS/macOS client apps**.
 
@@ -12,7 +12,7 @@ It is designed to be **Swift-forward**, **type-safe**, and suitable for **iOS/ma
 
 ## Goals
 
-- Provide a small, composable core (`AIKitCore`) that is provider-agnostic.
+- Provide a small, composable core (`AIKit`) that is provider-agnostic.
 - Preserve the JS SDK’s semantics:
   - multi-step tool loop for `generateText` and `streamText`
   - structured outputs via schemas (`Output.text/object/array/choice/json`)
@@ -33,9 +33,9 @@ It is designed to be **Swift-forward**, **type-safe**, and suitable for **iOS/ma
 
 Swift Package targets:
 
-- `AIKitCore`
+- `AIKit`
   - `generateText`, `streamText`
-  - `ToolLoopAgent`
+  - `Agent` (maps to AI SDK’s `ToolLoopAgent`)
   - prompt/message types, streaming event types
   - tool registry + tool execution
   - output specs + schema abstraction
@@ -83,7 +83,7 @@ public enum ToolPart: Sendable {
 
 ### Language model protocol (provider-agnostic)
 
-Providers implement *only* this protocol; all tool loop + output parsing is in `AIKitCore`.
+Providers implement *only* this protocol; all tool loop + output parsing is in `AIKit`.
 
 ```swift
 public protocol LanguageModel: Sendable {
@@ -129,7 +129,7 @@ Yes, with two important adjustments (to avoid blindly copying older assumptions)
    - If we make `partialOutputStream` strongly typed (`T.Partial`), `T.Partial` must be designed to decode from incomplete objects (typically “all fields optional”).
    - If we offer macros, they should generate a permissive `Partial` type by construction; otherwise users can define `Partial` manually.
 
-#### Macros (optional, not required for AIKitCore)
+#### Macros (optional, not required for AIKit)
 
 Swift macros are ergonomically great, but they can be painful in some Xcode build workflows (approval prompts, plugin trust, etc.), and that friction is especially problematic for agentic/CLI-driven workflows.
 
@@ -137,7 +137,7 @@ Macros live in a **separate Swift package** (`./AIKitMacros`) so the main AIKit 
 
 Proposal:
 
-- `AIKitCore` must not require macros.
+- `AIKit` must not require macros.
 - If we ship macros at all, they live in a separate optional package so projects can opt in.
 - Provide a CLI-friendly alternative for “generated schema + generated Partial”:
   - `AIKitCodegen` (an executable target) that reads annotated Swift source (or a small YAML/JSON manifest) and **generates**:
@@ -389,12 +389,12 @@ public struct StreamTextResult<OUT: OutputSpec>: Sendable {
 
 ---
 
-## `ToolLoopAgent`
+## `Agent` (AI SDK: `ToolLoopAgent`)
 
 Agents provide a reusable “configured” wrapper around `generateText` / `streamText`.
 
 ```swift
-public struct ToolLoopAgent<OUT: OutputSpec>: Sendable {
+public struct Agent<OUT: OutputSpec>: Sendable {
   public var id: String?
   public var model: any LanguageModel
   public var instructions: SystemPrompt?
@@ -515,7 +515,7 @@ let output = try result.output
 print(output.summary)
 ```
 
-### 3) Tools + `ToolLoopAgent`
+### 3) Tools + `Agent`
 
 ```swift
 import AIKitMacro
@@ -546,7 +546,7 @@ let weatherTool = ToolSpec<WeatherInput, WeatherOutput>(
 var tools = ToolRegistry()
 tools.register(ToolID<WeatherInput, WeatherOutput>("weather"), weatherTool)
 
-let agent = ToolLoopAgent(
+let agent = Agent(
   id: "weather-agent",
   model: model,
   instructions: .text("You are a helpful assistant."),

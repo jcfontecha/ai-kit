@@ -5,7 +5,7 @@ description: LanguageModel, provider packages, and how to plug in your own model
 
 # Models and providers
 
-AIKitCore is provider-agnostic. Providers implement `LanguageModel` from `AIKitProviders`:
+AIKit is provider-agnostic. Providers implement `LanguageModel` from `AIKitProviders`:
 
 ```swift
 public protocol LanguageModel: Sendable {
@@ -17,7 +17,7 @@ public protocol LanguageModel: Sendable {
 }
 ```
 
-AIKitCore uses this protocol to implement tool loops, output parsing, retries, and streaming event aggregation.
+AIKit uses this protocol to implement tool loops, output parsing, retries, and streaming event aggregation.
 
 ## Built-in providers
 
@@ -26,5 +26,4 @@ AIKitCore uses this protocol to implement tool loops, output parsing, retries, a
 
 ## Custom providers
 
-If you have an internal gateway or a model with a custom wire format, implement `LanguageModel` and map your provider’s streaming protocol into `ModelStreamPart`. AIKitCore will take it from there.
-
+If you have an internal gateway or a model with a custom wire format, implement `LanguageModel` and map your provider’s streaming protocol into `ModelStreamPart`. AIKit will take it from there.

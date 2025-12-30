@@ -1,21 +1,21 @@
 ---
 title: From AI SDK Core concepts
-description: High-level concept mapping from the JS AI SDK Core to AIKitCore.
+description: High-level concept mapping from the JS AI SDK Core to AIKit.
 ---
 
 # From AI SDK Core concepts
 
-AIKitCore is designed as a translation of AI SDK Core semantics into Swift. The names are intentionally similar, but the shape is adapted to Swift structured concurrency.
+AIKit is designed as a translation of AI SDK Core semantics into Swift. The names are intentionally similar, but the shape is adapted to Swift structured concurrency.
 
 ## Rough mapping
 
 - `generateText(...)` (JS) → `generateText(...)` (Swift, async/await)
 - `streamText(...)` (JS) → `streamText(...)` returning `StreamTextResult` with `AsyncThrowingStream`s
-- `ToolLoopAgent` (JS) → `ToolLoopAgent` (Swift)
+- `ToolLoopAgent` (JS) → `Agent` (Swift)
 - `Output` (JS) → `Output` / `OutputSpec` (Swift)
 - tool schema (Zod/JSON Schema) → `ObjectSchema<T>` wrapping `JSONSchema`
 - `useChat(...)` (JS) → `ChatStore` (SwiftUI/Combine-friendly façade)
-- “configure once” patterns → `AIClient` (stores defaults, calls `generateText` / `streamText`)
+- “configure once” patterns → `Agent` (stores defaults and loop policy), or your own small wrapper around `GenerateTextOptions` / `StreamTextOptions`
 
 ## Key differences
 

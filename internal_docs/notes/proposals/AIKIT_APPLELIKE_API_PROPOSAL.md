@@ -4,9 +4,9 @@ Date: December 27, 2025
 
 This is an **API-shape proposal** only. The parity engine remains the current v2 core:
 
-- `generateText` / `streamText` (`Sources/AIKitCore/Generation/GenerateText.swift`, `Sources/AIKitCore/Streaming/StreamText.swift`)
-- `ToolLoopAgent` (`Sources/AIKitCore/Agent/ToolLoopAgent.swift`)
-- `ChatSession` (`Sources/AIKitCore/ChatSession/*`)
+- `generateText` / `streamText` (`Sources/AIKit/Generation/GenerateText.swift`, `Sources/AIKit/Streaming/StreamText.swift`)
+- `Agent` (`Sources/AIKit/Agent/Agent.swift`) (AI SDK: `ToolLoopAgent`)
+- `ChatSession` (`Sources/AIKit/ChatSession/*`)
 
 The goal is to make the *primary* call sites feel like Apple frameworks: **configure once, call many**; small per-call overrides; minimal “plumbing types” visible to app code.
 
@@ -94,7 +94,7 @@ Today, `generateText`/`streamText` overloads are correct but “parameter-heavy�
 `AIClient` returns the old “one entry point” feel while staying a thin adapter over:
 - `GenerateTextOptions`
 - `StreamTextOptions`
-- `ToolLoopAgent`
+- `Agent`
 
 ### Proposed surface (sketch)
 
@@ -207,14 +207,14 @@ Most consumers want the AI SDK’s experience: “I pass an API path/URL and use
 In the AI SDK, `useChat` runs on the client, but **the server** decides how the assistant response is produced:
 
 - the route can call `streamText(...)`, or
-- it can call `agent.stream(...)` (`ToolLoopAgent`) and return that stream,
+- it can call `agent.stream(...)` (`Agent`) and return that stream,
 
 and the client doesn’t care.
 
 When we run chat *locally* (no server), the same separation of responsibilities still matters: **the caller** should decide whether the session is powered by:
 
 1) “plain” `streamText` orchestration (model + tools + instructions), or
-2) a configured reusable agent (`ToolLoopAgent`) whose `prepareCall/prepareStep/stopWhen` behavior is part of the app’s design.
+2) a configured reusable agent (`Agent`) whose `prepareCall/prepareStep/stopWhen` behavior is part of the app’s design.
 
 So `ChatStore` should not “magically pick” between them based on a `model` alone. We should make the choice explicit at initialization time, while keeping the API useChat-simple.
 
@@ -241,7 +241,7 @@ public final class ChatStore: ObservableObject {
 
   @Published public var messages: [ChatMessage] = []
   @Published public var input: String = ""
-  @Published public var status: ChatSessionStatus = .ready
+  @Published public var status: ChatStatus = .ready
   @Published public var errorDescription: String?
 
   public var isLoading: Bool { status == .submitted || status == .streaming }
@@ -267,7 +267,7 @@ public final class ChatStore: ObservableObject {
       stopWhen: [StopCondition] = [Stop.stepCountIs(1)]
     ) -> Self
 
-    /// Uses a preconfigured agent (e.g. `ToolLoopAgent`) to stream.
+    /// Uses a preconfigured agent (e.g. `Agent`) to stream.
     public static func agent<A: Agent>(
       _ agent: A
     ) -> Self where A.Output == Output.Text
@@ -508,7 +508,7 @@ chat.sendMessage("Hello!")
 This mirrors the AI SDK server-side choice: instead of “ChatStore decides how to run”, you pass the thing that runs.
 
 ```swift
-let agent = ToolLoopAgent<Void, Output.Text>(
+let agent = Agent<Void, Output.Text>(
   model: model,
   instructions: .instructions("You are helpful."),
   tools: tools,
@@ -604,14 +604,14 @@ This is not a rollout schedule; it’s a concrete “work inventory” so we’r
 These are pure façades that delegate to existing v2 types/entrypoints:
 
 - **Add `AIClient` façade (implemented)**
-  - New type in `Sources/AIKitCore` that stores defaults and calls existing `generateText(.init(...))` / `streamText(.init(...))`.
+  - New type in `Sources/AIKit` that stores defaults and calls existing `generateText(.init(...))` / `streamText(.init(...))`.
   - Re-export via `AIKit` target for convenience.
 - **Add `ChatStore` façade (implemented)**
   - New SwiftUI/Combine-friendly wrapper over `ChatSession` (internally listens to `updates()` and publishes state).
   - Provide init overloads:
     - `init(remote url: URL, requestOptions: ChatRequestOptions = ...)`
     - `init(model: any LanguageModel, system: ..., tools: ..., settings: ...)` (local-only; remote system remains server-owned)
-    - `init<CALL_OPTIONS>(agent: ToolLoopAgent<CALL_OPTIONS, Output.Text>)` (local-only; agent owns loop policy)
+    - `init<CALL_OPTIONS>(agent: Agent<CALL_OPTIONS, Output.Text>)` (local-only; agent owns loop policy)
     - `init(transport: some ChatTransport, requestOptions: ...)` (escape hatch)
   - Provide useChat-shaped methods:
     - `sendMessage(_:options:)`, `stop()`, `regenerate(messageID:)`
@@ -648,7 +648,7 @@ These changes improve ergonomics and reduce confusion without removing power:
   - **Remote (recommended)**: URL-only initialization + `ChatRequestOptions`.
   - **Local**: model-based initialization (and optionally an agent-powered example).
 - Add a `content/docs/.../chat-store.mdx` page (or upgrade `ChatSession` docs to introduce the façade) so app developers see the useChat-shaped API first.
-- Keep parity-level docs (`generateText` / `streamText` / `ToolLoopAgent`) intact; the façades should link “down” to them.
+- Keep parity-level docs (`generateText` / `streamText` / `Agent`) intact; the façades should link “down” to them.
 
 ### Tests (what should stay stable)
 

@@ -1,12 +1,13 @@
 #if canImport(Combine)
 import Combine
 import Foundation
-import AIKitCore
 import AIKitProviders
 
 @MainActor
 public final class ChatStore: ObservableObject {
   public struct RemoteConfiguration {
+    public typealias ValidateJSONValue = @Sendable (_ value: JSONValue) async throws -> Void
+
     public var id: String?
     public var initialMessages: [ChatMessage]
 
@@ -22,8 +23,8 @@ public final class ChatStore: ObservableObject {
     /// Receives non-transient `data-*` parts emitted by the server.
     public var onData: (@Sendable (_ dataPart: AIUIMessageStreamDataPart) async -> Void)?
 
-    public var validateMessageMetadata: ChatSessionInit.ValidateJSONValue?
-    public var validateDataParts: [String: ChatSessionInit.ValidateJSONValue]?
+    public var validateMessageMetadata: ValidateJSONValue?
+    public var validateDataParts: [String: ValidateJSONValue]?
 
     public init(
       id: String? = nil,
@@ -32,8 +33,8 @@ public final class ChatStore: ObservableObject {
       body: (@Sendable () async throws -> JSONValue?)? = nil,
       onToolCall: (@Sendable (_ toolCall: ChatToolPart) async -> Void)? = nil,
       onData: (@Sendable (_ dataPart: AIUIMessageStreamDataPart) async -> Void)? = nil,
-      validateMessageMetadata: ChatSessionInit.ValidateJSONValue? = nil,
-      validateDataParts: [String: ChatSessionInit.ValidateJSONValue]? = nil
+      validateMessageMetadata: ValidateJSONValue? = nil,
+      validateDataParts: [String: ValidateJSONValue]? = nil
     ) {
       self.id = id
       self.initialMessages = initialMessages
@@ -48,7 +49,7 @@ public final class ChatStore: ObservableObject {
 
   @Published public var messages: [ChatMessage]
   @Published public var input: String
-  @Published public var status: ChatSessionStatus
+  @Published public var status: ChatStatus
   @Published public var errorDescription: String?
 
   public var isLoading: Bool { status == .submitted || status == .streaming }
@@ -62,7 +63,6 @@ public final class ChatStore: ObservableObject {
     remote url: URL,
     configuration: RemoteConfiguration = .init(),
     requestOptions: ChatRequestOptions = .init(),
-    bufferingPolicy: AsyncStream<ChatSessionSnapshot>.Continuation.BufferingPolicy = .bufferingNewest(1),
     sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
       ChatAutoSubmitPredicates
         .lastAssistantMessageIsCompleteWithToolCallsOrApprovalResponses(messages: messages)
@@ -91,31 +91,7 @@ public final class ChatStore: ObservableObject {
       messages: configuration.initialMessages
     ))
 
-    startUpdatesTask(bufferingPolicy: bufferingPolicy)
-  }
-
-  @_spi(Advanced)
-  public init(
-    transport: some ChatTransport,
-    requestOptions: ChatRequestOptions = .init(),
-    bufferingPolicy: AsyncStream<ChatSessionSnapshot>.Continuation.BufferingPolicy = .bufferingNewest(1),
-    sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
-      ChatAutoSubmitPredicates
-        .lastAssistantMessageIsCompleteWithToolCallsOrApprovalResponses(messages: messages)
-    }
-  ) {
-    self.defaultRequestOptions = requestOptions
-    self.messages = []
-    self.input = ""
-    self.status = .ready
-    self.errorDescription = nil
-
-    self.session = ChatSession(.init(
-      transport: transport,
-      sendAutomaticallyWhen: sendAutomaticallyWhen
-    ))
-
-    startUpdatesTask(bufferingPolicy: bufferingPolicy)
+    startUpdatesTask()
   }
 
   /// Local, streamText-powered chat.
@@ -129,7 +105,6 @@ public final class ChatStore: ObservableObject {
     headers: [String: String]? = nil,
     providerOptions: ProviderOptions? = nil,
     initialMessages: [ChatMessage] = [],
-    bufferingPolicy: AsyncStream<ChatSessionSnapshot>.Continuation.BufferingPolicy = .bufferingNewest(1),
     sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
       ChatAutoSubmitPredicates
         .lastAssistantMessageIsCompleteWithToolCallsOrApprovalResponses(messages: messages)
@@ -154,14 +129,13 @@ public final class ChatStore: ObservableObject {
       messages: initialMessages
     ))
 
-    startUpdatesTask(bufferingPolicy: bufferingPolicy)
+    startUpdatesTask()
   }
 
   /// Local, agent-powered chat. The agent owns loop policy (`stopWhen`, `prepareCall`, etc.).
   @_spi(Advanced)
   public init<CALL_OPTIONS: Sendable>(
-    agent: ToolLoopAgent<CALL_OPTIONS, Output.Text>,
-    bufferingPolicy: AsyncStream<ChatSessionSnapshot>.Continuation.BufferingPolicy = .bufferingNewest(1),
+    agent: Agent<CALL_OPTIONS, Output.Text>,
     sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
       ChatAutoSubmitPredicates
         .lastAssistantMessageIsCompleteWithToolCallsOrApprovalResponses(messages: messages)
@@ -175,7 +149,7 @@ public final class ChatStore: ObservableObject {
 
     self.session = ChatSession(.init(agent: agent, sendAutomaticallyWhen: sendAutomaticallyWhen))
 
-    startUpdatesTask(bufferingPolicy: bufferingPolicy)
+    startUpdatesTask()
   }
 
   deinit {
@@ -253,9 +227,7 @@ public final class ChatStore: ObservableObject {
     }
   }
 
-  private func startUpdatesTask(
-    bufferingPolicy: AsyncStream<ChatSessionSnapshot>.Continuation.BufferingPolicy
-  ) {
+  private func startUpdatesTask() {
     let session = self.session
     updatesTask = Task { [weak self] in
       guard let self else { return }
@@ -263,7 +235,7 @@ public final class ChatStore: ObservableObject {
       await MainActor.run {
         self.applySnapshot(initial)
       }
-      let updates = await session.updates(bufferingPolicy: bufferingPolicy)
+      let updates = await session.updates(bufferingPolicy: .bufferingNewest(1))
       for await snap in updates {
         await MainActor.run {
           self.applySnapshot(snap)

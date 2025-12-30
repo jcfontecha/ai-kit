@@ -14,7 +14,7 @@ AIKit models “what you want back” via `OutputSpec`:
 
 ## Built-in outputs
 
-AIKitCore ships a small set of outputs under `Output`:
+AIKit ships a small set of outputs under `Output`:
 
 - `Output.text()` → `String`
 - `Output.json()` → `JSONValue`
@@ -41,11 +41,11 @@ struct Person: Codable, Sendable {
   var name: String
 }
 
-let ai = AIClient(model: model)
-let result = try await ai.generate(
-  "Return a JSON object for a person.",
+let result = try await generateText(.init(
+  model: model,
+  prompt: "Return a JSON object for a person.",
   output: Output.typedObject(Person.self)
-)
+))
 
 let person = try result.output
 ```

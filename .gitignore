@@ -34,3 +34,6 @@ internal_docs/references/apple-developer-docs/
 vendored/ai-sdk/
 vendored/openrouter-provider/
 vendored/ai-elements/
+
+# xcb-cache
+.xcb-cache/

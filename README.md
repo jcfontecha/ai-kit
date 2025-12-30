@@ -4,16 +4,16 @@ Swift-first, type-safe client framework for building AI features on iOS/macOS, i
 
 ## Requirements
 
-- iOS 15+
-- macOS 12+
-- Swift 5.10+
+- iOS 26+
+- macOS 26+
+- Swift 6.2+
 
 ## Install (SwiftPM)
 
 Add this repository as a Swift Package dependency, then depend on one of:
 
-- `AIKit` (umbrella)
-- `AIKitCore`, `AIKitProviders` (core APIs + provider protocols)
+- `AIKit` (app-facing)
+- `AIKitProviders` (provider protocols + wire types)
 - Provider modules: `AIKitOpenRouter`, `AIKitOpenAI`, `AIKitReplicate`, `AIKitFal`
 
 ## Quickstart (generate)
@@ -25,8 +25,11 @@ import AIKitOpenRouter
 let openrouter = createOpenRouter(.init(apiKey: "<OPENROUTER_API_KEY>"))
 let model = openrouter.chat("openai/gpt-4o-mini")
 
-let ai = AIClient(model: model)
-let result = try await ai.generate("Write one sentence about Swift concurrency.")
+let result = try await generateText(.init(
+  model: model,
+  prompt: "Write one sentence about Swift concurrency.",
+  output: Output.text()
+))
 
 print(result.text)
 ```
@@ -40,8 +43,11 @@ import AIKitOpenRouter
 let openrouter = createOpenRouter(.init(apiKey: "<OPENROUTER_API_KEY>"))
 let model = openrouter.chat("openai/gpt-4o-mini")
 
-let ai = AIClient(model: model)
-let stream = ai.stream("Stream 3 short bullet points about SSE.")
+let stream = streamText(.init(
+  model: model,
+  prompt: "Stream 3 short bullet points about SSE.",
+  output: Output.text()
+))
 
 for try await delta in stream.textStream {
   print(delta, terminator: "")

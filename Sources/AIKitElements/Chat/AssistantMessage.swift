@@ -25,12 +25,19 @@ public struct ToolRenderContext {
 
 public typealias ToolRenderer = (_ context: ToolRenderContext) -> AnyView
 public typealias ReasoningTextRenderer = (_ text: String) -> AnyView
+public typealias AssistantTextRenderer = (_ text: String) -> AnyView
 public typealias ToolDefaultRenderer = (_ context: ToolDefaultRenderContext) -> AnyView
 
 public struct ToolStatusStrings: Hashable, Sendable {
   public var loading: String
   public var success: String
   public var error: String
+
+  public static let standard = ToolStatusStrings(
+    loading: "Running",
+    success: "Completed",
+    error: "Error"
+  )
 
   public init(loading: String, success: String, error: String) {
     self.loading = loading
@@ -71,6 +78,14 @@ private struct ToolApprovalResponseStore: @unchecked Sendable {
   var value: (_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void
 }
 
+private struct AssistantTextRendererStore: @unchecked Sendable {
+  var value: AssistantTextRenderer?
+}
+
+private struct ReasoningTextRendererStore: @unchecked Sendable {
+  var value: ReasoningTextRenderer?
+}
+
 private struct AssistantMessageToolRenderersKey: EnvironmentKey {
   static let defaultValue = ToolRendererStore(value: [:])
 }
@@ -79,12 +94,24 @@ private struct AssistantMessageToolStatusStringsKey: EnvironmentKey {
   static let defaultValue: [String: ToolStatusStrings] = [:]
 }
 
+private struct AssistantMessageDefaultToolStatusStringsKey: EnvironmentKey {
+  static let defaultValue: ToolStatusStrings? = nil
+}
+
 private struct AssistantMessageDefaultToolRendererKey: EnvironmentKey {
   static let defaultValue = ToolDefaultRendererStore(value: nil)
 }
 
 private struct AssistantMessageOnToolApprovalResponseKey: EnvironmentKey {
   static let defaultValue = ToolApprovalResponseStore(value: { _, _, _ in })
+}
+
+private struct AssistantMessageTextRendererKey: EnvironmentKey {
+  static let defaultValue = AssistantTextRendererStore(value: nil)
+}
+
+private struct AssistantMessageReasoningTextRendererKey: EnvironmentKey {
+  static let defaultValue = ReasoningTextRendererStore(value: nil)
 }
 
 private extension EnvironmentValues {
@@ -103,6 +130,11 @@ private extension EnvironmentValues {
     set { self[AssistantMessageToolStatusStringsKey.self] = newValue }
   }
 
+  var assistantMessageDefaultToolStatusStrings: ToolStatusStrings? {
+    get { self[AssistantMessageDefaultToolStatusStringsKey.self] }
+    set { self[AssistantMessageDefaultToolStatusStringsKey.self] = newValue }
+  }
+
   var assistantMessageDefaultToolRenderer: ToolDefaultRenderer? {
     get { self[AssistantMessageDefaultToolRendererKey.self].value }
     set { self[AssistantMessageDefaultToolRendererKey.self] = .init(value: newValue) }
@@ -111,6 +143,16 @@ private extension EnvironmentValues {
   var assistantMessageOnToolApprovalResponse: (_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void {
     get { self[AssistantMessageOnToolApprovalResponseKey.self].value }
     set { self[AssistantMessageOnToolApprovalResponseKey.self] = .init(value: newValue) }
+  }
+
+  var assistantMessageTextRenderer: AssistantTextRenderer? {
+    get { self[AssistantMessageTextRendererKey.self].value }
+    set { self[AssistantMessageTextRendererKey.self] = .init(value: newValue) }
+  }
+
+  var assistantMessageReasoningTextRenderer: ReasoningTextRenderer? {
+    get { self[AssistantMessageReasoningTextRendererKey.self].value }
+    set { self[AssistantMessageReasoningTextRendererKey.self] = .init(value: newValue) }
   }
 }
 
@@ -125,6 +167,10 @@ public extension View {
 
   func assistantMessageToolStatusStrings(_ toolStatusStrings: [String: ToolStatusStrings]) -> some View {
     environment(\.assistantMessageToolStatusStrings, toolStatusStrings)
+  }
+
+  func assistantMessageDefaultToolStatusStrings(_ statusStrings: ToolStatusStrings) -> some View {
+    environment(\.assistantMessageDefaultToolStatusStrings, statusStrings)
   }
 
   func assistantMessageToolStatusStrings(
@@ -161,6 +207,30 @@ public extension View {
   ) -> some View {
     environment(\.assistantMessageOnToolApprovalResponse, onToolApprovalResponse)
   }
+
+  func assistantMessageTextRenderer(_ renderer: @escaping AssistantTextRenderer) -> some View {
+    environment(\.assistantMessageTextRenderer, renderer)
+  }
+
+  func assistantMessageTextRenderer<TextView: View>(
+    @ViewBuilder _ renderer: @escaping (_ text: String) -> TextView
+  ) -> some View {
+    assistantMessageTextRenderer { text in
+      AnyView(renderer(text))
+    }
+  }
+
+  func assistantMessageReasoningTextRenderer(_ renderer: @escaping ReasoningTextRenderer) -> some View {
+    environment(\.assistantMessageReasoningTextRenderer, renderer)
+  }
+
+  func assistantMessageReasoningTextRenderer<ReasoningView: View>(
+    @ViewBuilder _ renderer: @escaping (_ text: String) -> ReasoningView
+  ) -> some View {
+    assistantMessageReasoningTextRenderer { text in
+      AnyView(renderer(text))
+    }
+  }
 }
 
 private struct AssistantMessageToolRendererModifier: ViewModifier {
@@ -194,137 +264,37 @@ private struct AssistantMessageToolStatusStringsModifier: ViewModifier {
 /// Renders a single assistant `ChatMessage` body from `message.parts` (text, reasoning, tools, sources, files).
 ///
 /// This is the primary home for “interleaved part rendering” complexity (especially tools + approvals).
-public struct AssistantMessage<AssistantText: View>: View {
+public struct AssistantMessage: View {
   public var messageID: String?
   public var parts: [ChatMessagePart]
-  public var showsReasoning: Bool?
-  public var toolRenderers: [String: ToolRenderer]?
-  public var toolStatusStrings: [String: ToolStatusStrings]?
-  public var toolDefaultStatusStrings: ToolStatusStrings
-  public var toolDefaultRenderer: ToolDefaultRenderer?
-  public var onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)?
-  @ViewBuilder public var assistantText: (String) -> AssistantText
-  public var assistantReasoningText: ReasoningTextRenderer?
 
   @Environment(\.assistantMessageShowsReasoning) private var environmentShowsReasoning
   @Environment(\.assistantMessageToolRenderers) private var environmentToolRenderers
   @Environment(\.assistantMessageToolStatusStrings) private var environmentToolStatusStrings
+  @Environment(\.assistantMessageDefaultToolStatusStrings) private var environmentDefaultToolStatusStrings
   @Environment(\.assistantMessageDefaultToolRenderer) private var environmentDefaultToolRenderer
   @Environment(\.assistantMessageOnToolApprovalResponse) private var environmentOnToolApprovalResponse
+  @Environment(\.assistantMessageTextRenderer) private var environmentTextRenderer
+  @Environment(\.assistantMessageReasoningTextRenderer) private var environmentReasoningTextRenderer
   @Environment(\.assistantMessageOnCopy) private var environmentOnCopy
   @Environment(\.assistantMessageOnRegenerate) private var environmentOnRegenerate
+  @Environment(\.chatTheme) private var chatTheme
+
   public init(
     messageID: String? = nil,
-    parts: [ChatMessagePart],
-    showsReasoning: Bool? = nil,
-    toolRenderers: [String: ToolRenderer]? = nil,
-    toolStatusStrings: [String: ToolStatusStrings]? = nil,
-    toolDefaultStatusStrings: ToolStatusStrings,
-    toolDefaultRenderer: ToolDefaultRenderer? = nil,
-    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
-    assistantReasoningText: ReasoningTextRenderer? = nil,
-    @ViewBuilder assistantText: @escaping (String) -> AssistantText
+    parts: [ChatMessagePart]
   ) {
     self.messageID = messageID
     self.parts = parts
-    self.showsReasoning = showsReasoning
-    self.toolRenderers = toolRenderers
-    self.toolStatusStrings = toolStatusStrings
-    self.toolDefaultStatusStrings = toolDefaultStatusStrings
-    self.toolDefaultRenderer = toolDefaultRenderer
-    self.onToolApprovalResponse = onToolApprovalResponse
-    self.assistantReasoningText = assistantReasoningText
-    self.assistantText = assistantText
-  }
-
-  public init<AssistantReasoningText: View>(
-    messageID: String? = nil,
-    parts: [ChatMessagePart],
-    showsReasoning: Bool? = nil,
-    toolRenderers: [String: ToolRenderer]? = nil,
-    toolStatusStrings: [String: ToolStatusStrings]? = nil,
-    toolDefaultStatusStrings: ToolStatusStrings,
-    toolDefaultRenderer: ToolDefaultRenderer? = nil,
-    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
-    @ViewBuilder assistantReasoningText: @escaping (String) -> AssistantReasoningText,
-    @ViewBuilder assistantText: @escaping (String) -> AssistantText
-  ) {
-    let renderer: ReasoningTextRenderer = { text in AnyView(assistantReasoningText(text)) }
-    self.init(
-      messageID: messageID,
-      parts: parts,
-      showsReasoning: showsReasoning,
-      toolRenderers: toolRenderers,
-      toolStatusStrings: toolStatusStrings,
-      toolDefaultStatusStrings: toolDefaultStatusStrings,
-      toolDefaultRenderer: toolDefaultRenderer,
-      onToolApprovalResponse: onToolApprovalResponse,
-      assistantReasoningText: Optional(renderer),
-      assistantText: assistantText
-    )
-  }
-
-  public init(
-    messageID: String? = nil,
-    parts: [ChatMessagePart],
-    showsReasoning: Bool? = nil,
-    toolRenderers: [String: ToolRenderer]? = nil,
-    toolStatusStrings: [String: ToolStatusStrings]? = nil,
-    toolDefaultStatusStrings: ToolStatusStrings,
-    toolDefaultRenderer: ToolDefaultRenderer? = nil,
-    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
-    assistantReasoningText: ReasoningTextRenderer? = nil
-  ) where AssistantText == Text {
-    self.init(
-      messageID: messageID,
-      parts: parts,
-      showsReasoning: showsReasoning,
-      toolRenderers: toolRenderers,
-      toolStatusStrings: toolStatusStrings,
-      toolDefaultStatusStrings: toolDefaultStatusStrings,
-      toolDefaultRenderer: toolDefaultRenderer,
-      onToolApprovalResponse: onToolApprovalResponse,
-      assistantReasoningText: assistantReasoningText,
-      assistantText: { Text($0) }
-    )
-  }
-
-  public init(
-    messageID: String? = nil,
-    parts: [ChatMessagePart],
-    showsReasoning: Bool? = nil,
-    toolRenderers: [String: ToolRenderer]? = nil,
-    toolStatusStrings: [String: ToolStatusStrings]? = nil,
-    toolDefaultStatusStrings: ToolStatusStrings,
-    toolDefaultRenderer: ToolDefaultRenderer? = nil,
-    onToolApprovalResponse: ((_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void)? = nil,
-    markdownStyle: AssistantMarkdownStyle = .init()
-  ) where AssistantText == AssistantMarkdown {
-    self.init(
-      messageID: messageID,
-      parts: parts,
-      showsReasoning: showsReasoning,
-      toolRenderers: toolRenderers,
-      toolStatusStrings: toolStatusStrings,
-      toolDefaultStatusStrings: toolDefaultStatusStrings,
-      toolDefaultRenderer: toolDefaultRenderer,
-      onToolApprovalResponse: onToolApprovalResponse,
-      assistantReasoningText: { text in
-        AssistantMarkdown(text: text, isSecondary: true, style: markdownStyle)
-      },
-      assistantText: { text in
-        AssistantMarkdown(text: text, style: markdownStyle)
-      }
-    )
   }
 
   public var body: some View {
-    let resolvedShowsReasoning = showsReasoning ?? environmentShowsReasoning
-    let resolvedToolRenderers = toolRenderers ?? environmentToolRenderers
-    let resolvedToolStatusStrings = toolStatusStrings ?? environmentToolStatusStrings
-    let resolvedToolDefaultStatusStrings = toolDefaultStatusStrings
-    let resolvedToolDefaultRenderer = toolDefaultRenderer ?? environmentDefaultToolRenderer
-    let resolvedOnToolApprovalResponse = onToolApprovalResponse ?? environmentOnToolApprovalResponse
+    let resolvedShowsReasoning = environmentShowsReasoning
+    let resolvedToolRenderers = environmentToolRenderers
+    let resolvedToolStatusStrings = environmentToolStatusStrings
+    let resolvedToolDefaultStatusStrings = environmentDefaultToolStatusStrings ?? chatTheme.tool.defaultStatusStrings
+    let resolvedToolDefaultRenderer = environmentDefaultToolRenderer
+    let resolvedOnToolApprovalResponse = environmentOnToolApprovalResponse
     let resolvedOnCopy = environmentOnCopy
     let resolvedOnRegenerate = environmentOnRegenerate
 
@@ -332,17 +302,13 @@ public struct AssistantMessage<AssistantText: View>: View {
       ForEach(groupedParts(parts)) { part in
         switch part.kind {
         case .text(let text):
-          assistantText(text)
+          textView(text)
             .frame(maxWidth: .infinity, alignment: .leading)
 
         case .reasoning(let text, let isStreaming):
           if resolvedShowsReasoning {
             ReasoningDisclosure(isStreaming: isStreaming, defaultOpen: false) {
-              if let assistantReasoningText {
-                assistantReasoningText(text)
-              } else {
-                AnyView(assistantText(text))
-              }
+              reasoningTextView(text)
             }
           }
 
@@ -390,6 +356,23 @@ public struct AssistantMessage<AssistantText: View>: View {
         }
       }
     }
+  }
+
+  private func textView(_ text: String) -> AnyView {
+    if let environmentTextRenderer {
+      return environmentTextRenderer(text)
+    }
+    return AnyView(AssistantMarkdown(text: text, style: chatTheme.markdown.style))
+  }
+
+  private func reasoningTextView(_ text: String) -> AnyView {
+    if let environmentReasoningTextRenderer {
+      return environmentReasoningTextRenderer(text)
+    }
+    if let environmentTextRenderer {
+      return environmentTextRenderer(text)
+    }
+    return AnyView(AssistantMarkdown(text: text, isSecondary: true, style: chatTheme.markdown.style))
   }
 
   @ViewBuilder

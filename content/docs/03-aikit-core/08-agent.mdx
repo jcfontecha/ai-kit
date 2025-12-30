@@ -1,0 +1,31 @@
+---
+title: Agent
+description: Reusable multi-step agent wrapper around generateText/streamText.
+---
+
+# Agent
+
+`Agent` is a reusable wrapper for multi-step calls that:
+
+- holds defaults (model, tools, stop conditions, etc.)
+- exposes `generate(prompt:)` and `stream(prompt:)`
+- supports `prepareCall` to mutate per-call parameters
+
+In the vendored AI SDK (JS), this concept is called `ToolLoopAgent`. In Swift, we expose it as `Agent` but keep the same semantics.
+
+## Example
+
+```swift
+let agent = Agent(
+  model: model,
+  instructions: .instructions("You are a helpful assistant."),
+  tools: tools,
+  stopWhen: [Stop.stepCountIs(20)],
+  output: Output.text()
+)
+
+let result = try await agent.generate(prompt: "Plan a weekend trip, then call tools for details.")
+print(result.text)
+```
+
+For a streaming agent loop, use `await agent.stream(prompt:)` and consume `fullStream`.

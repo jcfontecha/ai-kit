@@ -1,0 +1,146 @@
+import XCTest
+import SwiftUI
+
+import AIKit
+import AIKitProviders
+import AIKitElements
+import AIKitTestKit
+
+@MainActor
+final class AIKitElementsSnapshotTests: XCTestCase {
+  func testSnapshot_promptInput_ready() {
+    let size = CGSize(width: 420, height: 140)
+
+    let view = snapshotRoot(
+      PromptInput(
+        text: .constant("Hello from snapshots"),
+        status: .ready,
+        onSend: { _ in },
+        onStop: {}
+      ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_assistantMessage_interleavedParts() {
+    let size = CGSize(width: 480, height: 680)
+
+    let parts: [ChatMessagePart] = [
+      .text(.init(
+        id: "t-1",
+        text: "Here’s a message with **Markdown**, reasoning, tools, and sources.",
+        state: .done
+      )),
+      .reasoning(.init(
+        id: "r-1",
+        text: "I should call the tool, then explain the result.",
+        state: .done
+      )),
+      .tool(.init(
+        toolCallID: "call-1",
+        toolName: "fetch_weather",
+        title: "Weather",
+        input: .object(["city": .string("San Francisco"), "unit": .string("c")]),
+        output: .object(["temp": .number(18), "condition": .string("Cloudy")]),
+        approval: .init(id: "approval-1", approved: true),
+        state: .outputAvailable(preliminary: false)
+      )),
+      .sourceURL(.init(sourceID: "s-1", url: "https://example.com", title: "Example Source")),
+      .sourceDocument(.init(
+        sourceID: "doc-1",
+        mediaType: "application/pdf",
+        title: "Spec PDF",
+        filename: "spec.pdf"
+      )),
+    ]
+
+    let view = snapshotRoot(
+      VStack(alignment: .leading, spacing: 16) {
+        AssistantMessage(messageID: "m-1", parts: parts)
+          .assistantMessageToolRenderer("fetch_weather") { ctx in
+            ToolPartReasoningView(
+              tool: ctx.tool,
+              icon: Image(systemName: "cloud.sun"),
+              sendApproval: ctx.sendApproval,
+              statusStrings: .init(loading: "Fetching…", success: "Done", error: "Failed")
+            )
+          }
+      },
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_conversation_withComposer() {
+    let size = CGSize(width: 520, height: 900)
+
+    let messages: [ChatMessage] = [
+      .init(
+        id: "u-1",
+        role: .user,
+        parts: [
+          .text(.init(id: "ut-1", text: "Show me something cool.", state: .done))
+        ]
+      ),
+      .init(
+        id: "a-1",
+        role: .assistant,
+        parts: [
+          .text(.init(
+            id: "at-1",
+            text: "Sure — here’s a small demo conversation.",
+            state: .done
+          )),
+          .tool(.init(
+            toolCallID: "call-2",
+            toolName: "sleep_ms",
+            title: "Sleep",
+            input: .object(["ms": .number(250)]),
+            approval: .init(id: "approval-2"),
+            state: .approvalRequested(approvalID: "approval-2")
+          )),
+        ]
+      ),
+    ]
+
+    let view = snapshotRoot(
+      Conversation(messages: messages, status: .ready)
+        .assistantMessageToolRenderer("sleep_ms") { ctx in
+          ToolPartReasoningView(
+            tool: ctx.tool,
+            icon: Image(systemName: "timer"),
+            sendApproval: ctx.sendApproval,
+            statusStrings: .init(loading: "Sleeping…", success: "Slept", error: "Sleep failed")
+          )
+        }
+        .chatComposer(
+          text: .constant("Type here…"),
+          status: .ready,
+          onSend: { _ in },
+          onStop: {}
+        ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+}
+
+@MainActor
+private func snapshotRoot<V: View>(_ view: V, size: CGSize) -> some View {
+  ZStack {
+    Color.white
+    view
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+      .padding(16)
+  }
+  .frame(width: size.width, height: size.height)
+  .environment(\.colorScheme, .light)
+  .environment(\.layoutDirection, .leftToRight)
+  .environment(\.locale, Locale(identifier: "en_US_POSIX"))
+  .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
+}
+

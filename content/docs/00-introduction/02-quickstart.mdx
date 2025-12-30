@@ -1,6 +1,6 @@
 ---
 title: Quickstart
-description: Call a model with AIClient (generate and stream).
+description: Call a model with generateText and streamText.
 ---
 
 # Quickstart
@@ -20,8 +20,11 @@ let model = openrouter.chat("openai/gpt-4o-mini")
 ## 2) Generate text (single-step)
 
 ```swift
-let ai = AIClient(model: model)
-let result = try await ai.generate("Write a haiku about Swift concurrency.")
+let result = try await generateText(.init(
+  model: model,
+  prompt: "Write a haiku about Swift concurrency.",
+  output: Output.text()
+))
 
 print(result.text)
 print(result.usage)
@@ -30,8 +33,11 @@ print(result.usage)
 ## 3) Stream text
 
 ```swift
-let ai = AIClient(model: model)
-let stream = ai.stream("Write a short story in three sentences.")
+let stream = streamText(.init(
+  model: model,
+  prompt: "Write a short story in three sentences.",
+  output: Output.text()
+))
 
 for try await delta in stream.textStream {
   print(delta, terminator: "")

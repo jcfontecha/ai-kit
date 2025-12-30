@@ -15,7 +15,6 @@ struct SimpleChatDemoView: View {
   @StateObject private var store = OpenRouterChatStore()
   @State private var text: String = ""
   @State private var attachments: [ChatFilePart] = []
-  @State private var composerHeight: CGFloat = 0
 
   var body: some View {
     content
@@ -33,21 +32,42 @@ struct SimpleChatDemoView: View {
   @ViewBuilder
   private var content: some View {
     let base = ZStack {
-      Conversation(messages: store.messages, status: store.status, bottomOverlayHeight: composerHeight + 8, showsScrollButton: true)
-      .assistantMessageToolRenderer("sleep_ms") { context in
-        ToolPartReasoningView(
-          tool: context.tool,
-          icon: Image(systemName: "timer"),
-          sendApproval: context.sendApproval,
-          statusStrings: .init(loading: "Sleeping…", success: "Slept", error: "Sleep failed")
+      Conversation(messages: store.messages, status: store.status)
+        .assistantMessageToolRenderer("sleep_ms") { context in
+          ToolPartReasoningView(
+            tool: context.tool,
+            icon: Image(systemName: "timer"),
+            sendApproval: context.sendApproval,
+            statusStrings: .init(loading: "Sleeping…", success: "Slept", error: "Sleep failed")
+          )
+        }
+        .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
+          store.respondToToolApproval(approvalID: approvalID, approved: approved, reason: reason)
+        }
+        .assistantMessageOnRegenerate { messageID in
+          store.regenerate(messageID: messageID)
+        }
+        .chatComposer(
+          text: $text,
+          status: store.status,
+          attachments: attachments,
+          onPasteImages: { images in
+            attachments.append(contentsOf: images.compactMap { image in
+              guard let data = imageData(from: image) else { return nil }
+              return ChatFilePart(
+                data: .data(data),
+                filename: nil,
+                mediaType: "image/png"
+              )
+            })
+          },
+          showsScrollToLatestButton: true,
+          onSend: { message in
+            store.send(text: message, attachments: attachments)
+            attachments.removeAll()
+          },
+          onStop: { store.stop() }
         )
-      }
-      .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
-        store.respondToToolApproval(approvalID: approvalID, approved: approved, reason: reason)
-      }
-      .assistantMessageOnRegenerate { messageID in
-        store.regenerate(messageID: messageID)
-      }
 
       if store.messages.isEmpty {
         Text("Start a conversation")
@@ -82,41 +102,6 @@ struct SimpleChatDemoView: View {
       .padding(10)
     }
     base
-      .safeAreaBar(edge: .bottom) {
-        PromptInput(
-          text: $text,
-          status: store.status,
-          attachments: attachments,
-          onPasteImages: { images in
-            attachments.append(contentsOf: images.compactMap { image in
-              guard let data = imageData(from: image) else { return nil }
-              return ChatFilePart(
-                data: .data(data),
-                filename: nil,
-                mediaType: "image/png"
-              )
-            })
-          },
-          onSend: { message in
-            store.send(text: message, attachments: attachments)
-            attachments.removeAll()
-          },
-          onStop: {
-            store.stop()
-          }
-        )
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background {
-          GeometryReader { proxy in
-            Color.clear
-              .onAppear { composerHeight = proxy.size.height }
-              .onChange(of: proxy.size.height) {
-                composerHeight = proxy.size.height
-              }
-          }
-        }
-      }
   }
 }
 

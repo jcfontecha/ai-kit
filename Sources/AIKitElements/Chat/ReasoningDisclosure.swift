@@ -69,7 +69,7 @@ public struct ReasoningDisclosure<Content: View>: View {
       }
       scheduleAutoCloseIfNeeded()
     }
-    .onChange(of: isStreaming) { newIsStreaming in
+    .onChange(of: isStreaming) { _, newIsStreaming in
       // Track duration when streaming starts and ends.
       if newIsStreaming {
         if startTime == nil {
@@ -83,7 +83,7 @@ public struct ReasoningDisclosure<Content: View>: View {
 
       scheduleAutoCloseIfNeeded()
     }
-    .onChange(of: resolvedIsOpen) { _ in
+    .onChange(of: resolvedIsOpen) { _, _ in
       scheduleAutoCloseIfNeeded()
     }
   }

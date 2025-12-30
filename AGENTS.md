@@ -47,16 +47,15 @@ These repos are vendored in this repository for reference:
 
 ## Repo layout
 
-- `Sources/AIKitCore`: orchestration + public API (generate/stream, tool loop, outputs, errors).
+- `Sources/AIKit`: orchestration + public API (generate/stream, tool loop, outputs, errors).
 - `Sources/AIKitProviders`: provider protocols, wire models, JSONSchema/JSONValue, streaming event model.
-- `Sources/AIKit`: convenience umbrella target (re-exports / combines).
 - `Sources/AIKitTestKit`: internal test utilities (snapshots, deterministic clocks/IDs, async helpers).
 - `AIKitMacros/`: separate Swift package that contains schema-authoring macros.
 - `content/docs/`: user-facing documentation (MDX format).
 
 ## Schema strategy (single way)
 
-- Canonical schema type: `ObjectSchema<T>` (in `AIKitCore`) with provider-facing `JSONSchema` (in `AIKitProviders`).
+- Canonical schema type: `ObjectSchema<T>` (in `AIKit`) with provider-facing `JSONSchema` (in `AIKitProviders`).
 - Macro-generated schema should always produce `ObjectSchema<T>.manual(jsonSchema:..., name: ...)` (no DSL).
 - `JSONSchema` builders exist only as low-level helpers (e.g. `JSONSchema.object(...)`) for macro/manual construction.
 
@@ -90,7 +89,7 @@ When implementing parity, prefer small units and match AI SDK concepts:
   5. Run the tests and confirm they fail.
   6. Implement logic until tests pass.
 
-- Tests live under `Tests/AIKitCoreTests/...` and should mirror `vendored/ai-sdk/packages/ai/src/...` scenario groupings (see Vendored repos section).
+- Tests live under `Tests/AIKitTests/...` and should mirror `vendored/ai-sdk/packages/ai/src/...` scenario groupings (see Vendored repos section).
 - Prefer snapshot-style assertions for complex event streams.
   - Record snapshots with `AIKIT_SNAPSHOT_RECORD=1`.
   - Snapshots are stored under `Tests/__Snapshots__/`.
