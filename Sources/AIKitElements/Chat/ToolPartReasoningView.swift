@@ -11,6 +11,7 @@ public struct ToolPartReasoningView: View {
   public var open: Binding<Bool>?
   public var defaultOpen: Bool
   public var onOpenChange: ((_ open: Bool) -> Void)?
+  public var collapsible: Bool
 
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.chatTheme) private var chatTheme
@@ -25,7 +26,8 @@ public struct ToolPartReasoningView: View {
     contentRenderer: ToolPartContentRenderer? = nil,
     open: Binding<Bool>? = nil,
     defaultOpen: Bool = false,
-    onOpenChange: ((_ open: Bool) -> Void)? = nil
+    onOpenChange: ((_ open: Bool) -> Void)? = nil,
+    collapsible: Bool = true
   ) {
     self.tool = tool
     self.icon = icon
@@ -35,6 +37,7 @@ public struct ToolPartReasoningView: View {
     self.open = open
     self.defaultOpen = defaultOpen
     self.onOpenChange = onOpenChange
+    self.collapsible = collapsible
     self._isOpenState = State(initialValue: open?.wrappedValue ?? defaultOpen)
   }
 
@@ -46,6 +49,7 @@ public struct ToolPartReasoningView: View {
     open: Binding<Bool>? = nil,
     defaultOpen: Bool = false,
     onOpenChange: ((_ open: Bool) -> Void)? = nil,
+    collapsible: Bool = true,
     @ViewBuilder content: @escaping (_ context: ToolPartContentContext) -> Content
   ) {
     self.init(
@@ -56,34 +60,54 @@ public struct ToolPartReasoningView: View {
       contentRenderer: { context in AnyView(content(context)) },
       open: open,
       defaultOpen: defaultOpen,
-      onOpenChange: onOpenChange
+      onOpenChange: onOpenChange,
+      collapsible: collapsible
     )
   }
 
   public var body: some View {
     let resolvedStatusStrings = statusStrings ?? chatTheme.tool.defaultStatusStrings
 
-    DisclosureGroup(isExpanded: isExpandedBinding) {
-      if let contentRenderer {
-        contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: resolvedStatusStrings))
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.top, 16)
+    Group {
+      if collapsible {
+        DisclosureGroup(isExpanded: isExpandedBinding) {
+          content(resolvedStatusStrings: resolvedStatusStrings)
+        } label: {
+          header(resolvedStatusStrings: resolvedStatusStrings)
+        }
       } else {
-        ToolPartDefaultContent(tool: tool, sendApproval: sendApproval)
-          .padding(.top, 16)
+        VStack(alignment: .leading, spacing: 0) {
+          header(resolvedStatusStrings: resolvedStatusStrings)
+          content(resolvedStatusStrings: resolvedStatusStrings)
+        }
       }
-    } label: {
-      HStack(spacing: 8) {
-        icon
-        statusLabel(resolvedStatusStrings)
-          .lineLimit(1)
-        Spacer(minLength: 0)
-      }
-      .font(.body)
-      .foregroundStyle(.secondary)
-      .contentShape(Rectangle())
     }
     .tint(.secondary)
+  }
+
+  @ViewBuilder
+  private func header(resolvedStatusStrings: ToolStatusStrings) -> some View {
+    HStack(spacing: 8) {
+      icon
+      statusLabel(resolvedStatusStrings)
+        .lineLimit(1)
+      Spacer(minLength: 0)
+    }
+    .font(.body)
+    .foregroundStyle(.secondary)
+    .contentShape(Rectangle())
+  }
+
+  @ViewBuilder
+  private func content(resolvedStatusStrings: ToolStatusStrings) -> some View {
+    if let contentRenderer {
+      contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: resolvedStatusStrings))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 16)
+    } else {
+      ToolPartDefaultContent(tool: tool, sendApproval: sendApproval)
+        .padding(.top, 16)
+    }
   }
 
   private var resolvedIsOpen: Bool { open?.wrappedValue ?? isOpenState }

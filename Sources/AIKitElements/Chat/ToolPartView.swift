@@ -28,6 +28,7 @@ public struct ToolPartView: View {
   public var open: Binding<Bool>?
   public var defaultOpen: Bool
   public var onOpenChange: ((_ open: Bool) -> Void)?
+  public var collapsible: Bool
 
   @Environment(\.chatTheme) private var chatTheme
 
@@ -41,7 +42,8 @@ public struct ToolPartView: View {
     contentRenderer: ToolPartContentRenderer? = nil,
     open: Binding<Bool>? = nil,
     defaultOpen: Bool = false,
-    onOpenChange: ((_ open: Bool) -> Void)? = nil
+    onOpenChange: ((_ open: Bool) -> Void)? = nil,
+    collapsible: Bool = true
   ) {
     self.tool = tool
     self.icon = icon
@@ -51,6 +53,7 @@ public struct ToolPartView: View {
     self.open = open
     self.defaultOpen = defaultOpen
     self.onOpenChange = onOpenChange
+    self.collapsible = collapsible
     self._isOpenState = State(initialValue: open?.wrappedValue ?? defaultOpen)
   }
 
@@ -62,6 +65,7 @@ public struct ToolPartView: View {
     open: Binding<Bool>? = nil,
     defaultOpen: Bool = false,
     onOpenChange: ((_ open: Bool) -> Void)? = nil,
+    collapsible: Bool = true,
     @ViewBuilder content: @escaping (_ context: ToolPartContentContext) -> Content
   ) {
     self.init(
@@ -72,7 +76,8 @@ public struct ToolPartView: View {
       contentRenderer: { context in AnyView(content(context)) },
       open: open,
       defaultOpen: defaultOpen,
-      onOpenChange: onOpenChange
+      onOpenChange: onOpenChange,
+      collapsible: collapsible
     )
   }
 
@@ -80,24 +85,43 @@ public struct ToolPartView: View {
     let resolvedStatusStrings = statusStrings ?? chatTheme.tool.defaultStatusStrings
     let (_, statusLabel, tint) = toolStatus(tool.state, statusStrings: resolvedStatusStrings)
 
-    DisclosureGroup(isExpanded: isExpandedBinding) {
-      if let contentRenderer {
-        contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: resolvedStatusStrings))
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(.top, 10)
+    Group {
+      if collapsible {
+        DisclosureGroup(isExpanded: isExpandedBinding) {
+          content(resolvedStatusStrings: resolvedStatusStrings)
+        } label: {
+          header(statusLabel: statusLabel)
+        }
       } else {
-        ToolPartDefaultContent(tool: tool, sendApproval: sendApproval)
-      }
-    } label: {
-      HStack(spacing: 10) {
-        icon
-        Text(statusLabel)
-          .font(.subheadline.weight(.medium))
-        Spacer()
+        VStack(alignment: .leading, spacing: 0) {
+          header(statusLabel: statusLabel)
+          content(resolvedStatusStrings: resolvedStatusStrings)
+        }
       }
     }
     .padding(12)
     .glassSurface(cornerRadius: 16, interactive: false, tint: tint)
+  }
+
+  @ViewBuilder
+  private func header(statusLabel: String) -> some View {
+    HStack(spacing: 10) {
+      icon
+      Text(statusLabel)
+        .font(.subheadline.weight(.medium))
+      Spacer()
+    }
+  }
+
+  @ViewBuilder
+  private func content(resolvedStatusStrings: ToolStatusStrings) -> some View {
+    if let contentRenderer {
+      contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: resolvedStatusStrings))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 10)
+    } else {
+      ToolPartDefaultContent(tool: tool, sendApproval: sendApproval)
+    }
   }
 
   private var resolvedIsOpen: Bool { open?.wrappedValue ?? isOpenState }
