@@ -120,7 +120,8 @@ public struct Conversation<MessageView: View>: View {
               .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 0)
           }
           .buttonStyle(.plain)
-          .padding(.bottom, 12)
+          // Keep the button above any bottom overlay (e.g. the prompt input).
+          .padding(.bottom, bottomOverlayHeight + scrollToLatestButtonBottomMargin)
           .accessibilityLabel("Scroll to latest")
           .transition(.opacity)
         }
@@ -131,6 +132,10 @@ public struct Conversation<MessageView: View>: View {
 
   private var bottomInset: CGFloat {
     max(1, extraBottomPadding + bottomOverlayHeight)
+  }
+
+  private var scrollToLatestButtonBottomMargin: CGFloat {
+    max(12, theme.spacing.contentPadding.bottom + 16)
   }
 
   private var displayMessages: [ChatMessage] {

@@ -15,6 +15,7 @@ struct SimpleChatDemoView: View {
   @StateObject private var store = OpenRouterChatStore()
   @State private var text: String = ""
   @State private var attachments: [ChatFilePart] = []
+  @State private var isShowingAddSheet: Bool = false
 
   var body: some View {
     content
@@ -26,6 +27,9 @@ struct SimpleChatDemoView: View {
       }
       .onChange(of: modelID) { _, _ in
         store.configureIfPossible(apiKey: apiKey, modelID: modelID)
+      }
+      .sheet(isPresented: $isShowingAddSheet) {
+        MockAddSheet()
       }
   }
 
@@ -66,7 +70,8 @@ struct SimpleChatDemoView: View {
             store.send(text: message, attachments: attachments)
             attachments.removeAll()
           },
-          onStop: { store.stop() }
+          onStop: { store.stop() },
+          onAdd: { isShowingAddSheet = true }
         )
 
       if store.messages.isEmpty {
@@ -123,4 +128,31 @@ private func imageData(from image: PlatformImage) -> Data? {
 
 #Preview {
   SimpleChatDemoView()
+}
+
+private struct MockAddSheet: View {
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      List {
+        Section("Mock actions") {
+          Button("Pick photo (mock)") {}
+          Button("Pick file (mock)") {}
+          Button("Take photo (mock)") {}
+        }
+
+        Section {
+          Button("Close") { dismiss() }
+        }
+      }
+      .navigationTitle("Add")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { dismiss() }
+        }
+      }
+    }
+  }
 }

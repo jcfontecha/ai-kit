@@ -12,11 +12,12 @@ public typealias PlatformImage = UIImage
 #if os(iOS)
 private struct PromptInputiOSTextField: UIViewRepresentable {
   @Binding var text: String
+  @Binding var measuredHeight: CGFloat
   let placeholder: String
   let onPasteImages: (([UIImage]) -> Void)?
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(text: $text, onPasteImages: onPasteImages)
+    Coordinator(text: $text, measuredHeight: $measuredHeight, onPasteImages: onPasteImages)
   }
 
   func makeUIView(context: Context) -> UITextView {
@@ -28,10 +29,15 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
     view.isScrollEnabled = false
     view.textContainerInset = .zero
     view.textContainer.lineFragmentPadding = 0
+    view.textContainer.lineBreakMode = .byWordWrapping
+    view.textContainer.widthTracksTextView = true
     view.onPasteImages = context.coordinator.onPasteImages
     view.placeholderLabel.text = placeholder
     view.placeholderLabel.isHidden = text.isEmpty == false
     view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
+    context.coordinator.updateHeight(for: view)
     return view
   }
 
@@ -46,20 +52,31 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
       pasteView.placeholderLabel.text = placeholder
       pasteView.placeholderLabel.isHidden = uiView.text.isEmpty == false
     }
+
+    context.coordinator.updateHeight(for: uiView)
   }
 
   func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize {
     let targetWidth = proposal.width ?? uiView.bounds.width
-    let size = uiView.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
-    return CGSize(width: targetWidth, height: size.height)
+    let resolvedWidth = max(0, targetWidth)
+
+    uiView.layoutIfNeeded()
+    let size = uiView.sizeThatFits(CGSize(width: resolvedWidth, height: .greatestFiniteMagnitude))
+    return CGSize(width: resolvedWidth, height: size.height)
   }
 
   final class Coordinator: NSObject, UITextViewDelegate {
     @Binding private var text: String
+    @Binding private var measuredHeight: CGFloat
     let onPasteImages: (([UIImage]) -> Void)?
 
-    init(text: Binding<String>, onPasteImages: (([UIImage]) -> Void)?) {
+    init(
+      text: Binding<String>,
+      measuredHeight: Binding<CGFloat>,
+      onPasteImages: (([UIImage]) -> Void)?
+    ) {
       self._text = text
+      self._measuredHeight = measuredHeight
       self.onPasteImages = onPasteImages
     }
 
@@ -68,12 +85,25 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
       if let pasteView = textView as? PasteAwareTextView {
         pasteView.placeholderLabel.isHidden = textView.text.isEmpty == false
       }
+      updateHeight(for: textView)
+    }
+
+    func updateHeight(for textView: UITextView) {
+      let width = textView.bounds.width
+      guard width > 0 else { return }
+
+      textView.layoutIfNeeded()
+      let size = textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+      let newHeight = size.height
+      guard abs(newHeight - measuredHeight) > 0.5 else { return }
+      measuredHeight = newHeight
     }
   }
 
   final class PasteAwareTextView: UITextView {
     var onPasteImages: (([UIImage]) -> Void)?
     let placeholderLabel = UILabel()
+    private var lastKnownWidth: CGFloat = 0
 
     override init(frame: CGRect, textContainer: NSTextContainer?) {
       super.init(frame: frame, textContainer: textContainer)
@@ -90,6 +120,17 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
 
     required init?(coder: NSCoder) {
       fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+      super.layoutSubviews()
+
+      let width = bounds.width
+      guard width > 0, width != lastKnownWidth else { return }
+
+      lastKnownWidth = width
+      textContainer.size = CGSize(width: width, height: .greatestFiniteMagnitude)
+      invalidateIntrinsicContentSize()
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
@@ -189,6 +230,10 @@ public struct PromptInputField: View {
   private let controlSize: CGFloat = 30
   private let controlIconSize: CGFloat = 16
   private var controlIconPadding: CGFloat { (controlSize - controlIconSize) / 2 }
+
+  #if os(iOS)
+  @State private var iOSTextViewHeight: CGFloat = 0
+  #endif
 
   public init(
     text: Binding<String>,
@@ -304,11 +349,13 @@ public struct PromptInputField: View {
     #if os(iOS)
       PromptInputiOSTextField(
         text: $text,
+        measuredHeight: $iOSTextViewHeight,
         placeholder: placeholder,
         onPasteImages: onPasteImages
       )
       .font(.body)
       .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(height: max(iOSTextViewHeight, 22), alignment: .leading)
       .padding(.leading, 6)
     #else
     PromptInputMacTextField(text: $text, placeholder: placeholder, onPasteImages: onPasteImages)
@@ -337,9 +384,7 @@ private struct StandardPromptInput: View {
   var body: some View {
     GlassEffectContainer(spacing: plusButtonSpacing) {
       HStack(alignment: .bottom, spacing: plusButtonSpacing) {
-        if configuration.onAdd != nil {
-          plusButton
-        }
+        plusButton
         PromptInputField(
           text: configuration.text,
           status: configuration.status,
@@ -359,16 +404,26 @@ private struct StandardPromptInput: View {
   }
 
   private var plusButton: some View {
+    let enabled = configuration.onAdd != nil
     let action = configuration.onAdd ?? {}
-    return Button(action: action) {
-      Image(systemName: "plus")
-        .frame(width: plusButtonSize, height: plusButtonSize)
-        .font(.system(size: plusButtonIconSize, weight: .medium))
-        .foregroundStyle(plusIconColor)
-        .glassEffect(.clear.interactive(), in: .circle)
-        .contentShape(Circle())
-    }
-    .buttonStyle(.plain)
+
+    // NOTE: `glassEffect(.clear.interactive(), ...)` can consume touch events when nested in a `Button` label.
+    // Use a tap gesture on the glass view itself so it both animates and triggers the action reliably.
+    return plusButtonVisual
+      .allowsHitTesting(enabled)
+      .onTapGesture(perform: action)
+      .accessibilityAddTraits(.isButton)
+      .accessibilityLabel("Add")
+      .opacity(enabled ? 1 : 0.45)
+  }
+
+  private var plusButtonVisual: some View {
+    Image(systemName: "plus")
+      .frame(width: plusButtonSize, height: plusButtonSize)
+      .font(.system(size: plusButtonIconSize, weight: .medium))
+      .foregroundStyle(plusIconColor)
+      .glassEffect(.clear.interactive(), in: .circle)
+      .contentShape(Circle())
   }
 
   private var plusIconColor: Color {
@@ -508,7 +563,7 @@ private struct ChatComposerModifier: ViewModifier {
       .ignoresSafeArea(.container, edges: .bottom)
       .conversationBottomOverlayHeight(resolvedHeight + overlayPadding)
       .conversationShowsScrollToLatestButton(showsScrollToLatestButton)
-      .safeAreaInset(edge: .bottom, spacing: 0) {
+      .safeAreaBar(edge: .bottom) {
         PromptInput(
           text: $text,
           status: status,
@@ -520,8 +575,7 @@ private struct ChatComposerModifier: ViewModifier {
           onAdd: onAdd
         )
           .padding(.horizontal, 12)
-          .padding(.top, 8)
-          .padding(.bottom, 26)
+          .padding(.vertical, 8)
           .background {
             GeometryReader { proxy in
               Color.clear

@@ -24,6 +24,22 @@ final class AIKitElementsSnapshotTests: XCTestCase {
     SnapshotTesting.assertSnapshotImage(view, size: size)
   }
 
+  func testSnapshot_promptInput_ready_longTextWraps() {
+    let size = CGSize(width: 360, height: 220)
+
+    let view = snapshotRoot(
+      PromptInput(
+        text: .constant("This is a long message that should wrap onto multiple lines as you keep typing, without needing to insert explicit newline characters."),
+        status: .ready,
+        onSend: { _ in },
+        onStop: {}
+      ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
   func testSnapshot_assistantMessage_interleavedParts() {
     let size = CGSize(width: 480, height: 680)
 
@@ -143,4 +159,3 @@ private func snapshotRoot<V: View>(_ view: V, size: CGSize) -> some View {
   .environment(\.locale, Locale(identifier: "en_US_POSIX"))
   .environment(\.timeZone, TimeZone(secondsFromGMT: 0)!)
 }
-
