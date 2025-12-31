@@ -44,6 +44,7 @@ public struct Conversation<MessageView: View>: View {
   @Environment(\.conversationShowsScrollButton) private var showsScrollButton
   @Environment(\.conversationAnchorsNewUserMessagesToTop) private var anchorsNewUserMessagesToTop
   @Environment(\.conversationDebugOverlayEnabled) private var debugOverlayEnabled
+  @Environment(\.conversationScrollToLatestRequest) private var scrollToLatestRequest
 
   @StateObject private var scrollModel = ConversationScrollViewModel()
   @State private var pendingScrollTask: Task<Void, Never>?
@@ -216,25 +217,10 @@ public struct Conversation<MessageView: View>: View {
           scheduleTailUpdate(proxy: proxy)
         }
       }
-      .overlay(alignment: .bottom) {
-        if showsScrollButton, scrollModel.isAtLatestForScrollButton == false {
-          Button {
-            let steps = scrollModel.handleScrollToLatestButtonTapped()
-            executeScrollSteps(steps, proxy: proxy, forceAnimation: scrollAnimation)
-          } label: {
-            Image(systemName: "arrow.down")
-              .font(.system(size: 13, weight: .semibold))
-              .frame(width: 32, height: 32)
-              .glassEffect(.clear.interactive(), in: .circle)
-              .contentShape(Circle())
-              .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 0)
-          }
-          .buttonStyle(.plain)
-          // Keep the button above any bottom overlay (e.g. the prompt input).
-          .padding(.bottom, bottomOverlayHeight + scrollToLatestButtonBottomMargin)
-          .accessibilityLabel("Scroll to latest")
-          .transition(.opacity)
-        }
+      .onChange(of: scrollToLatestRequest.wrappedValue) { _, _ in
+        guard showsScrollButton else { return }
+        let steps = scrollModel.handleScrollToLatestButtonTapped()
+        executeScrollSteps(steps, proxy: proxy, forceAnimation: scrollAnimation)
       }
       #if DEBUG
       .overlay(alignment: .topTrailing) {
@@ -245,6 +231,12 @@ public struct Conversation<MessageView: View>: View {
       #endif
       .animation(.easeInOut(duration: 0.2), value: scrollModel.isAtLatestForScrollButton)
     }
+    // IMPORTANT: Set the preference *outside* the ScrollViewReader. Some container views do not reliably
+    // propagate preference values upward when they're set deep in the scroll subtree.
+    .preference(
+      key: ConversationIsAtLatestForScrollButtonPreferenceKey.self,
+      value: scrollModel.isAtLatestForScrollButton
+    )
   }
 
   private var bottomInset: CGFloat {
@@ -451,6 +443,8 @@ public struct Conversation<MessageView: View>: View {
       "isAtBottom=\(scrollModel.isAtBottom)",
       "scrollPosition=\(scrollModel.scrollPosition ?? "nil")",
       "viewportHeight=\(String(format: "%.1f", scrollModel.viewportHeight))",
+      "maxViewportHeightSinceAppear=\(String(format: "%.1f", scrollModel.maxViewportHeightSinceAppear))",
+      "keyboardInsetApprox=\(String(format: "%.1f", scrollModel.keyboardInsetApprox))",
       "bottomInset=\(String(format: "%.1f", bottomInset))",
       "reservedTailSpace=\(String(format: "%.1f", scrollModel.reservedTailSpace))",
       "reservedTailBaseline=\(String(format: "%.1f", scrollModel.reservedTailBaseline))",

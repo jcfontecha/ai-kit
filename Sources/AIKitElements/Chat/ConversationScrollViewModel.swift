@@ -14,6 +14,7 @@ final class ConversationScrollViewModel: ObservableObject {
   @Published var scrollMode: ScrollMode = .followBottom
 
   @Published var viewportHeight: CGFloat = 0
+  @Published var maxViewportHeightSinceAppear: CGFloat = 0
   @Published var bottomOverlayHeight: CGFloat = 0
 
   @Published var reservedTailSpace: CGFloat = 0
@@ -21,6 +22,7 @@ final class ConversationScrollViewModel: ObservableObject {
 
   @Published var pendingPinToTopAfterSend: Bool = false
   @Published var pinnedUserMessageID: String?
+  @Published var pendingSendAnchoringMessageID: String?
 
   @Published var knownDisplayMessageIDs: Set<String> = []
   @Published var preSendDisplayMessageIDs: Set<String> = []
@@ -33,6 +35,10 @@ final class ConversationScrollViewModel: ObservableObject {
   @Published var bottomSentinelMaxY: CGFloat = -1
   @Published var tailSentinelMaxY: CGFloat = -1
 
+  // MARK: - Internal calibration state
+
+  private var didCalibrateReservedTailForPinnedMessageID: String?
+
   // MARK: - Configuration
 
   let extraBottomPadding: CGFloat = 0
@@ -41,6 +47,12 @@ final class ConversationScrollViewModel: ObservableObject {
 
   var bottomInset: CGFloat {
     max(1, extraBottomPadding + bottomOverlayHeight)
+  }
+
+  /// Approximation of keyboard/safe-area intrusion, based on the scroll viewport shrinking.
+  /// Used for UI heuristics (e.g. scroll-to-latest button placement) and for reserving tail space on send.
+  var keyboardInsetApprox: CGFloat {
+    max(0, maxViewportHeightSinceAppear - viewportHeight)
   }
 
   var shouldMeasureMessageHeights: Bool {
@@ -66,13 +78,16 @@ final class ConversationScrollViewModel: ObservableObject {
     syncVisibleCountWithMessages(displayMessages: displayMessages)
     knownDisplayMessageIDs = Set(displayMessages.map(\.id))
 
+    maxViewportHeightSinceAppear = 0
     scrollMode = .followBottom
     reservedTailSpace = 0
     reservedTailBaseline = 0
+    didCalibrateReservedTailForPinnedMessageID = nil
     preSendDisplayMessageIDs = []
     postSendDisplayMessageIDs = []
     pinnedUserMessageID = nil
     pendingPinToTopAfterSend = false
+    pendingSendAnchoringMessageID = nil
     tailSentinelIsVisible = false
     didPerformInitialScroll = true
 
@@ -87,6 +102,9 @@ final class ConversationScrollViewModel: ObservableObject {
     guard newHeight.isFinite, newHeight > 0 else { return }
     if abs(viewportHeight - newHeight) > 1 {
       viewportHeight = newHeight
+    }
+    if newHeight > maxViewportHeightSinceAppear {
+      maxViewportHeightSinceAppear = newHeight
     }
   }
 
@@ -132,11 +150,13 @@ final class ConversationScrollViewModel: ObservableObject {
   func handleSendTrigger(displayMessages: [ChatMessage]) {
     pendingPinToTopAfterSend = true
     pinnedUserMessageID = nil
+    pendingSendAnchoringMessageID = nil
+    didCalibrateReservedTailForPinnedMessageID = nil
     preSendDisplayMessageIDs = Set(displayMessages.map(\.id))
     postSendDisplayMessageIDs = []
     messageHeights = [:]
 
-    reservedTailSpace = reserveTailSpaceForSend(viewportHeight: viewportHeight)
+    reservedTailSpace = reserveTailSpaceForSend(viewportHeight: maxViewportHeightSinceAppear)
     reservedTailBaseline = reservedTailSpace
 
     // Defer actual scrolling until we see the new message inserted.
@@ -154,12 +174,12 @@ final class ConversationScrollViewModel: ObservableObject {
 
     if pendingPinToTopAfterSend, let newUserMessageID = newlyInsertedUserMessageID(displayMessages: displayMessages) {
       pinnedUserMessageID = newUserMessageID
+      pendingSendAnchoringMessageID = newUserMessageID
       pendingPinToTopAfterSend = false
       knownDisplayMessageIDs = Set(displayMessages.map(\.id))
-      return ConversationScrollEngine.planForSendAnchoring(
-        userMessageID: newUserMessageID,
-        hasReservedTailSpace: reservedTailSpace > 0
-      ).steps
+      // Defer actual programmatic scrolling until we have layout measurements (message heights / tail sentinel),
+      // otherwise `ScrollViewProxy.scrollTo` can no-op if the target hasn't been laid out yet.
+      return []
     }
 
     knownDisplayMessageIDs = Set(displayMessages.map(\.id))
@@ -219,9 +239,11 @@ final class ConversationScrollViewModel: ObservableObject {
 
     reservedTailSpace = 0
     reservedTailBaseline = 0
+    didCalibrateReservedTailForPinnedMessageID = nil
     preSendDisplayMessageIDs = []
     postSendDisplayMessageIDs = []
     pinnedUserMessageID = nil
+    pendingSendAnchoringMessageID = nil
     scrollMode = .followBottom
     return [
       .setMode(.followBottom),
@@ -232,6 +254,37 @@ final class ConversationScrollViewModel: ObservableObject {
   func computeTailUpdate() -> [ConversationScrollEngine.Step] {
     guard reservedTailBaseline > 0 else { return [] }
     guard let pinnedUserMessageID else { return [] }
+
+    var steps: [ConversationScrollEngine.Step] = []
+
+    // After we pin the user message to the top, the initial reserved tail estimate can still overshoot,
+    // leaving extra scroll range where the pinned exchange can be scrolled off-screen. Clamp the baseline
+    // once we have a tail-sentinel measurement in the pinned position.
+    if didCalibrateReservedTailForPinnedMessageID != pinnedUserMessageID,
+       reservedTailSpace > 0,
+       tailSentinelMaxY >= 0,
+       viewportHeight > 0,
+       scrollMode == .pinUserMessageToTop(messageID: pinnedUserMessageID) {
+      let overshoot = tailSentinelMaxY - viewportHeight
+      if overshoot > 2.5 {
+        reservedTailBaseline = max(0, reservedTailBaseline - overshoot)
+        reservedTailSpace = max(0, reservedTailSpace - overshoot)
+        steps.append(.scrollTo(target: .message(pinnedUserMessageID), anchor: .top, animated: true))
+      }
+      didCalibrateReservedTailForPinnedMessageID = pinnedUserMessageID
+    }
+
+    if pendingSendAnchoringMessageID == pinnedUserMessageID {
+      let pinnedIsLaidOut = (messageHeights[pinnedUserMessageID] != nil)
+      let tailIsLaidOut = (reservedTailSpace <= 0) || (tailSentinelMaxY >= 0)
+      if pinnedIsLaidOut, tailIsLaidOut, viewportHeight > 0 {
+        pendingSendAnchoringMessageID = nil
+        steps.append(contentsOf: ConversationScrollEngine.planForSendAnchoring(
+          userMessageID: pinnedUserMessageID,
+          hasReservedTailSpace: reservedTailSpace > 0
+        ).steps)
+      }
+    }
 
     let responseHeight = postSendDisplayMessageIDs
       .filter { $0 != pinnedUserMessageID }
@@ -244,15 +297,18 @@ final class ConversationScrollViewModel: ObservableObject {
       // Response overflowed the reserved space: exit reserve mode and resume stick-to-bottom.
       reservedTailSpace = 0
       reservedTailBaseline = 0
+      didCalibrateReservedTailForPinnedMessageID = nil
       preSendDisplayMessageIDs = []
       postSendDisplayMessageIDs = []
       self.pinnedUserMessageID = nil
+      pendingSendAnchoringMessageID = nil
       scrollMode = .followBottom
-      return [.scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true)]
+      steps.append(.scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true))
+      return steps
     }
 
     reservedTailSpace = remaining
-    return []
+    return steps
   }
 
   // MARK: - Helpers
@@ -305,9 +361,11 @@ final class ConversationScrollViewModel: ObservableObject {
     // Keep in sync with Conversation.swift tuning.
     if viewportHeight <= 0 { return 420 }
 
-    let desired = viewportHeight * 0.67
+    // We want "space for the agent" such that the newest user message can be pinned near the top of the viewport.
+    // A good heuristic is: enough tail to almost fill the viewport below the last message, accounting for the composer.
+    let desired = viewportHeight - (bottomInset + 24)
     let minTail: CGFloat = 320
-    let maxTail: CGFloat = max(minTail, viewportHeight - 140)
+    let maxTail: CGFloat = max(minTail, viewportHeight - (bottomInset + 8))
     return min(max(desired, minTail), maxTail)
   }
 }

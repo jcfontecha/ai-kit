@@ -33,12 +33,19 @@ final class ConversationScrollViewModelTests: XCTestCase {
     ]
 
     let steps = model.handleMessagesCountChange(displayMessages: after)
+    XCTAssertEqual(steps, [])
+    XCTAssertEqual(model.pinnedUserMessageID, "u-2")
+    XCTAssertEqual(model.pendingSendAnchoringMessageID, "u-2")
+    XCTAssertFalse(model.pendingPinToTopAfterSend)
+
+    // Simulate layout measurements arriving: the pinned message height and tail sentinel position.
+    model.ingestMessageHeights(["u-2": 44, "a-2": 18])
+    model.updateTailSentinelMaxY(758)
+
+    let deferredSteps = model.computeTailUpdate()
     XCTAssertEqual(
-      steps,
+      deferredSteps,
       ConversationScrollEngine.planForSendAnchoring(userMessageID: "u-2", hasReservedTailSpace: true).steps
     )
-    XCTAssertEqual(model.pinnedUserMessageID, "u-2")
-    XCTAssertFalse(model.pendingPinToTopAfterSend)
   }
 }
-

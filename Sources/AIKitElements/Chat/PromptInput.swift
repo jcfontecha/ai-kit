@@ -153,6 +153,15 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
 }
 #endif
 
+// MARK: - Keyboard helpers
+
+#if os(iOS)
+@MainActor
+private func dismissKeyboard() {
+  UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+#endif
+
 #if os(macOS)
 private struct PromptInputMacTextField: NSViewRepresentable {
   @Binding var text: String
@@ -263,6 +272,15 @@ public struct PromptInputField: View {
       .frame(maxWidth: .infinity, alignment: .leading)
       .fixedSize(horizontal: false, vertical: true)
       .disabled(status == .streaming || status == .submitted)
+      #if os(iOS)
+      .onChange(of: status) { _, newValue in
+        // If the input was focused when we started streaming/submitting, UIKit may restore first responder when
+        // the view becomes enabled again. Explicitly dismiss to avoid the keyboard popping back up.
+        if newValue == .streaming || newValue == .submitted {
+          dismissKeyboard()
+        }
+      }
+      #endif
       // Reserve space so multi-line text doesn't flow under the trailing control.
       .padding(.trailing, trailingControlWidth + trailingControlInset)
       .padding(.leading, pillContentLeadingPadding)
@@ -316,6 +334,9 @@ public struct PromptInputField: View {
       Button {
         let msg = text
         text = ""
+        #if os(iOS)
+        dismissKeyboard()
+        #endif
         onSend(msg)
       } label: {
         Image(systemName: "arrow.up")
@@ -553,9 +574,15 @@ private struct ChatComposerModifier: ViewModifier {
   let onAdd: (() -> Void)?
 
   @State private var measuredHeight: CGFloat = 0
+  @State private var isAtLatestForScrollButton: Bool = true
+  @State private var scrollToLatestRequest: Int = 0
 
   func body(content: Content) -> some View {
     let resolvedHeight = height?.wrappedValue ?? measuredHeight
+    // Keep placement deterministic: a fixed gap above the composer.
+    // (Smaller = closer to the prompt input.)
+    let scrollButtonGapAboveComposer: CGFloat = 6
+    let scrollButtonBottomPadding = max(0, resolvedHeight + overlayPadding + scrollButtonGapAboveComposer)
 
     #if os(iOS)
     content
@@ -563,6 +590,10 @@ private struct ChatComposerModifier: ViewModifier {
       .ignoresSafeArea(.container, edges: .bottom)
       .conversationBottomOverlayHeight(resolvedHeight + overlayPadding)
       .conversationShowsScrollToLatestButton(showsScrollToLatestButton)
+      .conversationScrollToLatestRequest($scrollToLatestRequest)
+      .onPreferenceChange(ConversationIsAtLatestForScrollButtonPreferenceKey.self) { newValue in
+        isAtLatestForScrollButton = newValue
+      }
       .safeAreaBar(edge: .bottom) {
         PromptInput(
           text: $text,
@@ -586,10 +617,35 @@ private struct ChatComposerModifier: ViewModifier {
             }
           }
       }
+      .overlay(alignment: .bottom) {
+        // Suppress during `.submitted` to avoid a brief flash while the conversation is pinning + calibrating
+        // reserved tail space immediately after send.
+        if showsScrollToLatestButton, isAtLatestForScrollButton == false, status != .submitted {
+          Button {
+            scrollToLatestRequest += 1
+          } label: {
+            Image(systemName: "arrow.down")
+              .font(.system(size: 13, weight: .semibold))
+              .frame(width: 32, height: 32)
+              .glassEffect(.clear.interactive(), in: .circle)
+              .contentShape(Circle())
+              .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 0)
+          }
+          .buttonStyle(.plain)
+          .padding(.bottom, scrollButtonBottomPadding)
+          .accessibilityLabel("Scroll to latest")
+          .transition(.opacity)
+        }
+      }
+      .animation(.easeInOut(duration: 0.2), value: isAtLatestForScrollButton)
     #else
     content
       .conversationBottomOverlayHeight(resolvedHeight + overlayPadding)
       .conversationShowsScrollToLatestButton(showsScrollToLatestButton)
+      .conversationScrollToLatestRequest($scrollToLatestRequest)
+      .onPreferenceChange(ConversationIsAtLatestForScrollButtonPreferenceKey.self) { newValue in
+        isAtLatestForScrollButton = newValue
+      }
       .safeAreaInset(edge: .bottom) {
         PromptInput(
           text: $text,
@@ -614,6 +670,25 @@ private struct ChatComposerModifier: ViewModifier {
             }
           }
       }
+      .overlay(alignment: .bottom) {
+        if showsScrollToLatestButton, isAtLatestForScrollButton == false, status != .submitted {
+          Button {
+            scrollToLatestRequest += 1
+          } label: {
+            Image(systemName: "arrow.down")
+              .font(.system(size: 13, weight: .semibold))
+              .frame(width: 32, height: 32)
+              .glassEffect(.clear.interactive(), in: .circle)
+              .contentShape(Circle())
+              .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 0)
+          }
+          .buttonStyle(.plain)
+          .padding(.bottom, scrollButtonBottomPadding)
+          .accessibilityLabel("Scroll to latest")
+          .transition(.opacity)
+        }
+      }
+      .animation(.easeInOut(duration: 0.2), value: isAtLatestForScrollButton)
     #endif
   }
 
