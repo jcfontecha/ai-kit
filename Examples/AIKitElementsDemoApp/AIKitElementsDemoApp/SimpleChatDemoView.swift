@@ -16,6 +16,7 @@ struct SimpleChatDemoView: View {
   @State private var text: String = ""
   @State private var attachments: [ChatFilePart] = []
   @State private var isShowingAddSheet: Bool = false
+  @State private var sendTrigger: Int = 0
 
   var body: some View {
     content
@@ -36,7 +37,9 @@ struct SimpleChatDemoView: View {
   @ViewBuilder
   private var content: some View {
     let base = ZStack {
-      Conversation(messages: store.messages, status: store.status)
+      Conversation(messages: store.messages, status: store.status, sendTrigger: sendTrigger)
+        .conversationAnchorsNewUserMessagesToTop(true)
+        .conversationDebugOverlayEnabled(true)
         .assistantMessageToolRenderer("sleep_ms") { context in
           ToolPartReasoningView(
             tool: context.tool,
@@ -67,6 +70,7 @@ struct SimpleChatDemoView: View {
           },
           showsScrollToLatestButton: true,
           onSend: { message in
+            sendTrigger += 1
             store.send(text: message, attachments: attachments)
             attachments.removeAll()
           },
@@ -91,20 +95,6 @@ struct SimpleChatDemoView: View {
           .padding(10)
           .background(Color.red.opacity(0.85))
       }
-    }
-    .overlay(alignment: .topTrailing) {
-      HStack(spacing: 8) {
-        Button("Clear") {
-          store.clear()
-        }
-        .buttonStyle(.bordered)
-
-        if store.status == .streaming || store.status == .submitted {
-          Button("Stop") { store.stop() }
-            .buttonStyle(.borderedProminent)
-        }
-      }
-      .padding(10)
     }
     base
   }
@@ -147,9 +137,11 @@ private struct MockAddSheet: View {
         }
       }
       .navigationTitle("Add")
+#if os(iOS)
       .navigationBarTitleDisplayMode(.inline)
+#endif
       .toolbar {
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItem(placement: .confirmationAction) {
           Button("Done") { dismiss() }
         }
       }

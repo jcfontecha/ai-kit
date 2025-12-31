@@ -6,6 +6,7 @@ This document tracks the SwiftUI `Conversation` parity goals vs `ai-elements`’
 
 - Auto-scroll when at bottom: stream/append messages and confirm the view stays pinned to the bottom.
 - No auto-scroll when not at bottom: scroll up, stream/append messages, confirm scroll position is preserved.
+- Optional "pin new user message to top": enable `conversationAnchorsNewUserMessagesToTop(true)`, send a user message, confirm it scrolls to the top and only switches back to stick-to-bottom once the assistant stream overflows.
 - Resize behavior: change composer height / rotate device / resize macOS window and confirm pinned state behaves correctly.
 - Empty state: with no messages, confirm `ConversationEmptyState` default and customized title/description/icon render correctly.
 - Accessibility: VoiceOver reads messages in a sensible order.

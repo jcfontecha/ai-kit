@@ -1,38 +1,70 @@
 import SwiftUI
 import AIKit
 
-private let conversationBottomSentinelID = "chat-bottom-sentinel"
-private let conversationTopSentinelID = "chat-top-sentinel"
-private let conversationMessagePageSize = 60
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
+private let conversationBottomSentinelID = ConversationScrollConstants.bottomSentinelID
+private let conversationReservedTailSentinelID = ConversationScrollConstants.reservedTailSentinelID
+private let conversationTopSentinelID = ConversationScrollConstants.topSentinelID
+private let conversationMessagePageSize = ConversationScrollConstants.messagePageSize
+private let conversationScrollCoordinateSpaceName = ConversationScrollConstants.scrollCoordinateSpaceName
+
+private struct BottomSentinelMaxYPreferenceKey: PreferenceKey {
+  static let defaultValue: CGFloat = -1
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    let next = nextValue()
+    if next >= 0 {
+      value = next
+    }
+  }
+}
+
+private struct TailSentinelMaxYPreferenceKey: PreferenceKey {
+  static let defaultValue: CGFloat = -1
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    let next = nextValue()
+    if next >= 0 {
+      value = next
+    }
+  }
+}
 
 public struct Conversation<MessageView: View>: View {
   public var messages: [ChatMessage]
   public var status: ChatStatus
+  public var sendTrigger: Int
   @ViewBuilder public var messageView: (ChatMessage) -> MessageView
 
   @Environment(\.chatTheme) private var theme
   @Environment(\.conversationBottomOverlayHeight) private var bottomOverlayHeight
   @Environment(\.conversationShowsScrollButton) private var showsScrollButton
+  @Environment(\.conversationAnchorsNewUserMessagesToTop) private var anchorsNewUserMessagesToTop
+  @Environment(\.conversationDebugOverlayEnabled) private var debugOverlayEnabled
 
-  @State private var visibleCount: Int = conversationMessagePageSize
-  @State private var didPerformInitialScroll: Bool = false
-  @State private var isAtBottom: Bool = true
+  @StateObject private var scrollModel = ConversationScrollViewModel()
   @State private var pendingScrollTask: Task<Void, Never>?
-  @State private var scrollPosition: String? = conversationBottomSentinelID
+  @State private var pendingTailUpdateTask: Task<Void, Never>?
+  @State private var didCopyDebugState: Bool = false
 
-  private let extraBottomPadding: CGFloat = 0
   private let bottomInsetAnimation: Animation = .easeOut(duration: 0.18)
   private let scrollAnimation: Animation = .easeOut(duration: 0.20)
   private let streamingScrollAnimation: Animation = .easeOut(duration: 0.10)
   private let streamingScrollThrottleNanoseconds: UInt64 = 50_000_000
+  private let tailUpdateThrottleNanoseconds: UInt64 = 50_000_000
 
   public init(
     messages: [ChatMessage],
     status: ChatStatus = .ready,
+    sendTrigger: Int = 0,
     @ViewBuilder messageView: @escaping (ChatMessage) -> MessageView
   ) {
     self.messages = messages
     self.status = status
+    self.sendTrigger = sendTrigger
     self.messageView = messageView
   }
 
@@ -40,7 +72,15 @@ public struct Conversation<MessageView: View>: View {
     messages: [ChatMessage],
     status: ChatStatus = .ready
   ) where MessageView == AnyView {
-    self.init(messages: messages, status: status) { message in
+    self.init(messages: messages, status: status, sendTrigger: 0)
+  }
+
+  public init(
+    messages: [ChatMessage],
+    status: ChatStatus = .ready,
+    sendTrigger: Int = 0
+  ) where MessageView == AnyView {
+    self.init(messages: messages, status: status, sendTrigger: sendTrigger) { message in
       AnyView(Self.defaultMessageView(message: message))
     }
   }
@@ -49,68 +89,138 @@ public struct Conversation<MessageView: View>: View {
     ScrollViewReader { proxy in
       ScrollView {
         VStack(alignment: .leading, spacing: theme.spacing.messageRow) {
-          if shouldShowLoadMoreSentinel {
+          if scrollModel.shouldShowLoadMoreSentinel(displayMessages: displayMessages) {
             Color.clear
               .frame(height: 1)
               .id(conversationTopSentinelID)
               .onAppear {
-                loadOlderMessages(with: proxy)
+                let steps = scrollModel.handleLoadOlderMessages(
+                  displayMessages: displayMessages,
+                  currentFirstVisibleID: scrollModel.visibleMessages(displayMessages: displayMessages).first?.id
+                )
+                executeScrollSteps(steps, proxy: proxy)
               }
           }
 
-          ForEach(Array(visibleMessages)) { message in
-            messageView(message)
-              .id(message.id)
+          ForEach(Array(scrollModel.visibleMessages(displayMessages: displayMessages))) { message in
+            if scrollModel.shouldMeasureMessageHeights {
+              messageView(message)
+                .id(message.id)
+                .background(measureHeight(id: message.id))
+            } else {
+              messageView(message)
+                .id(message.id)
+            }
           }
 
-          Color.clear
-            .frame(height: bottomInset)
-            .animation(bottomInsetAnimation, value: bottomInset)
-            .id(conversationBottomSentinelID)
+          bottomSentinelView
+
+          if scrollModel.reservedTailSpace > 0 {
+            // Tail spacer creates scroll range so the newest user message can be pinned to the top.
+            Color.clear
+              .frame(height: scrollModel.reservedTailSpace)
+              .animation(bottomInsetAnimation, value: scrollModel.reservedTailSpace)
+
+            // A 1pt sentinel at the very end so "at bottom" detection isn't delayed by the spacer height.
+            Color.clear
+              .frame(height: 1)
+              .background {
+                GeometryReader { proxy in
+                  Color.clear.preference(
+                    key: TailSentinelMaxYPreferenceKey.self,
+                    value: proxy.frame(in: .named(conversationScrollCoordinateSpaceName)).maxY
+                  )
+                }
+              }
+              .id(conversationReservedTailSentinelID)
+              .onAppear {
+                scrollModel.updateTailSentinelVisibility(isVisible: true)
+              }
+              .onDisappear {
+                scrollModel.updateTailSentinelVisibility(isVisible: false)
+              }
+          }
         }
         .padding(theme.spacing.contentPadding)
         .scrollTargetLayout()
       }
-      .scrollPosition(id: $scrollPosition, anchor: .bottom)
+      .coordinateSpace(name: conversationScrollCoordinateSpaceName)
+      .onPreferenceChange(MessageHeightsPreferenceKey.self) { heights in
+        scrollModel.ingestMessageHeights(heights)
+        scheduleTailUpdate(proxy: proxy)
+      }
+      .onPreferenceChange(BottomSentinelMaxYPreferenceKey.self) { maxY in
+        scrollModel.updateBottomSentinelMaxY(maxY)
+      }
+      .onPreferenceChange(TailSentinelMaxYPreferenceKey.self) { maxY in
+        scrollModel.updateTailSentinelMaxY(maxY)
+      }
+      .background {
+        GeometryReader { geo in
+          Color.clear
+            .onAppear {
+              guard shouldMeasureViewport else { return }
+              scrollModel.updateViewportHeightIfNeeded(geo.size.height)
+            }
+            .onChange(of: geo.size.height) { _, newHeight in
+              guard shouldMeasureViewport else { return }
+              scrollModel.updateViewportHeightIfNeeded(newHeight)
+            }
+        }
+      }
+      .scrollPosition(id: $scrollModel.scrollPosition, anchor: scrollAnchor)
       .modifier(ScrollEdgeEffectCompat())
-      .defaultScrollAnchor(.bottom)
+      .defaultScrollAnchor(scrollAnchor)
       #if os(iOS)
       .modifier(ScrollDismissesKeyboardCompat())
       #endif
       .onAppear {
-        syncVisibleCountWithMessages()
-        scrollToBottom(proxy, animated: false)
-        scrollPosition = conversationBottomSentinelID
-        didPerformInitialScroll = true
+        scrollModel.updateBottomOverlayHeight(bottomOverlayHeight)
+        let steps = scrollModel.handleOnAppear(displayMessages: displayMessages)
+        executeScrollSteps(steps, proxy: proxy)
       }
-      .onChange(of: scrollPosition) {
-        isAtBottom = scrollPosition == conversationBottomSentinelID
+      .onChange(of: bottomOverlayHeight) { _, newValue in
+        scrollModel.updateBottomOverlayHeight(newValue)
+        let steps = scrollModel.handleBottomInsetChange()
+        executeScrollSteps(steps, proxy: proxy)
       }
-      .onChange(of: messages.count) {
-        syncVisibleCountWithMessages()
-        guard didPerformInitialScroll else { return }
-        guard isAtBottom else { return }
-        scrollToBottom(proxy, animated: true, animation: scrollAnimation)
+      .onChange(of: sendTrigger) { _, _ in
+        guard anchorsNewUserMessagesToTop else { return }
+
+        withAnimation(bottomInsetAnimation) {
+          scrollModel.handleSendTrigger(displayMessages: displayMessages)
+        }
+      }
+      .onChange(of: messages.count) { _, _ in
+        let steps = scrollModel.handleMessagesCountChange(displayMessages: displayMessages)
+        executeScrollSteps(steps, proxy: proxy)
+        scheduleTailUpdate(proxy: proxy)
       }
       .onChange(of: messages) {
         guard status == .streaming else { return }
-        guard isAtBottom else { return }
-        requestStreamingScroll(proxy)
+
+        if scrollModel.scrollMode == .followBottom, scrollModel.isAtBottom {
+          requestStreamingScroll(proxy)
+        }
+
+        scheduleTailUpdate(proxy: proxy)
       }
-      .onChange(of: status) {
-        let newStatus = status
+      .onChange(of: status) { oldStatus, newStatus in
+        let steps = scrollModel.handleStatusChange(old: oldStatus, new: newStatus)
+        executeScrollSteps(steps, proxy: proxy)
+
         guard newStatus == .streaming else { return }
-        guard isAtBottom else { return }
-        requestStreamingScroll(proxy)
-      }
-      .onChange(of: bottomInset) {
-        guard isAtBottom else { return }
-        scrollToBottom(proxy, animated: true, animation: scrollAnimation)
+        if scrollModel.scrollMode == .followBottom, scrollModel.isAtBottom {
+          requestStreamingScroll(proxy)
+        } else {
+          scheduleTailUpdate(proxy: proxy)
+        }
       }
       .overlay(alignment: .bottom) {
-        if showsScrollButton, isAtBottom == false {
+        if showsScrollButton, scrollModel.isAtLatestForScrollButton == false {
           Button {
-            scrollToBottom(proxy, animated: true, animation: scrollAnimation)
+            let steps = scrollModel.handleScrollToLatestButtonTapped()
+            executeScrollSteps(steps, proxy: proxy, forceAnimation: scrollAnimation)
           } label: {
             Image(systemName: "arrow.down")
               .font(.system(size: 13, weight: .semibold))
@@ -126,12 +236,65 @@ public struct Conversation<MessageView: View>: View {
           .transition(.opacity)
         }
       }
-      .animation(.easeInOut(duration: 0.2), value: isAtBottom)
+      #if DEBUG
+      .overlay(alignment: .topTrailing) {
+        if debugOverlayEnabled {
+          debugOverlayButton
+        }
+      }
+      #endif
+      .animation(.easeInOut(duration: 0.2), value: scrollModel.isAtLatestForScrollButton)
     }
   }
 
   private var bottomInset: CGFloat {
-    max(1, extraBottomPadding + bottomOverlayHeight)
+    scrollModel.bottomInset
+  }
+
+  private var scrollAnchor: UnitPoint {
+    switch scrollModel.scrollMode {
+    case .followBottom:
+      return .bottom
+    case .pinUserMessageToTop(_):
+      return .top
+    }
+  }
+
+  private var shouldMeasureViewport: Bool {
+    anchorsNewUserMessagesToTop
+      || scrollModel.reservedTailSpace > 0
+      || scrollModel.pendingPinToTopAfterSend
+      || scrollModel.scrollMode != .followBottom
+      || showsScrollButton
+      || debugOverlayEnabled
+  }
+
+  private var bottomSentinelView: some View {
+    VStack(spacing: 0) {
+      // Bottom inset creates space above any bottom overlay (e.g. the prompt input).
+      Color.clear
+        .frame(height: bottomInset)
+        .animation(bottomInsetAnimation, value: bottomInset)
+
+      // A 1pt sentinel at the very end so "at bottom" detection isn't delayed by the inset height.
+      Color.clear
+        .frame(height: 1)
+        .background {
+          GeometryReader { proxy in
+            Color.clear.preference(
+              key: BottomSentinelMaxYPreferenceKey.self,
+              value: proxy.frame(in: .named(conversationScrollCoordinateSpaceName)).maxY
+            )
+          }
+        }
+        .id(conversationBottomSentinelID)
+        .onAppear {
+          scrollModel.updateBottomSentinelVisibility(isVisible: true)
+        }
+        .onDisappear {
+          scrollModel.updateBottomSentinelVisibility(isVisible: false)
+        }
+    }
   }
 
   private var scrollToLatestButtonBottomMargin: CGFloat {
@@ -142,52 +305,10 @@ public struct Conversation<MessageView: View>: View {
     messages.filter { $0.role != .system }
   }
 
-  private var resolvedVisibleCount: Int {
-    guard displayMessages.isEmpty == false else { return 0 }
-    let baseline = min(conversationMessagePageSize, displayMessages.count)
-    let desired = max(visibleCount, baseline)
-    return min(desired, displayMessages.count)
-  }
-
-  private var visibleMessages: ArraySlice<ChatMessage> {
-    displayMessages.suffix(resolvedVisibleCount)
-  }
-
-  private var shouldShowLoadMoreSentinel: Bool {
-    resolvedVisibleCount < displayMessages.count
-  }
-
-  private func syncVisibleCountWithMessages() {
-    guard displayMessages.isEmpty == false else {
-      if visibleCount != 0 {
-        visibleCount = 0
-      }
-      didPerformInitialScroll = false
-      return
-    }
-
-    let baseline = min(conversationMessagePageSize, displayMessages.count)
-    if visibleCount < baseline {
-      visibleCount = baseline
-    } else if visibleCount > displayMessages.count {
-      visibleCount = displayMessages.count
-    }
-  }
-
-  private func loadOlderMessages(with proxy: ScrollViewProxy) {
-    guard didPerformInitialScroll else { return }
-    guard visibleCount < displayMessages.count else { return }
-
-    let currentFirstID = visibleMessages.first?.id
-    let newCount = min(displayMessages.count, visibleCount + conversationMessagePageSize)
-    guard newCount != visibleCount else { return }
-
-    visibleCount = newCount
-
-    if let currentFirstID {
-      DispatchQueue.main.async {
-        proxy.scrollTo(currentFirstID, anchor: .top)
-      }
+  private func measureHeight(id: String) -> some View {
+    GeometryReader { proxy in
+      Color.clear
+        .preference(key: MessageHeightsPreferenceKey.self, value: [id: proxy.size.height])
     }
   }
 
@@ -196,35 +317,161 @@ public struct Conversation<MessageView: View>: View {
     pendingScrollTask = Task { @MainActor in
       defer { pendingScrollTask = nil }
       try? await Task.sleep(nanoseconds: streamingScrollThrottleNanoseconds)
-      guard isAtBottom else { return }
-      scrollToBottom(proxy, animated: true, animation: streamingScrollAnimation)
+      guard scrollModel.scrollMode == .followBottom, scrollModel.isAtBottom else { return }
+      executeScrollSteps(
+        [.scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true)],
+        proxy: proxy,
+        forceAnimation: streamingScrollAnimation
+      )
     }
   }
 
-  private func scrollToBottom(
-    _ proxy: ScrollViewProxy,
-    animated: Bool,
-    animation: Animation = .easeOut(duration: 0.2)
-  ) {
-    let targetID: String
-    if bottomInset > 0 {
-      targetID = conversationBottomSentinelID
-    } else if let lastID = displayMessages.last?.id {
-      targetID = lastID
-    } else {
-      targetID = conversationBottomSentinelID
-    }
+  private func scheduleTailUpdate(proxy: ScrollViewProxy) {
+    guard scrollModel.reservedTailBaseline > 0 else { return }
+    guard scrollModel.pinnedUserMessageID != nil else { return }
+    guard pendingTailUpdateTask == nil else { return }
 
-    if animated {
-      withAnimation(animation) {
-        scrollPosition = targetID
-        proxy.scrollTo(targetID, anchor: .bottom)
+    pendingTailUpdateTask = Task { @MainActor in
+      defer { pendingTailUpdateTask = nil }
+      try? await Task.sleep(nanoseconds: tailUpdateThrottleNanoseconds)
+      var steps: [ConversationScrollEngine.Step] = []
+      withAnimation(bottomInsetAnimation) {
+        steps = scrollModel.computeTailUpdate()
       }
-    } else {
-      scrollPosition = targetID
-      proxy.scrollTo(targetID, anchor: .bottom)
+      executeScrollSteps(steps, proxy: proxy, forceAnimation: streamingScrollAnimation)
     }
   }
+
+  private func executeScrollSteps(
+    _ steps: [ConversationScrollEngine.Step],
+    proxy: ScrollViewProxy,
+    forceAnimation: Animation? = nil
+  ) {
+    guard steps.isEmpty == false else { return }
+
+    Task { @MainActor in
+      for step in steps {
+        switch step {
+        case .yield:
+          await Task.yield()
+
+        case .setMode(let mode):
+          switch mode {
+          case .followBottom:
+            scrollModel.scrollMode = .followBottom
+          case .pinUserMessageToTop(let messageID):
+            scrollModel.scrollMode = .pinUserMessageToTop(messageID: messageID)
+            scrollModel.isAtBottom = false
+          }
+
+        case .scrollTo(let target, let anchor, let animated):
+          let id: String
+          switch target {
+          case .bottomSentinel:
+            id = conversationBottomSentinelID
+          case .reservedTailSentinel:
+            id = conversationReservedTailSentinelID
+          case .message(let messageID):
+            id = messageID
+          }
+
+          let unitAnchor: UnitPoint = (anchor == .top) ? .top : .bottom
+
+          let animation = forceAnimation ?? scrollAnimation
+          if animated {
+            withAnimation(animation) {
+              scrollModel.scrollPosition = id
+              proxy.scrollTo(id, anchor: unitAnchor)
+            }
+          } else {
+            scrollModel.scrollPosition = id
+            proxy.scrollTo(id, anchor: unitAnchor)
+          }
+
+        case .reassertPinnedUserMessageIfNeeded(let messageID):
+          if scrollModel.reservedTailSpace > 0,
+             scrollModel.tailSentinelMaxY >= 0,
+             ConversationScrollEngine.computeIsAtLatest(maxY: scrollModel.tailSentinelMaxY, viewportHeight: scrollModel.viewportHeight) == false {
+            withAnimation(scrollAnimation) {
+              scrollModel.scrollPosition = messageID
+              proxy.scrollTo(messageID, anchor: .top)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  #if DEBUG
+  private var debugOverlayButton: some View {
+    Button {
+      copyConversationDebugStateToPasteboard()
+    } label: {
+      HStack(spacing: 8) {
+        Text("DBG")
+          .font(.system(size: 12, weight: .semibold, design: .monospaced))
+        Text(didCopyDebugState ? "Copied" : "Copy state")
+          .font(.system(size: 12, weight: .regular))
+      }
+      .padding(.horizontal, 10)
+      .padding(.vertical, 8)
+      .glassEffect(.clear.interactive(), in: .capsule)
+      .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 2)
+    }
+    .buttonStyle(.plain)
+    .padding(.trailing, 10)
+    .padding(.top, 10)
+  }
+
+  private func copyConversationDebugStateToPasteboard() {
+    let text = debugStateString()
+
+    #if canImport(UIKit)
+    UIPasteboard.general.string = text
+    #elseif canImport(AppKit)
+    let pb = NSPasteboard.general
+    pb.clearContents()
+    pb.setString(text, forType: .string)
+    #endif
+
+    didCopyDebugState = true
+    Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 900_000_000)
+      didCopyDebugState = false
+    }
+  }
+
+  private func debugStateString() -> String {
+    let pinned = scrollModel.pinnedUserMessageID ?? "nil"
+
+    return [
+      "AIKitElements.Conversation debug",
+      "status=\(status)",
+      "scrollMode=\(scrollModel.scrollMode)",
+      "isAtBottom=\(scrollModel.isAtBottom)",
+      "scrollPosition=\(scrollModel.scrollPosition ?? "nil")",
+      "viewportHeight=\(String(format: "%.1f", scrollModel.viewportHeight))",
+      "bottomInset=\(String(format: "%.1f", bottomInset))",
+      "reservedTailSpace=\(String(format: "%.1f", scrollModel.reservedTailSpace))",
+      "reservedTailBaseline=\(String(format: "%.1f", scrollModel.reservedTailBaseline))",
+      "bottomSentinelIsVisible=\(scrollModel.bottomSentinelIsVisible)",
+      "tailSentinelIsVisible=\(scrollModel.tailSentinelIsVisible)",
+      "bottomSentinelMaxY=\(String(format: "%.1f", scrollModel.bottomSentinelMaxY))",
+      "tailSentinelMaxY=\(String(format: "%.1f", scrollModel.tailSentinelMaxY))",
+      "bottomSentinelDelta=\(String(format: "%.1f", scrollModel.bottomSentinelMaxY - scrollModel.viewportHeight))",
+      "tailSentinelDelta=\(String(format: "%.1f", scrollModel.tailSentinelMaxY - scrollModel.viewportHeight))",
+      "isAtLatestForScrollButton=\(scrollModel.isAtLatestForScrollButton)",
+      "pendingPinToTopAfterSend=\(scrollModel.pendingPinToTopAfterSend)",
+      "pinnedUserMessageID=\(pinned)",
+      "displayMessages.count=\(displayMessages.count)",
+      "visibleMessages.count=\(scrollModel.visibleMessages(displayMessages: displayMessages).count)",
+      "knownDisplayMessageIDs.count=\(scrollModel.knownDisplayMessageIDs.count)",
+      "preSendDisplayMessageIDs.count=\(scrollModel.preSendDisplayMessageIDs.count)",
+      "postSendDisplayMessageIDs.count=\(scrollModel.postSendDisplayMessageIDs.count)",
+      "messageHeights.count=\(scrollModel.messageHeights.count)",
+    ].joined(separator: "\n")
+  }
+  #endif
 
   @ViewBuilder
   private static func defaultMessageView(message: ChatMessage) -> some View {
@@ -286,6 +533,14 @@ public struct Conversation<MessageView: View>: View {
       guard case let .file(file) = part else { return nil }
       return file
     }
+  }
+}
+
+private enum MessageHeightsPreferenceKey: PreferenceKey {
+  static var defaultValue: [String: CGFloat] { [:] }
+
+  static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+    value.merge(nextValue(), uniquingKeysWith: { _, new in new })
   }
 }
 
