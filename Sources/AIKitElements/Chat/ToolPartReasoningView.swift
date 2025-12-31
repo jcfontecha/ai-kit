@@ -8,22 +8,34 @@ public struct ToolPartReasoningView: View {
   public var sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)?
   public var statusStrings: ToolStatusStrings?
   public var contentRenderer: ToolPartContentRenderer?
+  public var open: Binding<Bool>?
+  public var defaultOpen: Bool
+  public var onOpenChange: ((_ open: Bool) -> Void)?
 
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.chatTheme) private var chatTheme
+
+  @State private var isOpenState: Bool
 
   public init(
     tool: ChatToolPart,
     icon: Image = Image(systemName: "wrench.and.screwdriver"),
     sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
     statusStrings: ToolStatusStrings? = nil,
-    contentRenderer: ToolPartContentRenderer? = nil
+    contentRenderer: ToolPartContentRenderer? = nil,
+    open: Binding<Bool>? = nil,
+    defaultOpen: Bool = false,
+    onOpenChange: ((_ open: Bool) -> Void)? = nil
   ) {
     self.tool = tool
     self.icon = icon
     self.sendApproval = sendApproval
     self.statusStrings = statusStrings
     self.contentRenderer = contentRenderer
+    self.open = open
+    self.defaultOpen = defaultOpen
+    self.onOpenChange = onOpenChange
+    self._isOpenState = State(initialValue: open?.wrappedValue ?? defaultOpen)
   }
 
   public init<Content: View>(
@@ -31,6 +43,9 @@ public struct ToolPartReasoningView: View {
     icon: Image = Image(systemName: "wrench.and.screwdriver"),
     sendApproval: ((_ approved: Bool, _ reason: String?) -> Void)? = nil,
     statusStrings: ToolStatusStrings? = nil,
+    open: Binding<Bool>? = nil,
+    defaultOpen: Bool = false,
+    onOpenChange: ((_ open: Bool) -> Void)? = nil,
     @ViewBuilder content: @escaping (_ context: ToolPartContentContext) -> Content
   ) {
     self.init(
@@ -38,14 +53,17 @@ public struct ToolPartReasoningView: View {
       icon: icon,
       sendApproval: sendApproval,
       statusStrings: statusStrings,
-      contentRenderer: { context in AnyView(content(context)) }
+      contentRenderer: { context in AnyView(content(context)) },
+      open: open,
+      defaultOpen: defaultOpen,
+      onOpenChange: onOpenChange
     )
   }
 
   public var body: some View {
     let resolvedStatusStrings = statusStrings ?? chatTheme.tool.defaultStatusStrings
 
-    DisclosureGroup {
+    DisclosureGroup(isExpanded: isExpandedBinding) {
       if let contentRenderer {
         contentRenderer(.init(tool: tool, sendApproval: sendApproval, statusStrings: resolvedStatusStrings))
           .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,6 +84,20 @@ public struct ToolPartReasoningView: View {
       .contentShape(Rectangle())
     }
     .tint(.secondary)
+  }
+
+  private var resolvedIsOpen: Bool { open?.wrappedValue ?? isOpenState }
+  private var isExpandedBinding: Binding<Bool> {
+    Binding(
+      get: { resolvedIsOpen },
+      set: { setOpen($0) }
+    )
+  }
+
+  private func setOpen(_ open: Bool) {
+    self.open?.wrappedValue = open
+    isOpenState = open
+    onOpenChange?(open)
   }
 
   @ViewBuilder
