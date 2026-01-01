@@ -5,15 +5,18 @@ public struct AssistantMarkdownStyle: Sendable {
   public var lineSpacingEm: Double
   public var paragraphSpacingEm: Double
   public var listItemSpacingEm: Double
+  public var contentPadding: CGFloat
 
   public init(
-    lineSpacingEm: Double = 0.26,
+    lineSpacingEm: Double = 0.34,
     paragraphSpacingEm: Double = 0.6,
-    listItemSpacingEm: Double = 0.35
+    listItemSpacingEm: Double = 0.35,
+    contentPadding: CGFloat = 2
   ) {
     self.lineSpacingEm = lineSpacingEm
     self.paragraphSpacingEm = paragraphSpacingEm
     self.listItemSpacingEm = listItemSpacingEm
+    self.contentPadding = contentPadding
   }
 }
 
@@ -44,6 +47,7 @@ public struct AssistantMarkdown: View {
           .relativeLineSpacing(.em(style.lineSpacingEm))
           .markdownMargin(top: .zero, bottom: .em(style.listItemSpacingEm))
       }
+      .padding(style.contentPadding)
 
     if isSecondary {
       view.markdownTextStyle { ForegroundColor(.secondary) }

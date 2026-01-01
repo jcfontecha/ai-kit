@@ -35,6 +35,69 @@ enum DemoContent {
     ]
   }
 
+  nonisolated static var performanceMessages: [ChatMessage] {
+    var messages: [ChatMessage] = []
+    let toolNames = ["search_web", "fetch_weather", "summarize", "classify_intent"]
+
+    for index in 0..<36 {
+      let userID = "demo.perf.user.\(index)"
+      let assistantID = "demo.perf.assistant.\(index)"
+      let toolBaseID = "demo.perf.tool.\(index)"
+      messages.append(ChatMessage(
+        id: userID,
+        role: .user,
+        parts: [
+          .text(.init(
+            id: "\(userID).text",
+            text: "User message \(index + 1): Can you check status \(index + 1)?",
+            state: .done
+          )),
+        ]
+      ))
+
+      var assistantParts: [ChatMessagePart] = [
+        .text(.init(
+          id: "\(assistantID).text",
+          text: "Working on that. I’ll call a few tools and then summarize.",
+          state: .done
+        )),
+      ]
+
+      for toolIndex in 0..<3 {
+        let toolName = toolNames[(index + toolIndex) % toolNames.count]
+        let toolCallID = "\(toolBaseID).\(toolIndex)"
+        let input: JSONValue = .object([
+          "query": .string("status \(index + 1) step \(toolIndex + 1)"),
+          "limit": .number(Double(3 + toolIndex)),
+        ])
+        let output: JSONValue = .object([
+          "ok": .bool(true),
+          "result": .string("Result \(toolIndex + 1) for item \(index + 1)")
+        ])
+        let state: ChatToolPart.State = toolIndex == 2
+          ? .outputAvailable(preliminary: false)
+          : .inputAvailable
+
+        assistantParts.append(.tool(.init(
+          toolCallID: toolCallID,
+          toolName: toolName,
+          title: toolName.replacingOccurrences(of: "_", with: " ").capitalized,
+          input: input,
+          output: toolIndex == 2 ? output : nil,
+          state: state
+        )))
+      }
+
+      messages.append(ChatMessage(
+        id: assistantID,
+        role: .assistant,
+        parts: assistantParts
+      ))
+    }
+
+    return messages
+  }
+
   nonisolated private static let animalCrossingP1: String = """
   Animal Crossing is at its best when you treat it like a tiny daily ritual instead of a game you “finish.” You check in, water a few flowers, talk to your neighbors, and do a lap around the island to see what changed overnight. The pace is intentionally gentle, and the fun comes from noticing small details—seasonal lighting, shop stock, a surprise visit from a villager, or a new message in the mailbox—rather than chasing a single objective. It’s the kind of game that rewards slowing down.
   """

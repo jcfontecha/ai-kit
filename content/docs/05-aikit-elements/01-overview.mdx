@@ -54,6 +54,17 @@ struct ChatView: View {
 }
 ```
 
+### Composer note
+
+`chatComposer(...)` is the recommended (and most reliable) way to attach a composer to `Conversation`.
+It automatically:
+
+- Reserves the correct bottom inset so the last message doesn’t render under the composer
+- Wires up the built-in “scroll to latest” down-arrow button
+
+If you render your own composer bar instead of using `chatComposer(...)`, you must provide the bottom inset yourself via
+`conversationBottomOverlayHeight(...)`, and you should provide your own “scroll to latest” affordance.
+
 ## AssistantMessage
 
 `AssistantMessage` renders interleaved parts (text, reasoning, tools, sources, files).

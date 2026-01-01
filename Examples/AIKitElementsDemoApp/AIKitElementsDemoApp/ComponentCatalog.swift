@@ -63,6 +63,9 @@ enum ComponentCatalog {
         .init(id: "conversation/basic", title: "Basic", description: "Message list with a floating scroll-to-bottom control") {
           AnyView(ConversationDemoView())
         },
+        .init(id: "conversation/perf", title: "Performance", description: "Stress-test with many messages + tool calls") {
+          AnyView(ConversationPerfDemoView())
+        },
       ]
     ),
     .init(
