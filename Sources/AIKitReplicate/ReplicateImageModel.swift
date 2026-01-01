@@ -56,14 +56,17 @@ struct ReplicateImageModel: ImageModel, Sendable {
         // google/nano-banana expects: image_input: [uri...]
         imageInputs["image_input"] = .array(try files.map { .string(try convertFileToDataURI($0)) })
       } else if isFlux2Model {
-        // black-forest-labs/flux-2-* expects: input_images: [uri...], max 5
-        let maxCount = 5
+        // black-forest-labs/flux-2-* expects: input_image, input_image_2... (max 8)
+        let maxCount = 8
         let capped = Array(files.prefix(maxCount))
-        imageInputs["input_images"] = .array(try capped.map { .string(try convertFileToDataURI($0)) })
+        for (idx, file) in capped.enumerated() {
+          let key = idx == 0 ? "input_image" : "input_image_\(idx + 1)"
+          imageInputs[key] = .string(try convertFileToDataURI(file))
+        }
         if files.count > maxCount {
           warnings.append(
             .init(
-              message: "Flux-2 models support up to 5 input images. Additional images are ignored.",
+              message: "Flux-2 models support up to 8 input images. Additional images are ignored.",
               code: "other"
             )
           )

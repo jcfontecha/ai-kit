@@ -59,7 +59,7 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
       context.coordinator.updateHeight(for: uiView)
     }
 
-    if focusRequestID != context.coordinator.lastFocusRequestID {
+    if focusRequestID > 0, focusRequestID != context.coordinator.lastFocusRequestID {
       context.coordinator.lastFocusRequestID = focusRequestID
       DispatchQueue.main.async {
         guard uiView.window != nil else { return }
@@ -86,7 +86,7 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
     @Binding private var measuredHeight: CGFloat
     let onPasteImages: (([UIImage]) -> Void)?
     var lastProposedWidth: CGFloat = 0
-    var lastFocusRequestID: Int = -1
+    var lastFocusRequestID: Int = 0
 
     init(
       text: Binding<String>,
@@ -211,7 +211,7 @@ private struct PromptInputMacTextField: NSViewRepresentable {
       nsView.stringValue = text
     }
 
-    if focusRequestID != context.coordinator.lastFocusRequestID {
+    if focusRequestID > 0, focusRequestID != context.coordinator.lastFocusRequestID {
       context.coordinator.lastFocusRequestID = focusRequestID
       DispatchQueue.main.async {
         guard nsView.window != nil else { return }
@@ -223,7 +223,7 @@ private struct PromptInputMacTextField: NSViewRepresentable {
   final class Coordinator: NSObject, NSTextFieldDelegate {
     @Binding private var text: String
     let onPasteImages: (([NSImage]) -> Void)?
-    var lastFocusRequestID: Int = -1
+    var lastFocusRequestID: Int = 0
 
     init(text: Binding<String>, onPasteImages: (([NSImage]) -> Void)?) {
       self._text = text

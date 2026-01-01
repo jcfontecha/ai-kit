@@ -14,12 +14,19 @@ final class OpenRouterChatStore: ObservableObject {
     var errorDescription: String?
   }
 
-  @Published var snapshot: Snapshot = .init(status: .ready, messages: [], errorDescription: nil)
+  @Published var snapshot: Snapshot
+
+  private let initialMessages: [ChatMessage]
 
   private var chat: ChatStore?
   private var chatUpdates: AnyCancellable?
   private var configuredKey: String = ""
   private var configuredModelID: String = ""
+
+  init(initialMessages: [ChatMessage] = DemoContent.initialMessages) {
+    self.initialMessages = initialMessages
+    self.snapshot = .init(status: .ready, messages: initialMessages, errorDescription: nil)
+  }
 
   var messages: [ChatMessage] { snapshot.messages }
   var status: ChatStatus { snapshot.status }
@@ -37,7 +44,7 @@ final class OpenRouterChatStore: ObservableObject {
       configuredModelID = ""
       snapshot = .init(
         status: .ready,
-        messages: DemoContent.initialMessages,
+        messages: initialMessages,
         errorDescription: apiKey.isEmpty ? "Set an OpenRouter API key in Settings to use this demo." : "Set a model ID in Settings."
       )
       return
@@ -58,7 +65,7 @@ final class OpenRouterChatStore: ObservableObject {
     let chat = ChatStore(
       model: model,
       tools: demoTools(),
-      initialMessages: DemoContent.initialMessages
+      initialMessages: initialMessages
     )
     self.chat = chat
     snapshot = .init(status: chat.status, messages: chat.messages, errorDescription: chat.errorDescription)

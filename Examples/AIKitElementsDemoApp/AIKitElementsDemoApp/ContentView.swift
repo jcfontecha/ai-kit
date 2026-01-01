@@ -24,6 +24,15 @@ struct ContentView: View {
                         }
                     }
 
+                    NavigationLink(value: "demo/fresh-chat") {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Fresh Chat Demo")
+                            Text("Live OpenRouter chat (no initial messages)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     NavigationLink(value: "settings/openrouter") {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Settings")
@@ -65,6 +74,15 @@ struct ContentView: View {
                 #else
                 SimpleChatDemoView()
                     .navigationTitle("Chat Demo")
+                #endif
+            } else if selection == "demo/fresh-chat" {
+                #if os(iOS)
+                FreshChatDemoView()
+                    .navigationTitle("Fresh Chat Demo")
+                    .navigationBarTitleDisplayMode(.inline)
+                #else
+                FreshChatDemoView()
+                    .navigationTitle("Fresh Chat Demo")
                 #endif
             } else if selection == "settings/openrouter" {
                 #if os(iOS)
