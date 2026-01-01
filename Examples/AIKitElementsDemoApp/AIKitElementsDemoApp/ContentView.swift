@@ -33,6 +33,15 @@ struct ContentView: View {
                         }
                     }
 
+                    NavigationLink(value: "demo/chat-sheet") {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Chat Sheet Demo")
+                            Text("Chat embedded in a resizable sheet")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     NavigationLink(value: "settings/openrouter") {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Settings")
@@ -83,6 +92,15 @@ struct ContentView: View {
                 #else
                 FreshChatDemoView()
                     .navigationTitle("Fresh Chat Demo")
+                #endif
+            } else if selection == "demo/chat-sheet" {
+                #if os(iOS)
+                ChatSheetDemoView()
+                    .navigationTitle("Chat Sheet Demo")
+                    .navigationBarTitleDisplayMode(.inline)
+                #else
+                ChatSheetDemoView()
+                    .navigationTitle("Chat Sheet Demo")
                 #endif
             } else if selection == "settings/openrouter" {
                 #if os(iOS)
