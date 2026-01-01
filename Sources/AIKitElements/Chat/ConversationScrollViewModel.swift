@@ -156,7 +156,13 @@ final class ConversationScrollViewModel: ObservableObject {
     postSendDisplayMessageIDs = []
     messageHeights = [:]
 
-    reservedTailSpace = reserveTailSpaceForSend(viewportHeight: maxViewportHeightSinceAppear)
+    // Prefer the current viewport height when reserving tail space.
+    //
+    // In resizable presentations (e.g. sheet detents), `maxViewportHeightSinceAppear` can reflect a larger
+    // detent than the user is currently at, which can cause the initial reserved tail estimate to overshoot
+    // and briefly scroll the new user message off-screen.
+    let effectiveViewportHeight = viewportHeight > 0 ? viewportHeight : maxViewportHeightSinceAppear
+    reservedTailSpace = reserveTailSpaceForSend(viewportHeight: effectiveViewportHeight)
     reservedTailBaseline = reservedTailSpace
 
     // Defer actual scrolling until we see the new message inserted.

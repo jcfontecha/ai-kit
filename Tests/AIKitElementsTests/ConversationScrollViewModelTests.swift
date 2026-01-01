@@ -48,4 +48,27 @@ final class ConversationScrollViewModelTests: XCTestCase {
       ConversationScrollEngine.planForSendAnchoring(userMessageID: "u-2", hasReservedTailSpace: true).steps
     )
   }
+
+  func testSendTrigger_usesCurrentViewportHeight_notMaxViewportHeightSinceAppear() {
+    let model = ConversationScrollViewModel()
+
+    let before: [ChatMessage] = [
+      .init(id: "u-1", role: .user, parts: [.text(.init(id: "t1", text: "hi", state: .done))]),
+      .init(id: "a-1", role: .assistant, parts: [.text(.init(id: "t2", text: "hello", state: .done))]),
+    ]
+
+    _ = model.handleOnAppear(displayMessages: before)
+
+    // Simulate a sheet that was previously at a larger detent, then shrank.
+    model.updateViewportHeightIfNeeded(920)
+    model.updateViewportHeightIfNeeded(520)
+
+    XCTAssertEqual(model.viewportHeight, 520)
+    XCTAssertEqual(model.maxViewportHeightSinceAppear, 920)
+
+    model.handleSendTrigger(displayMessages: before)
+
+    // Reserved tail should match the current viewport (≈495 with default inset tuning), not the prior max.
+    XCTAssertLessThan(model.reservedTailBaseline, 600)
+  }
 }

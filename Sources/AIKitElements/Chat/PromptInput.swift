@@ -16,9 +16,15 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
   let placeholder: String
   let focusRequestID: Int
   let onPasteImages: (([UIImage]) -> Void)?
+  let onEditingChanged: ((Bool) -> Void)?
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(text: $text, measuredHeight: $measuredHeight, onPasteImages: onPasteImages)
+    Coordinator(
+      text: $text,
+      measuredHeight: $measuredHeight,
+      onPasteImages: onPasteImages,
+      onEditingChanged: onEditingChanged
+    )
   }
 
   func makeUIView(context: Context) -> UITextView {
@@ -85,17 +91,20 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
     @Binding private var text: String
     @Binding private var measuredHeight: CGFloat
     let onPasteImages: (([UIImage]) -> Void)?
+    let onEditingChanged: ((Bool) -> Void)?
     var lastProposedWidth: CGFloat = 0
     var lastFocusRequestID: Int = 0
 
     init(
       text: Binding<String>,
       measuredHeight: Binding<CGFloat>,
-      onPasteImages: (([UIImage]) -> Void)?
+      onPasteImages: (([UIImage]) -> Void)?,
+      onEditingChanged: ((Bool) -> Void)?
     ) {
       self._text = text
       self._measuredHeight = measuredHeight
       self.onPasteImages = onPasteImages
+      self.onEditingChanged = onEditingChanged
     }
 
     func textViewDidChange(_ textView: UITextView) {
@@ -104,6 +113,14 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
         pasteView.placeholderLabel.isHidden = textView.text.isEmpty == false
       }
       updateHeight(for: textView)
+    }
+
+    func textViewDidBeginEditing(_ textView: UITextView) {
+      onEditingChanged?(true)
+    }
+
+    func textViewDidEndEditing(_ textView: UITextView) {
+      onEditingChanged?(false)
     }
 
     func updateHeight(for textView: UITextView) {
@@ -260,6 +277,10 @@ public struct PromptInputField: View {
   public var onSend: (String) -> Void
   public var onStop: () -> Void
 
+  @Environment(\.chatSheetDetentSelection) private var chatSheetDetentSelection
+  @Environment(\.chatSheetSupportedDetents) private var chatSheetSupportedDetents
+  @Environment(\.chatSheetKeepsExpandedOnSend) private var chatSheetKeepsExpandedOnSend
+
   // Tuning knobs
   private let pillContentLeadingPadding: CGFloat = 10
   private let pillContentVerticalPadding: CGFloat = 12
@@ -389,6 +410,7 @@ public struct PromptInputField: View {
         let msg = text
         text = ""
         #if os(iOS)
+        keepChatSheetExpandedIfConfigured()
         dismissKeyboard()
         #endif
         editing.onCommit(msg)
@@ -408,6 +430,7 @@ public struct PromptInputField: View {
         let msg = text
         text = ""
         #if os(iOS)
+        keepChatSheetExpandedIfConfigured()
         dismissKeyboard()
         #endif
         onSend(msg)
@@ -423,6 +446,12 @@ public struct PromptInputField: View {
       .disabled(sendEnabled == false)
       .accessibilityLabel("Send")
     }
+  }
+
+  private func keepChatSheetExpandedIfConfigured() {
+    guard chatSheetKeepsExpandedOnSend else { return }
+    guard chatSheetSupportedDetents.contains(.large) else { return }
+    chatSheetDetentSelection?.wrappedValue = .large
   }
 
   private func editingRow(_ editing: PromptInputEditingContext) -> some View {
@@ -465,7 +494,11 @@ public struct PromptInputField: View {
         measuredHeight: $iOSTextViewHeight,
         placeholder: placeholder,
         focusRequestID: focusRequestID,
-        onPasteImages: onPasteImages
+        onPasteImages: onPasteImages,
+        onEditingChanged: { isEditing in
+          guard isEditing else { return }
+          keepChatSheetExpandedIfConfigured()
+        }
       )
       .font(.body)
       .frame(maxWidth: .infinity, alignment: .leading)
