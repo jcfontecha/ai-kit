@@ -252,7 +252,27 @@ private func handleToolCall(
     return
   }
 
-  guard let execution = try? await toolBox.execute(inputAny, context: context) else {
+  let execution: ToolExecution<AnySendable>?
+  do {
+    execution = try await toolBox.execute(inputAny, context: context)
+  } catch {
+    continuation.yield(.toolError(
+      ToolError(
+        toolCallID: parsed.toolCallID,
+        toolName: parsed.toolName,
+        inputJSON: call.inputJSON,
+        input: parsed.input,
+        error: "Tool execution failed: \(error)",
+        providerExecuted: parsed.providerExecuted,
+        dynamic: parsed.dynamic ?? false,
+        title: parsed.title,
+        providerMetadata: parsed.providerMetadata
+      )
+    ))
+    return
+  }
+
+  guard let execution else {
     return
   }
 

@@ -464,6 +464,68 @@ final class StreamTextTests: XCTestCase {
     })
   }
 
+  func testStreamText_approvalApprovedToolExecutionErrorIncludesToolErrorInResponseMessages() async throws {
+    let tools = toolRegistry(execute: { _, _ in
+      throw TestError()
+    })
+
+    let assistantMessage = ModelMessage(
+      role: .assistant,
+      content: [
+        .toolCall(
+          .init(
+            toolCallID: "call-1",
+            toolName: "testTool",
+            inputJSON: "{ \"value\": \"value\" }",
+            input: .object(["value": .string("value")])
+          )
+        ),
+        .toolApprovalRequest(
+          .init(approvalID: "approval-1", toolCallID: "call-1", toolCall: nil)
+        ),
+      ]
+    )
+
+    let toolMessage = ModelMessage(
+      role: .tool,
+      content: [
+        .toolApprovalResponse(
+          .init(approvalID: "approval-1", approved: true)
+        ),
+      ]
+    )
+
+    let model = makeModel { _ in
+      Self.makeStream([
+        .textStart(id: "1", providerMetadata: nil),
+        .textDelta(id: "1", text: "Done.", providerMetadata: nil),
+        .textEnd(id: "1", providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
+      ])
+    }
+
+    let result = streamText(
+      .init(
+        model: model,
+        messages: [assistantMessage, toolMessage],
+        tools: tools,
+        output: Output.text()
+      )
+    )
+
+    let steps = try await result.steps
+    let responseMessages = steps.first?.responseMessages ?? []
+    XCTAssertTrue(responseMessages.contains { message in
+      guard message.role == .tool else { return false }
+      return message.content.contains { part in
+        if case let .toolError(error) = part {
+          return error.toolCallID == "call-1" && error.error.contains("Tool execution failed:")
+        }
+        return false
+      }
+    })
+  }
+
   func testStreamText_providerApprovalRequestIncludesToolCall() async throws {
     let model = makeModel { _ in
       Self.makeStream([
@@ -796,6 +858,62 @@ final class StreamTextTests: XCTestCase {
     XCTAssertEqual(steps.dropFirst().first?.toolCalls.count, 1)
     let text = try await result.text
     XCTAssertEqual(text, "Done.")
+  }
+
+  func testStreamText_toolExecutionErrorYieldsToolErrorAndContinuesLoop() async throws {
+    let tools = toolRegistry(execute: { _, _ in
+      throw TestError()
+    })
+
+    let queue = StreamQueue([
+      Self.makeStream([
+        .toolCall(
+          .init(
+            toolCallID: "call-1",
+            toolName: "testTool",
+            inputJSON: "{ \"value\": \"value\" }"
+          )
+        ),
+        .finish(finishReason: .toolCalls, usage: Self.usage, providerMetadata: nil),
+      ]),
+      Self.makeStream([
+        .textStart(id: "1", providerMetadata: nil),
+        .textDelta(id: "1", text: "Recovered.", providerMetadata: nil),
+        .textEnd(id: "1", providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
+      ]),
+    ])
+
+    let model = makeModel { _ in
+      queue.next()
+    }
+
+    let result = streamText(
+      .init(
+        model: model,
+        prompt: "test-input",
+        tools: tools,
+        stopWhen: [Stop.stepCountIs(2)],
+        output: Output.text()
+      )
+    )
+
+    let events = try await AsyncTestHelpers.collect(result.fullStream)
+    XCTAssertTrue(events.contains { part in
+      guard case let .toolError(error) = part else { return false }
+      return error.toolCallID == "call-1" && error.error.contains("Tool execution failed:")
+    })
+
+    let steps = try await result.steps
+    XCTAssertEqual(steps.count, 2)
+    let toolErrors = steps.first?.content.compactMap { part -> ToolError? in
+      if case let .toolError(error) = part { return error }
+      return nil
+    } ?? []
+    XCTAssertEqual(toolErrors.count, 1)
+
+    let text = try await result.text
+    XCTAssertEqual(text, "Recovered.")
   }
 
   func testStreamText_stopWhenMultipleConditionsStopsWhenAnyTrue() async throws {

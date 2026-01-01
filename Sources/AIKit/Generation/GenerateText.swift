@@ -722,7 +722,10 @@ private func executeApprovals(
       messages: messages,
       experimentalContext: experimentalContext
     )
-    if let execution = try? await toolBox.execute(inputAny, context: context) {
+    do {
+      guard let execution = try await toolBox.execute(inputAny, context: context) else {
+        continue
+      }
       switch execution {
       case .final(let output):
         let jsonValue = (try? toolBox.encodeOutput(output)) ?? .null
@@ -805,6 +808,22 @@ private func executeApprovals(
           )
         }
       }
+    } catch {
+      parts.append(
+        .toolError(
+          .init(
+            toolCallID: call.toolCallID,
+            toolName: call.toolName,
+            inputJSON: call.inputJSON,
+            input: call.input,
+            error: "Tool execution failed: \(error)",
+            providerExecuted: call.providerExecuted,
+            dynamic: call.dynamic,
+            title: call.title,
+            providerMetadata: call.providerMetadata
+          )
+        )
+      )
     }
   }
 
