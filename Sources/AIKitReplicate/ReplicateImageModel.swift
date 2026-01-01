@@ -24,6 +24,7 @@ struct ReplicateImageModel: ImageModel, Sendable {
   let id: String
   let config: ReplicateImageModelConfig
   private var isFlux2Model: Bool { id.hasPrefix("black-forest-labs/flux-2-") }
+  private var isNanoBanana: Bool { id == "google/nano-banana" }
 
   init(modelId: String, config: ReplicateImageModelConfig) {
     self.id = modelId
@@ -51,21 +52,24 @@ struct ReplicateImageModel: ImageModel, Sendable {
 
     var imageInputs: [String: JSONValue] = [:]
     if let files = request.files, files.isEmpty == false {
-      if isFlux2Model {
-        let maxCount = 8
-        for i in 0..<min(files.count, maxCount) {
-          let key = i == 0 ? "input_image" : "input_image_\(i + 1)"
-          imageInputs[key] = .string(try convertFileToDataURI(files[i]))
-        }
+      if isNanoBanana {
+        // google/nano-banana expects: image_input: [uri...]
+        imageInputs["image_input"] = .array(try files.map { .string(try convertFileToDataURI($0)) })
+      } else if isFlux2Model {
+        // black-forest-labs/flux-2-* expects: input_images: [uri...], max 5
+        let maxCount = 5
+        let capped = Array(files.prefix(maxCount))
+        imageInputs["input_images"] = .array(try capped.map { .string(try convertFileToDataURI($0)) })
         if files.count > maxCount {
           warnings.append(
             .init(
-              message: "Flux-2 models support up to 8 input images. Additional images are ignored.",
+              message: "Flux-2 models support up to 5 input images. Additional images are ignored.",
               code: "other"
             )
           )
         }
       } else {
+        // Default: many Replicate models accept a single `image` input.
         imageInputs["image"] = .string(try convertFileToDataURI(files[0]))
         if files.count > 1 {
           warnings.append(
