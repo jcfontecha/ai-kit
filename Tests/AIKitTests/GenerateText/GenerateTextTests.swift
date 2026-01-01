@@ -1969,6 +1969,62 @@ final class GenerateTextTests: XCTestCase {
     XCTAssertEqual(toolResults.count, 1)
   }
 
+  func testGenerateText_approvalApprovedToolExecutionErrorIncludesToolErrorInResponseMessages() async throws {
+    let model = MockLanguageModel(responses: [
+      Self.response(
+        finishReason: .stop,
+        content: [
+          .text("Hello, world!", metadata: nil),
+        ]
+      ),
+    ])
+
+    let tools = toolRegistry(needsApproval: { _, _ in true }, execute: { _, _ in
+      struct TestError: Error {}
+      throw TestError()
+    })
+
+    let messages: [ModelMessage] = [
+      .user("test-input"),
+      .init(
+        role: .assistant,
+        content: [
+          .toolCall(
+            .init(
+              toolCallID: "call-1",
+              toolName: "testTool",
+              inputJSON: "{ \"value\": \"value\" }",
+              input: .object(["value": .string("value")])
+            )
+          ),
+          .toolApprovalRequest(.init(approvalID: "id-0", toolCallID: "call-1")),
+        ]
+      ),
+      .init(
+        role: .tool,
+        content: [
+          .toolApprovalResponse(.init(approvalID: "id-0", approved: true)),
+        ]
+      ),
+    ]
+
+    let result = try await generateText(
+      model: model,
+      messages: messages,
+      tools: tools,
+      output: Output.text()
+    )
+
+    XCTAssertEqual(result.responseMessages.first?.role, .tool)
+
+    let toolErrors = result.responseMessages.first?.content.compactMap { part -> ToolError? in
+      if case let .toolError(error) = part { return error }
+      return nil
+    } ?? []
+    XCTAssertEqual(toolErrors.count, 1)
+    XCTAssertTrue(toolErrors.first?.error.contains("Tool execution failed:") ?? false)
+  }
+
   func testGenerateText_approvalDeniedIncludesToolOutputDeniedInResponseMessages() async throws {
     let model = MockLanguageModel(responses: [
       Self.response(
