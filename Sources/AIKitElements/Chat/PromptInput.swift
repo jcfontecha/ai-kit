@@ -289,11 +289,13 @@ public struct PromptInputField: View {
   private let controlSize: CGFloat = 30
   private let controlIconSize: CGFloat = 16
   private var controlIconPadding: CGFloat { (controlSize - controlIconSize) / 2 }
+  private let focusDelay: Duration = .milliseconds(350)
 
   #if os(iOS)
   @State private var iOSTextViewHeight: CGFloat = 0
   #endif
   @State private var focusRequestID: Int = 0
+  @State private var focusTask: Task<Void, Never>?
 
   public init(
     text: Binding<String>,
@@ -332,13 +334,27 @@ public struct PromptInputField: View {
       .disabled(status == .streaming || status == .submitted)
       .onAppear {
         if editing != nil {
-          focusRequestID += 1
+          scheduleFocus()
+        } else {
+          focusRequestID = 0
         }
       }
       .onChange(of: editing != nil) { _, newValue in
         if newValue {
-          focusRequestID += 1
+          scheduleFocus()
+        } else {
+          focusTask?.cancel()
+          focusTask = nil
+          focusRequestID = 0
+          #if os(iOS)
+          dismissKeyboard()
+          #endif
         }
+      }
+      .onDisappear {
+        focusTask?.cancel()
+        focusTask = nil
+        focusRequestID = 0
       }
       #if os(iOS)
       .onChange(of: text) { _, newValue in
@@ -364,6 +380,15 @@ public struct PromptInputField: View {
         trailingControl
           .padding([.trailing, .top, .bottom], pillToControlPadding)
       }
+  }
+
+  private func scheduleFocus() {
+    focusTask?.cancel()
+    focusTask = Task { @MainActor in
+      try? await Task.sleep(for: focusDelay)
+      guard Task.isCancelled == false else { return }
+      focusRequestID += 1
+    }
   }
 
   private var sendEnabled: Bool {
