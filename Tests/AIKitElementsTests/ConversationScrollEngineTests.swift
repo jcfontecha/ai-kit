@@ -29,16 +29,13 @@ final class ConversationScrollEngineTests: XCTestCase {
     XCTAssertFalse(ConversationScrollEngine.computeIsAtLatest(metrics: metrics))
   }
 
-  func testPlanForSendAnchoring_scrollsToLatestThenPinsMessage() {
+  func testPlanForSendAnchoring_pinsModeThenScrollsToLatest() {
     let plan = ConversationScrollEngine.planForSendAnchoring(userMessageID: "u-123", hasReservedTailSpace: true)
     XCTAssertEqual(plan.steps, [
       .yield,
-      .setMode(.followBottom),
-      .scrollTo(target: .reservedTailSentinel, anchor: .bottom, animated: true),
-      .yield,
-      .yield,
       .setMode(.pinUserMessageToTop(messageID: "u-123")),
-      .scrollTo(target: .message("u-123"), anchor: .top, animated: true),
+      .yield,
+      .scrollTo(target: .reservedTailSentinel, anchor: .bottom, animated: true),
       .yield,
       .yield,
       .reassertPinnedUserMessageIfNeeded(messageID: "u-123"),

@@ -72,18 +72,15 @@ enum ConversationScrollEngine {
 
   /// Produces the programmatic scrolling sequence for "anchor new user message to top".
   ///
-  /// This is intentionally conservative: we first scroll to the latest content (like tapping the down-arrow),
-  /// then scroll to the user message (anchor: top), and finally optionally reassert.
+  /// The intent is to end at the latest scroll position while in "pinned" mode, so the newly sent user message
+  /// is positioned near the top with reserved tail space below it.
   static func planForSendAnchoring(userMessageID: String, hasReservedTailSpace: Bool) -> Plan {
     let latestTarget: ScrollTarget = hasReservedTailSpace ? .reservedTailSentinel : .bottomSentinel
     return Plan(steps: [
       .yield,
-      .setMode(.followBottom),
-      .scrollTo(target: latestTarget, anchor: .bottom, animated: true),
-      .yield,
-      .yield,
       .setMode(.pinUserMessageToTop(messageID: userMessageID)),
-      .scrollTo(target: .message(userMessageID), anchor: .top, animated: true),
+      .yield,
+      .scrollTo(target: latestTarget, anchor: .bottom, animated: true),
       .yield,
       .yield,
       .reassertPinnedUserMessageIfNeeded(messageID: userMessageID),
