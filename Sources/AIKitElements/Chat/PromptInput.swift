@@ -273,6 +273,13 @@ public struct PromptInputField: View {
       .fixedSize(horizontal: false, vertical: true)
       .disabled(status == .streaming || status == .submitted)
       #if os(iOS)
+      .onChange(of: text) { _, newValue in
+        if newValue.isEmpty {
+          iOSTextViewHeight = 0
+        }
+      }
+      #endif
+      #if os(iOS)
       .onChange(of: status) { _, newValue in
         // If the input was focused when we started streaming/submitting, UIKit may restore first responder when
         // the view becomes enabled again. Explicitly dismiss to avoid the keyboard popping back up.
