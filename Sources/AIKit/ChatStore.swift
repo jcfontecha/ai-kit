@@ -181,6 +181,32 @@ public final class ChatStore: ObservableObject {
     }
   }
 
+  public func replaceUserMessage(messageID: String, text: String? = nil, options: ChatRequestOptions? = nil) {
+    replaceUserMessage(messageID: messageID, text: text, files: [], options: options)
+  }
+
+  public func replaceUserMessage(
+    messageID: String,
+    text: String? = nil,
+    files: [ChatFilePart],
+    options: ChatRequestOptions? = nil
+  ) {
+    let resolvedText = (text ?? input).trimmingCharacters(in: .whitespacesAndNewlines)
+    guard resolvedText.isEmpty == false || files.isEmpty == false else { return }
+    input = ""
+
+    var parts: [ChatMessagePart] = files.map { .file($0) }
+    if resolvedText.isEmpty == false {
+      parts.append(.text(.init(id: UUID().uuidString, text: resolvedText, state: .done)))
+    }
+
+    let merged = merge(defaultRequestOptions, options)
+    Task { [session] in
+      let message = ChatDraftMessage(role: .user, parts: parts, replaceMessageID: messageID)
+      await session.send(message, options: merged)
+    }
+  }
+
   public func regenerate(messageID: String? = nil, options: ChatRequestOptions? = nil) {
     let merged = merge(defaultRequestOptions, options)
     Task { [session] in

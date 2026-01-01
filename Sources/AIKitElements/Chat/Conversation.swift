@@ -82,7 +82,7 @@ public struct Conversation<MessageView: View>: View {
     sendTrigger: Int = 0
   ) where MessageView == AnyView {
     self.init(messages: messages, status: status, sendTrigger: sendTrigger) { message in
-      AnyView(Self.defaultMessageView(message: message))
+      AnyView(DefaultMessageView(message: message))
     }
   }
 
@@ -352,7 +352,7 @@ public struct Conversation<MessageView: View>: View {
             scrollModel.isAtBottom = false
           }
 
-        case .scrollTo(let target, let anchor, let animated):
+        case .scrollTo(let target, _, let animated):
           let id: String
           switch target {
           case .bottomSentinel:
@@ -362,8 +362,6 @@ public struct Conversation<MessageView: View>: View {
           case .message(let messageID):
             id = messageID
           }
-
-          let unitAnchor: UnitPoint = (anchor == .top) ? .top : .bottom
 
           let animation = forceAnimation ?? scrollAnimation
           if animated {
@@ -460,44 +458,57 @@ public struct Conversation<MessageView: View>: View {
   }
   #endif
 
-  @ViewBuilder
-  private static func defaultMessageView(message: ChatMessage) -> some View {
-    switch message.role {
-    case .user:
-      HStack(alignment: .top) {
-        Spacer(minLength: 24)
-        VStack(alignment: .trailing, spacing: 8) {
-          if userAttachments(message).isEmpty == false {
-            FileAttachmentPreviewRow(attachments: userAttachments(message), alignment: .trailing)
+  private struct DefaultMessageView: View {
+    let message: ChatMessage
+
+    @Environment(\.conversationOnEditUserMessage) private var onEditUserMessage
+
+    var body: some View {
+      switch message.role {
+      case .user:
+        HStack(alignment: .top) {
+          Spacer(minLength: 24)
+          VStack(alignment: .trailing, spacing: 8) {
+            if userAttachments(message).isEmpty == false {
+              FileAttachmentPreviewRow(attachments: userAttachments(message), alignment: .trailing)
+            }
+            if userText(message).isEmpty == false {
+              UserBubble(text: userText(message))
+            }
           }
-          if userText(message).isEmpty == false {
-            UserBubble(text: userText(message))
+          .contentShape(Rectangle())
+          .contextMenu {
+            if let onEditUserMessage {
+              Button("Edit") {
+                onEditUserMessage(message)
+              }
+            }
           }
         }
+
+      case .assistant:
+        HStack(alignment: .top) {
+          AssistantMessage(messageID: message.id, parts: message.parts)
+        }
+
+      case .system:
+        Text(messageText(message))
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+
+      case .tool:
+        Text("Tool role message")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+
+      @unknown default:
+        Text("Unsupported role: \(message.role.rawValue)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
       }
-
-    case .assistant:
-      HStack(alignment: .top) {
-        AssistantMessage(messageID: message.id, parts: message.parts)
-      }
-
-    case .system:
-      Text(messageText(message))
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-
-    case .tool:
-      Text("Tool role message")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-
-    @unknown default:
-      Text("Unsupported role: \(message.role.rawValue)")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
   }
 

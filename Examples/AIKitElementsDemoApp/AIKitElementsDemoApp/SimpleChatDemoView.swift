@@ -17,6 +17,7 @@ struct SimpleChatDemoView: View {
   @State private var attachments: [ChatFilePart] = []
   @State private var isShowingAddSheet: Bool = false
   @State private var sendTrigger: Int = 0
+  @State private var editingUserMessageID: String? = nil
 
   var body: some View {
     content
@@ -40,6 +41,12 @@ struct SimpleChatDemoView: View {
       Conversation(messages: store.messages, status: store.status, sendTrigger: sendTrigger)
         .conversationAnchorsNewUserMessagesToTop(true)
         .conversationDebugOverlayEnabled(true)
+        .conversationOnEditUserMessage { message in
+          guard message.role == .user else { return }
+          editingUserMessageID = message.id
+          text = userText(from: message)
+          attachments = userAttachments(from: message)
+        }
         .assistantMessageToolRenderer("sleep_ms") { context in
           ToolPartReasoningView(
             tool: context.tool,
@@ -58,6 +65,7 @@ struct SimpleChatDemoView: View {
           text: $text,
           status: store.status,
           attachments: attachments,
+          editing: promptEditingContext,
           onPasteImages: { images in
             attachments.append(contentsOf: images.compactMap { image in
               guard let data = imageData(from: image) else { return nil }
@@ -97,6 +105,38 @@ struct SimpleChatDemoView: View {
       }
     }
     base
+  }
+
+  private var promptEditingContext: PromptInputEditingContext? {
+    guard let messageID = editingUserMessageID else { return nil }
+    return .init(
+      title: "Editing",
+      onCancel: {
+        editingUserMessageID = nil
+        text = ""
+        attachments.removeAll()
+      },
+      onCommit: { updatedText in
+        sendTrigger += 1
+        store.replaceUserMessage(messageID: messageID, text: updatedText, attachments: attachments)
+        editingUserMessageID = nil
+        attachments.removeAll()
+      }
+    )
+  }
+
+  private func userText(from message: ChatMessage) -> String {
+    message.parts.compactMap { part in
+      guard case let .text(text) = part else { return nil }
+      return text.text
+    }.joined()
+  }
+
+  private func userAttachments(from message: ChatMessage) -> [ChatFilePart] {
+    message.parts.compactMap { part in
+      guard case let .file(file) = part else { return nil }
+      return file
+    }
   }
 }
 

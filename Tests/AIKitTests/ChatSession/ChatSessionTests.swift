@@ -1866,4 +1866,68 @@ final class ChatSessionTests: XCTestCase {
       ],
     ])
   }
+
+  func testSendReplaceUserMessage_replacesAndPrunesAndSubmitsWithMessageID() async throws {
+    let ids = IDGenerator()
+    let captured = RequestCapture()
+
+    actor RequestIndex {
+      private var value: Int = 0
+      func next() -> Int {
+        defer { value += 1 }
+        return value
+      }
+    }
+
+    let requestIndex = RequestIndex()
+
+    let session = ChatSession(.init(
+      id: "123",
+      requestStream: { chatID, messages, trigger, messageID, options, _ in
+        await captured.record(chatID: chatID, messages: messages, trigger: trigger, messageID: messageID, options: options)
+        let idx = await requestIndex.next()
+
+        return AsyncThrowingStream(AIUIMessageStreamPart.self) { continuation in
+          Task {
+            let textID = "text-\(idx)"
+            continuation.yield(.start())
+            continuation.yield(.startStep)
+            continuation.yield(.textStart(id: textID))
+            continuation.yield(.textDelta(id: textID, delta: "ok"))
+            continuation.yield(.textEnd(id: textID))
+            continuation.yield(.finishStep)
+            continuation.yield(.finish(finishReason: .stop))
+            continuation.finish()
+          }
+        }
+      },
+      generateID: { ids.nextID() }
+    ))
+
+    await session.send(.init(role: .user, parts: [.text(.init(id: "u-1", text: "One", state: .done))]))
+    await session.send(.init(role: .user, parts: [.text(.init(id: "u-2", text: "Two", state: .done))]))
+    await session.send(.init(
+      role: .user,
+      parts: [.text(.init(id: "u-1-edit", text: "ONE (edited)", state: .done))],
+      replaceMessageID: "id-0"
+    ))
+
+    let snapshot = await session.snapshot()
+    XCTAssertEqual(snapshot.messages, [
+      .init(id: "id-0", role: .user, parts: [.text(.init(id: "u-1-edit", text: "ONE (edited)", state: .done))]),
+      .init(id: "id-4", role: .assistant, parts: [
+        .stepStart,
+        .text(.init(id: "text-2", text: "ok", state: .done)),
+      ]),
+    ])
+
+    let maybeRequest = await captured.snapshot()
+    let request = try XCTUnwrap(maybeRequest)
+    XCTAssertEqual(request.chatID, "123")
+    XCTAssertEqual(request.trigger, .submitMessage)
+    XCTAssertEqual(request.messageID, "id-0")
+    XCTAssertEqual(request.messages, [
+      .init(id: "id-0", role: .user, parts: [.text(.init(id: "u-1-edit", text: "ONE (edited)", state: .done))]),
+    ])
+  }
 }

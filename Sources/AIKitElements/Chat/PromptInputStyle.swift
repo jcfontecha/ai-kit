@@ -15,11 +15,28 @@ public protocol PromptInputStyle: Sendable {
   func makeBody(configuration: PromptInputStyleConfiguration) -> Body
 }
 
+public struct PromptInputEditingContext {
+  public var title: String
+  public var onCancel: () -> Void
+  public var onCommit: (_ text: String) -> Void
+
+  public init(
+    title: String = "Editing",
+    onCancel: @escaping () -> Void,
+    onCommit: @escaping (_ text: String) -> Void
+  ) {
+    self.title = title
+    self.onCancel = onCancel
+    self.onCommit = onCommit
+  }
+}
+
 public struct PromptInputStyleConfiguration {
   public var text: Binding<String>
   public var status: ChatStatus
   public var placeholder: String
   public var attachments: [ChatFilePart]
+  public var editing: PromptInputEditingContext?
   public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
   public var onStop: () -> Void
@@ -30,6 +47,7 @@ public struct PromptInputStyleConfiguration {
     status: ChatStatus,
     placeholder: String,
     attachments: [ChatFilePart] = [],
+    editing: PromptInputEditingContext? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
@@ -39,6 +57,7 @@ public struct PromptInputStyleConfiguration {
     self.status = status
     self.placeholder = placeholder
     self.attachments = attachments
+    self.editing = editing
     self.onPasteImages = onPasteImages
     self.onSend = onSend
     self.onStop = onStop

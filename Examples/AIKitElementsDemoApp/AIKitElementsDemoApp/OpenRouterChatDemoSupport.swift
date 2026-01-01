@@ -76,6 +76,14 @@ final class OpenRouterChatStore: ObservableObject {
     chat.sendMessage(trimmed.isEmpty ? nil : trimmed, files: attachments)
   }
 
+  func replaceUserMessage(messageID: String, text: String, attachments: [ChatFilePart]) {
+    guard let chat else { return }
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.isEmpty == false || attachments.isEmpty == false else { return }
+
+    chat.replaceUserMessage(messageID: messageID, text: trimmed.isEmpty ? nil : trimmed, files: attachments)
+  }
+
   func stop() {
     chat?.stop()
   }
