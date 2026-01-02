@@ -177,6 +177,17 @@ enum ComponentCatalog {
       ]
     ),
     .init(
+      id: "generated-image",
+      category: .utilities,
+      name: "Generated Image",
+      summary: "Generated image placeholder + resolved image preview",
+      variants: [
+        .init(id: "generated-image/states", title: "States", description: "Empty, loading shimmer, success, failure") {
+          AnyView(GeneratedImageDemoView())
+        },
+      ]
+    ),
+    .init(
       id: "code-block",
       category: .utilities,
       name: "Code Block",

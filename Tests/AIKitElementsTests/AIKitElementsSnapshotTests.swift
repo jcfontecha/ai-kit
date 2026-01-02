@@ -8,6 +8,14 @@ import AIKitTestKit
 
 @MainActor
 final class AIKitElementsSnapshotTests: XCTestCase {
+  // 1x1 black JPEG (base64)
+  private static let blackJpegBase64 =
+    "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k="
+
+  private static func base64Data(_ base64: String) -> Data {
+    Data(base64Encoded: base64) ?? Data()
+  }
+
   func testSnapshot_promptInput_ready() {
     let size = CGSize(width: 420, height: 140)
 
@@ -138,6 +146,52 @@ final class AIKitElementsSnapshotTests: XCTestCase {
           onSend: { _ in },
           onStop: {}
         ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_generatedImageView_loading() {
+    let size = CGSize(width: 420, height: 420)
+
+    let view = snapshotRoot(
+      GeneratedImageView(phase: .loading, loadingShimmer: false),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_generatedImageView_empty() {
+    let size = CGSize(width: 420, height: 420)
+
+    let view = snapshotRoot(
+      GeneratedImageView(phase: .empty),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_generatedImageView_success() {
+    let size = CGSize(width: 420, height: 420)
+
+    let file = GeneratedFile(data: Self.base64Data(Self.blackJpegBase64), mediaType: "image/jpeg")
+
+    let view = snapshotRoot(
+      GeneratedImageView(phase: .success(file)),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_generatedImageView_failure() {
+    let size = CGSize(width: 420, height: 420)
+
+    let view = snapshotRoot(
+      GeneratedImageView(phase: .failure("The model request timed out.")),
       size: size
     )
 
