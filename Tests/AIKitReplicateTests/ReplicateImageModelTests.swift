@@ -474,4 +474,73 @@ final class ReplicateImageModelTests: XCTestCase {
     XCTAssertEqual(input["input_image_8"], .string("https://example.com/img8.jpg"))
     XCTAssertNil(input["input_image_9"])
   }
+
+  func testGenerate_gptImage15_usesExpectedInputKeysAndIgnoresMaskSizeAndSeed() async throws {
+    let server = ReplicateTestServer()
+    server.responses["POST https://api.replicate.com/v1/models/openai/gpt-image-1.5/predictions"] = .json(
+      preparePredictionResponse(output: .array([.string("https://replicate.delivery/xezq/abc/out-0.webp")])),
+      headers: ["content-type": "application/json", "content-length": "646"]
+    )
+    server.responses["GET https://replicate.delivery/xezq/abc/out-0.webp"] = .binary(Data("test-binary-content".utf8))
+
+    let provider = createReplicate(.init(apiToken: "test-api-token", transport: server.transport()))
+    let model = provider.image("openai/gpt-image-1.5")
+
+    let result = try await model.generate(
+      ImageRequest(
+        prompt: prompt,
+        files: [
+          .url(URL(string: "https://example.com/input1.jpg")!),
+          .url(URL(string: "https://example.com/input2.jpg")!),
+        ],
+        mask: .url(URL(string: "https://example.com/mask.png")!),
+        n: 2,
+        size: "1024x1024",
+        aspectRatio: "1:1",
+        seed: 123
+      )
+    )
+
+    XCTAssertEqual(
+      result.warnings,
+      [
+        .init(
+          message: "openai/gpt-image-1.5 does not support mask input. The mask will be ignored.",
+          code: "other"
+        ),
+      ]
+    )
+
+    guard case .object(let root)? = server.calls[0].requestBodyJSON,
+          case .object(let input)? = root["input"] else {
+      return XCTFail("Unexpected request body")
+    }
+
+    XCTAssertEqual(input["prompt"], .string(prompt))
+    XCTAssertEqual(input["number_of_images"], .number(2))
+    XCTAssertEqual(input["aspect_ratio"], .string("1:1"))
+    XCTAssertEqual(
+      input["input_images"],
+      .array([.string("https://example.com/input1.jpg"), .string("https://example.com/input2.jpg")])
+    )
+
+    XCTAssertNil(input["num_outputs"])
+    XCTAssertNil(input["mask"])
+    XCTAssertNil(input["size"])
+    XCTAssertNil(input["seed"])
+  }
+
+  func testMaxImagesPerCall_gptImage15_returns10() async throws {
+    let model = ReplicateImageModel(
+      modelId: "openai/gpt-image-1.5",
+      config: .init(
+        baseURL: "https://api.replicate.com/v1",
+        headers: { [:] },
+        transport: ReplicateTestServer().transport()
+      )
+    )
+
+    let maxImagesPerCall = await model.maxImagesPerCall()
+    XCTAssertEqual(maxImagesPerCall, 10)
+  }
 }

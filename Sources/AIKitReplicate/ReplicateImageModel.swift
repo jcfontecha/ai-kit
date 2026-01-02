@@ -25,6 +25,7 @@ struct ReplicateImageModel: ImageModel, Sendable {
   let config: ReplicateImageModelConfig
   private var isFlux2Model: Bool { id.hasPrefix("black-forest-labs/flux-2-") }
   private var isNanoBanana: Bool { id == "google/nano-banana" }
+  private var isOpenAIGPTImage15: Bool { id == "openai/gpt-image-1.5" }
 
   init(modelId: String, config: ReplicateImageModelConfig) {
     self.id = modelId
@@ -32,7 +33,9 @@ struct ReplicateImageModel: ImageModel, Sendable {
   }
 
   func maxImagesPerCall() async -> Int? {
-    isFlux2Model ? 8 : 1
+    if isOpenAIGPTImage15 { return 10 }
+    if isFlux2Model { return 8 }
+    return 1
   }
 
   func generate(_ request: ImageRequest) async throws -> ImageResponse {
@@ -52,7 +55,10 @@ struct ReplicateImageModel: ImageModel, Sendable {
 
     var imageInputs: [String: JSONValue] = [:]
     if let files = request.files, files.isEmpty == false {
-      if isNanoBanana {
+      if isOpenAIGPTImage15 {
+        // openai/gpt-image-1.5 expects: input_images: [uri...]
+        imageInputs["input_images"] = .array(try files.map { .string(try convertFileToDataURI($0)) })
+      } else if isNanoBanana {
         // google/nano-banana expects: image_input: [uri...]
         imageInputs["image_input"] = .array(try files.map { .string(try convertFileToDataURI($0)) })
       } else if isFlux2Model {
@@ -94,22 +100,31 @@ struct ReplicateImageModel: ImageModel, Sendable {
             code: "other"
           )
         )
+      } else if isOpenAIGPTImage15 {
+        warnings.append(
+          .init(
+            message: "openai/gpt-image-1.5 does not support mask input. The mask will be ignored.",
+            code: "other"
+          )
+        )
       } else {
         maskInput = .string(try convertFileToDataURI(mask))
       }
     }
 
-    var input: [String: JSONValue] = [
-      "prompt": .string(request.prompt ?? ""),
-      "num_outputs": .number(Double(request.n)),
-    ]
+    var input: [String: JSONValue] = ["prompt": .string(request.prompt ?? "")]
+    if isOpenAIGPTImage15 {
+      input["number_of_images"] = .number(Double(request.n))
+    } else {
+      input["num_outputs"] = .number(Double(request.n))
+    }
     if let aspectRatio = request.aspectRatio {
       input["aspect_ratio"] = .string(aspectRatio)
     }
-    if let size = request.size {
+    if let size = request.size, isOpenAIGPTImage15 == false {
       input["size"] = .string(size)
     }
-    if let seed = request.seed {
+    if let seed = request.seed, isOpenAIGPTImage15 == false {
       input["seed"] = .number(Double(seed))
     }
 
