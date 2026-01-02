@@ -14,6 +14,7 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
   @Binding var text: String
   @Binding var measuredHeight: CGFloat
   let placeholder: String
+  let maxVisibleLines: Int
   let focusRequestID: Int
   let onPasteImages: (([UIImage]) -> Void)?
   let onEditingChanged: ((Bool) -> Void)?
@@ -22,6 +23,7 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
     Coordinator(
       text: $text,
       measuredHeight: $measuredHeight,
+      maxVisibleLines: maxVisibleLines,
       onPasteImages: onPasteImages,
       onEditingChanged: onEditingChanged
     )
@@ -34,6 +36,7 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
     view.font = UIFont.preferredFont(forTextStyle: .body)
     view.delegate = context.coordinator
     view.isScrollEnabled = false
+    view.showsVerticalScrollIndicator = false
     view.textContainerInset = .zero
     view.textContainer.lineFragmentPadding = 0
     view.textContainer.lineBreakMode = .byWordWrapping
@@ -44,13 +47,38 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
     view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     view.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
+    context.coordinator.lastTextViewText = view.text
     context.coordinator.updateHeight(for: view)
     return view
   }
 
   func updateUIView(_ uiView: UITextView, context: Context) {
     if uiView.text != text {
-      uiView.text = text
+      // Avoid clobbering the user's caret position when SwiftUI propagates changes back into UIKit.
+      // This is especially noticeable for multi-line edits where the selection can jump to the end.
+      let wasFirstResponder = uiView.isFirstResponder
+      let hadMarkedText = (uiView.markedTextRange != nil)
+
+      // If the user is actively composing with an IME, don't rewrite the entire text.
+      // Doing so can cancel the marked text session and move the insertion point.
+      //
+      // Additionally: avoid rewriting `uiView.text` during normal typing. SwiftUI can call `updateUIView`
+      // while UIKit is still finalizing selection changes (notably after Return). Writing text and then
+      // restoring a stale selection can leave the caret "behind" the inserted newline.
+      if wasFirstResponder, hadMarkedText == false, uiView.text == context.coordinator.lastTextViewText {
+        // No-op: this update is just reflecting the user's typing; let UIKit own the text/selection.
+      } else if wasFirstResponder == false || hadMarkedText == false {
+        let previousSelection = uiView.selectedRange
+        uiView.text = text
+        context.coordinator.lastTextViewText = text
+
+        if wasFirstResponder {
+          let utf16Length = (uiView.text as NSString).length
+          let clampedLocation = min(previousSelection.location, utf16Length)
+          let clampedLength = min(previousSelection.length, max(0, utf16Length - clampedLocation))
+          uiView.selectedRange = NSRange(location: clampedLocation, length: clampedLength)
+        }
+      }
     }
     if let pasteView = uiView as? PasteAwareTextView {
       pasteView.onPasteImages = context.coordinator.onPasteImages
@@ -69,10 +97,12 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
       context.coordinator.lastFocusRequestID = focusRequestID
       DispatchQueue.main.async {
         guard uiView.window != nil else { return }
-        if uiView.isFirstResponder == false {
-          uiView.becomeFirstResponder()
-        }
-        uiView.selectedRange = NSRange(location: uiView.text.count, length: 0)
+        // Only move the insertion point when we *actually* take focus.
+        // If the user already placed the caret (e.g. editing in the middle of the message),
+        // don't override their selection.
+        guard uiView.isFirstResponder == false else { return }
+        uiView.becomeFirstResponder()
+        uiView.selectedRange = NSRange(location: (uiView.text as NSString).length, length: 0)
       }
     }
   }
@@ -90,29 +120,58 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
   final class Coordinator: NSObject, UITextViewDelegate {
     @Binding private var text: String
     @Binding private var measuredHeight: CGFloat
+    private let maxVisibleLines: Int
     let onPasteImages: (([UIImage]) -> Void)?
     let onEditingChanged: ((Bool) -> Void)?
     var lastProposedWidth: CGFloat = 0
     var lastFocusRequestID: Int = 0
+    var lastTextViewText: String = ""
+    private var pendingCaretAfterNewline: NSRange?
 
     init(
       text: Binding<String>,
       measuredHeight: Binding<CGFloat>,
+      maxVisibleLines: Int,
       onPasteImages: (([UIImage]) -> Void)?,
       onEditingChanged: ((Bool) -> Void)?
     ) {
       self._text = text
       self._measuredHeight = measuredHeight
+      self.maxVisibleLines = maxVisibleLines
       self.onPasteImages = onPasteImages
       self.onEditingChanged = onEditingChanged
     }
 
     func textViewDidChange(_ textView: UITextView) {
+      lastTextViewText = textView.text
       text = textView.text
       if let pasteView = textView as? PasteAwareTextView {
         pasteView.placeholderLabel.isHidden = textView.text.isEmpty == false
       }
       updateHeight(for: textView)
+
+      if let pending = pendingCaretAfterNewline {
+        pendingCaretAfterNewline = nil
+        DispatchQueue.main.async {
+          let hasMarkedText = (textView.markedTextRange != nil)
+          guard textView.isFirstResponder, hasMarkedText == false else { return }
+
+          let utf16Length = (textView.text as NSString).length
+          let clampedLocation = min(pending.location, utf16Length)
+          textView.selectedRange = NSRange(location: clampedLocation, length: 0)
+          textView.scrollRangeToVisible(textView.selectedRange)
+        }
+      }
+    }
+
+    func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+      // Hitting return can race layout/height updates; in some cases the selection doesn't advance reliably and
+      // subsequent typing inserts before the newline. Record the expected post-insert caret and apply it once the
+      // text change has landed.
+      if text == "\n" {
+        pendingCaretAfterNewline = NSRange(location: range.location + 1, length: 0)
+      }
+      return true
     }
 
     func textViewDidBeginEditing(_ textView: UITextView) {
@@ -128,10 +187,27 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
       guard width > 0 else { return }
 
       textView.layoutIfNeeded()
-      let size = textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
-      let newHeight = size.height
-      guard abs(newHeight - measuredHeight) > 0.5 else { return }
-      measuredHeight = newHeight
+      let contentSize = textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+
+      // Cap the visible height to keep the composer from growing too tall.
+      let lineHeight = textView.font?.lineHeight ?? 17
+      let maxHeight = ceil(lineHeight * CGFloat(max(1, maxVisibleLines)))
+      let clampedHeight = min(contentSize.height, maxHeight)
+
+      // Allow internal scrolling only once we exceed the max height.
+      let shouldScroll = contentSize.height > (maxHeight + 0.5)
+      if textView.isScrollEnabled != shouldScroll {
+        let wasScrollEnabled = textView.isScrollEnabled
+        textView.isScrollEnabled = shouldScroll
+        textView.showsVerticalScrollIndicator = shouldScroll
+
+        if wasScrollEnabled, shouldScroll == false {
+          textView.setContentOffset(.zero, animated: false)
+        }
+      }
+
+      guard abs(clampedHeight - measuredHeight) > 0.5 else { return }
+      measuredHeight = clampedHeight
     }
   }
 
@@ -518,6 +594,7 @@ public struct PromptInputField: View {
         text: $text,
         measuredHeight: $iOSTextViewHeight,
         placeholder: placeholder,
+        maxVisibleLines: 8,
         focusRequestID: focusRequestID,
         onPasteImages: onPasteImages,
         onEditingChanged: { isEditing in
@@ -527,7 +604,13 @@ public struct PromptInputField: View {
       )
       .font(.body)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .frame(height: max(iOSTextViewHeight, 22), alignment: .leading)
+      .frame(
+        height: max(
+          iOSTextViewHeight,
+          ceil(UIFont.preferredFont(forTextStyle: .body).lineHeight)
+        ),
+        alignment: .leading
+      )
       .padding(.leading, 6)
     #else
     PromptInputMacTextField(
