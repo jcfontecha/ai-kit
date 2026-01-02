@@ -188,6 +188,17 @@ enum ComponentCatalog {
       ]
     ),
     .init(
+      id: "generated-image-grid-item",
+      category: .utilities,
+      name: "Generated Image Grid Item",
+      summary: "Gallery-ready square item for generated images",
+      variants: [
+        .init(id: "generated-image-grid-item/states", title: "States", description: "Compact loading + success") {
+          AnyView(GeneratedImageGridItemDemoView())
+        },
+      ]
+    ),
+    .init(
       id: "code-block",
       category: .utilities,
       name: "Code Block",

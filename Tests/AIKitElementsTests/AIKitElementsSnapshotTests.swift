@@ -197,6 +197,30 @@ final class AIKitElementsSnapshotTests: XCTestCase {
 
     SnapshotTesting.assertSnapshotImage(view, size: size)
   }
+
+  func testSnapshot_generatedImageGridItem_loading() {
+    let size = CGSize(width: 220, height: 220)
+
+    let view = snapshotRoot(
+      GeneratedImageGridItem(phase: .loading, loadingShimmer: false),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_generatedImageGridItem_success() {
+    let size = CGSize(width: 220, height: 220)
+
+    let file = GeneratedFile(data: Self.base64Data(Self.blackJpegBase64), mediaType: "image/jpeg")
+
+    let view = snapshotRoot(
+      GeneratedImageGridItem(phase: .success(file)),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
 }
 
 @MainActor
