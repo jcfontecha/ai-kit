@@ -48,12 +48,14 @@ struct OpenRouterCostDetails: Decodable {
 struct OpenRouterErrorPayload: Decodable {
   var code: JSONValue?
   var message: String
+  var metadata: [String: JSONValue]?
   var type: String?
   var param: JSONValue?
 
   enum CodingKeys: String, CodingKey {
     case code
     case message
+    case metadata
     case type
     case param
   }
@@ -62,6 +64,7 @@ struct OpenRouterErrorPayload: Decodable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     message = (try? container.decode(String.self, forKey: .message)) ?? ""
     code = try? container.decode(JSONValue.self, forKey: .code)
+    metadata = try? container.decode([String: JSONValue].self, forKey: .metadata)
     type = try? container.decode(String.self, forKey: .type)
     param = try? container.decode(JSONValue.self, forKey: .param)
   }

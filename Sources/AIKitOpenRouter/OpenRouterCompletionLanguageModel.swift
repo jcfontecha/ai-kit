@@ -53,7 +53,7 @@ struct OpenRouterCompletionLanguageModel: LanguageModel, Sendable {
 
     let (responseData, response) = try await config.transport.data(for: urlRequest)
     guard response.statusCode == 200 else {
-      throw OpenRouterAPIError(message: "OpenRouter API error: \(response.statusCode)", statusCode: response.statusCode)
+      throw openRouterAPIError(statusCode: response.statusCode, data: responseData)
     }
 
     let responseValue = try OpenRouterJSON.decoder.decode(OpenRouterCompletionResponseEnvelope.self, from: responseData)
@@ -113,7 +113,7 @@ struct OpenRouterCompletionLanguageModel: LanguageModel, Sendable {
 
           let (byteStream, response) = try await config.transport.bytes(for: urlRequest)
           guard response.statusCode == 200 else {
-            throw OpenRouterAPIError(message: "OpenRouter API error: \(response.statusCode)", statusCode: response.statusCode)
+            throw await openRouterAPIError(statusCode: response.statusCode, bytes: byteStream)
           }
 
           let sseStream = parseSSELines(byteStream)

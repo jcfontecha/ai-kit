@@ -622,6 +622,8 @@ private func runStreamText<OUT: OutputSpec>(
 
   fullContinuation?.yield(.start)
 
+  var thrownStreamError: Error?
+
   while true {
     let stepInputMessages = initialMessages + responseMessagesHistory
     let prepareResult = await options.prepareStep?(
@@ -719,7 +721,6 @@ private func runStreamText<OUT: OutputSpec>(
     var abortRequested = false
     var hasToolApprovalRequest = false
 
-    var streamThrew = false
     do {
       for try await part in processedStream {
         if let token = options.cancellationToken, await token.isCancelled {
@@ -914,10 +915,10 @@ private func runStreamText<OUT: OutputSpec>(
       let message = error.localizedDescription
       fullContinuation?.yield(.error(message))
       await options.onError?(message)
-      streamThrew = true
+      thrownStreamError = error
     }
 
-    if streamThrew {
+    if thrownStreamError != nil {
       break
     }
 
@@ -974,6 +975,10 @@ private func runStreamText<OUT: OutputSpec>(
     }
 
     break
+  }
+
+  if let thrownStreamError {
+    throw AIKitError.invalidConfiguration("Stream failed: \(thrownStreamError.localizedDescription)")
   }
 
   guard let lastStep = steps.last else {

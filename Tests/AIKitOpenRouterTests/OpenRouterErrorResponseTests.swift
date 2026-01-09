@@ -18,7 +18,7 @@ final class OpenRouterErrorResponseTests: XCTestCase {
     {
       "error": {
         "message": "Example error message",
-        "metadata": { "provider_name": "Example Provider" }
+        "metadata": { "provider_name": "Example Provider", "raw": "Upstream message" }
       },
       "user_id": "example_1"
     }
@@ -29,6 +29,7 @@ final class OpenRouterErrorResponseTests: XCTestCase {
     XCTAssertNil(decoded.error.code)
     XCTAssertNil(decoded.error.type)
     XCTAssertNil(decoded.error.param)
+    XCTAssertEqual(decoded.error.metadata?["provider_name"], .string("Example Provider"))
     XCTAssertEqual(decoded.userId, "example_1")
   }
 
@@ -59,5 +60,23 @@ final class OpenRouterErrorResponseTests: XCTestCase {
     } else {
       XCTFail("Expected param string")
     }
+  }
+
+  func testOpenRouterAPIErrorIncludesPayloadMessage() throws {
+    let payload = """
+    {
+      "error": {
+        "message": "Bad request",
+        "type": "invalid_request_error",
+        "code": 400,
+        "param": "model"
+      }
+    }
+    """.data(using: .utf8)!
+
+    let error = openRouterAPIError(statusCode: 400, data: payload)
+    XCTAssertTrue(error.message.contains("Bad request"))
+    XCTAssertTrue(error.message.contains("type=invalid_request_error"))
+    XCTAssertTrue(error.message.contains("code=400"))
   }
 }

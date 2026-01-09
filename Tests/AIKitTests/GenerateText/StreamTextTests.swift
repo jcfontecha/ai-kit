@@ -1886,7 +1886,7 @@ final class StreamTextTests: XCTestCase {
     } catch let error as AIKitError {
       XCTAssertEqual(
         error,
-        .invalidConfiguration("No output generated. Check the stream for errors.")
+        .invalidConfiguration("Stream failed: test error")
       )
     }
   }

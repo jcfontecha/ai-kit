@@ -50,7 +50,7 @@ struct OpenRouterChatLanguageModel: LanguageModel, Sendable {
     let (responseData, response) = try await config.transport.data(for: urlRequest)
 
     guard response.statusCode == 200 else {
-      throw OpenRouterAPIError(message: "OpenRouter API error: \(response.statusCode)", statusCode: response.statusCode)
+      throw openRouterAPIError(statusCode: response.statusCode, data: responseData)
     }
 
     let responseValue = try OpenRouterJSON.decoder.decode(OpenRouterChatCompletionResponseEnvelope.self, from: responseData)
@@ -202,7 +202,7 @@ struct OpenRouterChatLanguageModel: LanguageModel, Sendable {
           let (byteStream, response) = try await config.transport.bytes(for: urlRequest)
 
           guard response.statusCode == 200 else {
-            throw OpenRouterAPIError(message: "OpenRouter API error: \(response.statusCode)", statusCode: response.statusCode)
+            throw await openRouterAPIError(statusCode: response.statusCode, bytes: byteStream)
           }
 
           let sseStream = parseSSELines(byteStream)
@@ -695,9 +695,10 @@ struct OpenRouterChatLanguageModel: LanguageModel, Sendable {
   private func mapTools(_ tools: [ToolDefinition]) -> JSONValue? {
     guard tools.isEmpty == false else { return nil }
     let mapped = tools.map { tool in
+      let parameters = openAICompatibleToolParametersSchema(tool.inputSchema.value)
       var function: [String: JSONValue] = [
         "name": .string(tool.name),
-        "parameters": .object(tool.inputSchema.value),
+        "parameters": .object(parameters),
       ]
       if let description = tool.description {
         function["description"] = .string(description)
@@ -708,6 +709,35 @@ struct OpenRouterChatLanguageModel: LanguageModel, Sendable {
       ])
     }
     return .array(mapped)
+  }
+
+  private func openAICompatibleToolParametersSchema(_ schema: [String: JSONValue]) -> [String: JSONValue] {
+    guard case var .object(properties) = schema["properties"] else {
+      return schema
+    }
+
+    let allKeys = Array(properties.keys).sorted()
+    var requiredSet: Set<String> = []
+    if case let .array(required)? = schema["required"] {
+      for item in required {
+        if case let .string(key) = item { requiredSet.insert(key) }
+      }
+    }
+
+    for key in allKeys where requiredSet.contains(key) == false {
+      guard case let .object(propertySchema) = properties[key] else { continue }
+      properties[key] = .object([
+        "anyOf": .array([
+          .object(propertySchema),
+          .object(["type": .string("null")]),
+        ])
+      ])
+    }
+
+    var updated = schema
+    updated["properties"] = .object(properties)
+    updated["required"] = .array(allKeys.map(JSONValue.string))
+    return updated
   }
 
   private func toolChoiceJSONValue(_ toolChoice: ToolChoice) -> JSONValue? {

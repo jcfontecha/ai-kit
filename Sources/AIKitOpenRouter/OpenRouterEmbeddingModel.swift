@@ -52,7 +52,7 @@ struct OpenRouterEmbeddingModel: EmbeddingModel, Sendable {
 
     let (responseData, response) = try await config.transport.data(for: urlRequest)
     guard response.statusCode == 200 else {
-      throw OpenRouterAPIError(message: "OpenRouter API error: \(response.statusCode)", statusCode: response.statusCode)
+      throw openRouterAPIError(statusCode: response.statusCode, data: responseData)
     }
 
     let responseValue = try OpenRouterJSON.decoder.decode(OpenRouterEmbeddingResponse.self, from: responseData)
