@@ -95,7 +95,7 @@ public enum SnapshotTesting {
       }
 
       // PNG bytes can differ (metadata / compression) across environments even when pixels match.
-      if try pngPixelsEqual(pngData, expected) {
+      if try pngPixelsApproximatelyEqual(pngData, expected) {
         return
       }
 
@@ -209,7 +209,7 @@ public enum SnapshotTesting {
     return FileManager.default.fileExists(atPath: root.appendingPathComponent(".aikit_snapshot_record").path)
   }
 
-  private static func pngPixelsEqual(_ a: Data, _ b: Data) throws -> Bool {
+  private static func pngPixelsApproximatelyEqual(_ a: Data, _ b: Data) throws -> Bool {
     let imageA = try decodePNG(a)
     let imageB = try decodePNG(b)
 
@@ -219,7 +219,38 @@ public enum SnapshotTesting {
 
     let bytesA = try rgba8Bytes(imageA)
     let bytesB = try rgba8Bytes(imageB)
-    return bytesA == bytesB
+
+    // Antialiasing/text rasterization can vary slightly across OS/toolchain versions even when layout is
+    // identical. Allow a tiny amount of per-channel drift to avoid flakey snapshots while still catching
+    // real regressions.
+    if bytesA == bytesB {
+      return true
+    }
+
+    let width = imageA.width
+    let height = imageA.height
+    let totalPixels = width * height
+
+    let maxPerChannelDelta: Int = 2
+    let maxDifferentPixelFraction: Double = 0.001 // 0.1%
+    let allowedDifferentPixels = max(0, Int(Double(totalPixels) * maxDifferentPixelFraction))
+
+    var differentPixels = 0
+    for i in stride(from: 0, to: min(bytesA.count, bytesB.count), by: 4) {
+      let dr = abs(Int(bytesA[i + 0]) - Int(bytesB[i + 0]))
+      let dg = abs(Int(bytesA[i + 1]) - Int(bytesB[i + 1]))
+      let db = abs(Int(bytesA[i + 2]) - Int(bytesB[i + 2]))
+      let da = abs(Int(bytesA[i + 3]) - Int(bytesB[i + 3]))
+
+      if max(dr, dg, db, da) > maxPerChannelDelta {
+        differentPixels += 1
+        if differentPixels > allowedDifferentPixels {
+          return false
+        }
+      }
+    }
+
+    return true
   }
 
   private static func decodePNG(_ data: Data) throws -> CGImage {

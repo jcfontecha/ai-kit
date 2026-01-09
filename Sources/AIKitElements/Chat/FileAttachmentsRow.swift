@@ -61,6 +61,7 @@ public struct FileAttachmentPreview: View {
         Image(decorative: thumbnail, scale: displayScale)
           .resizable()
           .scaledToFill()
+          .clipped()
       } else {
         Image(systemName: iconName)
           .font(.system(size: size * 0.3, weight: .medium))

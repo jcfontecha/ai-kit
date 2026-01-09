@@ -108,6 +108,18 @@ enum ComponentCatalog {
         .init(id: "prompt-input/with-attachments", title: "With Input Attachment", description: "Composer with attachments above the field") {
           AnyView(PromptInputDemoView(mode: .withAttachments))
         },
+        .init(id: "prompt-input/bottom-bar-idle", title: "Bottom Bar (Idle)", description: "Tap the field to show expanded buttons") {
+          AnyView(PromptInputDemoView(mode: .bottomBarIdle))
+        },
+        .init(id: "prompt-input/bottom-bar-typing", title: "Bottom Bar (Typing)", description: "Tap the field to show expanded buttons") {
+          AnyView(PromptInputDemoView(mode: .bottomBarTyping))
+        },
+        .init(id: "prompt-input/bottom-bar-streaming", title: "Bottom Bar (Streaming)", description: "Stop button state + expanded buttons") {
+          AnyView(PromptInputDemoView(mode: .bottomBarStreaming))
+        },
+        .init(id: "prompt-input/bottom-bar-with-attachments", title: "Bottom Bar (With Attachments)", description: "Attachments + expanded buttons") {
+          AnyView(PromptInputDemoView(mode: .bottomBarWithAttachments))
+        },
       ]
     ),
     .init(

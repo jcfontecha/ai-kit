@@ -292,9 +292,10 @@ private struct PromptInputMacTextField: NSViewRepresentable {
   let placeholder: String
   let focusRequestID: Int
   let onPasteImages: (([NSImage]) -> Void)?
+  let onEditingChanged: ((Bool) -> Void)?
 
   func makeCoordinator() -> Coordinator {
-    Coordinator(text: $text, onPasteImages: onPasteImages)
+    Coordinator(text: $text, onPasteImages: onPasteImages, onEditingChanged: onEditingChanged)
   }
 
   func makeNSView(context: Context) -> NSTextField {
@@ -329,16 +330,30 @@ private struct PromptInputMacTextField: NSViewRepresentable {
   final class Coordinator: NSObject, NSTextFieldDelegate {
     @Binding private var text: String
     let onPasteImages: (([NSImage]) -> Void)?
+    let onEditingChanged: ((Bool) -> Void)?
     var lastFocusRequestID: Int = 0
 
-    init(text: Binding<String>, onPasteImages: (([NSImage]) -> Void)?) {
+    init(
+      text: Binding<String>,
+      onPasteImages: (([NSImage]) -> Void)?,
+      onEditingChanged: ((Bool) -> Void)?
+    ) {
       self._text = text
       self.onPasteImages = onPasteImages
+      self.onEditingChanged = onEditingChanged
+    }
+
+    func controlTextDidBeginEditing(_ notification: Notification) {
+      onEditingChanged?(true)
     }
 
     func controlTextDidChange(_ notification: Notification) {
       guard let field = notification.object as? NSTextField else { return }
       text = field.stringValue
+    }
+
+    func controlTextDidEndEditing(_ notification: Notification) {
+      onEditingChanged?(false)
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -362,6 +377,7 @@ public struct PromptInputField: View {
   public var placeholder: String
   public var attachments: [ChatFilePart]
   public var editing: PromptInputEditingContext?
+  public var expandedBottomBar: AnyView?
   public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
   public var onStop: () -> Void
@@ -385,6 +401,7 @@ public struct PromptInputField: View {
   #endif
   @State private var focusRequestID: Int = 0
   @State private var focusTask: Task<Void, Never>?
+  @State private var isFocused: Bool = false
 
   public init(
     text: Binding<String>,
@@ -392,6 +409,7 @@ public struct PromptInputField: View {
     placeholder: String = "Message",
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
+    expandedBottomBar: AnyView? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void
@@ -401,6 +419,7 @@ public struct PromptInputField: View {
     self.placeholder = placeholder
     self.attachments = attachments
     self.editing = editing
+    self.expandedBottomBar = expandedBottomBar
     self.onPasteImages = onPasteImages
     self.onSend = onSend
     self.onStop = onStop
@@ -417,6 +436,12 @@ public struct PromptInputField: View {
         attachmentsRow
       }
       composerField
+      if isFocused, let expandedBottomBar {
+        expandedBottomBar
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.leading, expandedBottomBarLeadingInsetAdjustment)
+          .transition(.move(edge: .bottom).combined(with: .opacity))
+      }
     }
       .frame(maxWidth: .infinity, alignment: .leading)
       .fixedSize(horizontal: false, vertical: true)
@@ -435,6 +460,9 @@ public struct PromptInputField: View {
           focusTask?.cancel()
           focusTask = nil
           focusRequestID = 0
+          withAnimation(expandedBottomBarAnimation) {
+            isFocused = false
+          }
           #if os(iOS)
           dismissKeyboard()
           #endif
@@ -444,6 +472,9 @@ public struct PromptInputField: View {
         focusTask?.cancel()
         focusTask = nil
         focusRequestID = 0
+        withAnimation(expandedBottomBarAnimation) {
+          isFocused = false
+        }
       }
       #if os(iOS)
       .onChange(of: text) { _, newValue in
@@ -464,7 +495,8 @@ public struct PromptInputField: View {
       // Reserve space so multi-line text doesn't flow under the trailing control.
       .padding(.trailing, trailingControlWidth + trailingControlInset)
       .padding(.leading, pillContentLeadingPadding)
-      .padding(.vertical, pillContentVerticalPadding)
+      .padding(.top, pillContentVerticalPadding)
+      .padding(.bottom, pillContentBottomPadding)
       .overlay(alignment: .bottomTrailing) {
         trailingControl
           .padding([.trailing, .top, .bottom], pillToControlPadding)
@@ -611,6 +643,9 @@ public struct PromptInputField: View {
         focusRequestID: focusRequestID,
         onPasteImages: onPasteImages,
         onEditingChanged: { isEditing in
+          withAnimation(expandedBottomBarAnimation) {
+            isFocused = isEditing
+          }
           guard isEditing else { return }
           keepChatSheetExpandedIfConfigured()
         }
@@ -630,9 +665,40 @@ public struct PromptInputField: View {
       text: $text,
       placeholder: placeholder,
       focusRequestID: focusRequestID,
-      onPasteImages: onPasteImages
+      onPasteImages: onPasteImages,
+      onEditingChanged: { isEditing in
+        withAnimation(expandedBottomBarAnimation) {
+          isFocused = isEditing
+        }
+      }
     )
     #endif
+  }
+
+  private var expandedBottomBarAnimation: Animation? {
+    guard expandedBottomBar != nil else { return nil }
+    return .easeOut(duration: expandedBottomBarAnimationDuration)
+  }
+
+  private var expandedBottomBarAnimationDuration: CGFloat {
+    #if os(iOS)
+    0.22
+    #else
+    0.22
+    #endif
+  }
+
+  private var expandedBottomBarLeadingInsetAdjustment: CGFloat {
+    // Keep the leading buttons inset consistent with the trailing send/stop button inset.
+    pillToControlPadding - pillContentLeadingPadding
+  }
+
+  private var pillContentBottomPadding: CGFloat {
+    // When the expanded bottom bar is visible, align its bottom inset with the send/stop control inset.
+    if expandedBottomBar != nil, isFocused {
+      return pillToControlPadding
+    }
+    return pillContentVerticalPadding
   }
 }
 
@@ -664,6 +730,7 @@ private struct StandardPromptInput: View {
           placeholder: configuration.placeholder,
           attachments: configuration.attachments,
           editing: configuration.editing,
+          expandedBottomBar: configuration.expandedBottomBar,
           onPasteImages: configuration.onPasteImages,
           onSend: configuration.onSend,
           onStop: configuration.onStop
@@ -717,6 +784,7 @@ public struct PromptInput: View {
   public var placeholder: String
   public var attachments: [ChatFilePart]
   public var editing: PromptInputEditingContext?
+  public var expandedBottomBar: AnyView?
   public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
   public var onStop: () -> Void
@@ -733,17 +801,45 @@ public struct PromptInput: View {
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
-    onAdd: (() -> Void)? = nil
+    onAdd: (() -> Void)? = nil,
+    expandedBottomBar: AnyView? = nil
   ) {
     self._text = text
     self.status = status
     self.placeholder = placeholder
     self.attachments = attachments
     self.editing = editing
+    self.expandedBottomBar = expandedBottomBar
     self.onPasteImages = onPasteImages
     self.onSend = onSend
     self.onStop = onStop
     self.onAdd = onAdd
+  }
+
+  public init<ExpandedBottomBar: View>(
+    text: Binding<String>,
+    status: ChatStatus,
+    placeholder: String = "Message",
+    attachments: [ChatFilePart] = [],
+    editing: PromptInputEditingContext? = nil,
+    onPasteImages: (([PlatformImage]) -> Void)? = nil,
+    onSend: @escaping (String) -> Void,
+    onStop: @escaping () -> Void,
+    onAdd: (() -> Void)? = nil,
+    @ViewBuilder expandedBottomBar: () -> ExpandedBottomBar
+  ) {
+    self.init(
+      text: text,
+      status: status,
+      placeholder: placeholder,
+      attachments: attachments,
+      editing: editing,
+      onPasteImages: onPasteImages,
+      onSend: onSend,
+      onStop: onStop,
+      onAdd: onAdd,
+      expandedBottomBar: AnyView(expandedBottomBar())
+    )
   }
 
   public var body: some View {
@@ -753,6 +849,7 @@ public struct PromptInput: View {
       placeholder: placeholder,
       attachments: attachments,
       editing: editing,
+      expandedBottomBar: expandedBottomBar,
       onPasteImages: onPasteImages,
       onSend: onSend,
       onStop: onStop,
@@ -773,7 +870,8 @@ public extension View {
     overlayPadding: CGFloat = 8,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
-    onAdd: (() -> Void)? = nil
+    onAdd: (() -> Void)? = nil,
+    expandedBottomBar: AnyView? = nil
   ) -> some View {
     modifier(ChatComposerModifier(
       text: text,
@@ -787,8 +885,39 @@ public extension View {
       overlayPadding: overlayPadding,
       onSend: onSend,
       onStop: onStop,
-      onAdd: onAdd
+      onAdd: onAdd,
+      expandedBottomBar: expandedBottomBar
     ))
+  }
+
+  func chatComposer<ExpandedBottomBar: View>(
+    text: Binding<String>,
+    status: ChatStatus,
+    placeholder: String = "Message",
+    attachments: [ChatFilePart] = [],
+    editing: PromptInputEditingContext? = nil,
+    onPasteImages: (([PlatformImage]) -> Void)? = nil,
+    showsScrollToLatestButton: Bool = true,
+    overlayPadding: CGFloat = 8,
+    onSend: @escaping (String) -> Void,
+    onStop: @escaping () -> Void,
+    onAdd: (() -> Void)? = nil,
+    @ViewBuilder expandedBottomBar: () -> ExpandedBottomBar
+  ) -> some View {
+    chatComposer(
+      text: text,
+      status: status,
+      placeholder: placeholder,
+      attachments: attachments,
+      editing: editing,
+      onPasteImages: onPasteImages,
+      showsScrollToLatestButton: showsScrollToLatestButton,
+      overlayPadding: overlayPadding,
+      onSend: onSend,
+      onStop: onStop,
+      onAdd: onAdd,
+      expandedBottomBar: AnyView(expandedBottomBar())
+    )
   }
 
   func promptInputBottomBar(
@@ -800,7 +929,8 @@ public extension View {
     height: Binding<CGFloat>,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
-    onAdd: (() -> Void)? = nil
+    onAdd: (() -> Void)? = nil,
+    expandedBottomBar: AnyView? = nil
   ) -> some View {
     modifier(
       ChatComposerModifier(
@@ -815,8 +945,35 @@ public extension View {
         overlayPadding: 0,
         onSend: onSend,
         onStop: onStop,
-        onAdd: onAdd
+        onAdd: onAdd,
+        expandedBottomBar: expandedBottomBar
       )
+    )
+  }
+
+  func promptInputBottomBar<ExpandedBottomBar: View>(
+    text: Binding<String>,
+    status: ChatStatus,
+    attachments: [ChatFilePart] = [],
+    editing: PromptInputEditingContext? = nil,
+    onPasteImages: (([PlatformImage]) -> Void)? = nil,
+    height: Binding<CGFloat>,
+    onSend: @escaping (String) -> Void,
+    onStop: @escaping () -> Void,
+    onAdd: (() -> Void)? = nil,
+    @ViewBuilder expandedBottomBar: () -> ExpandedBottomBar
+  ) -> some View {
+    promptInputBottomBar(
+      text: text,
+      status: status,
+      attachments: attachments,
+      editing: editing,
+      onPasteImages: onPasteImages,
+      height: height,
+      onSend: onSend,
+      onStop: onStop,
+      onAdd: onAdd,
+      expandedBottomBar: AnyView(expandedBottomBar())
     )
   }
 }
@@ -834,6 +991,7 @@ private struct ChatComposerModifier: ViewModifier {
   let onSend: (String) -> Void
   let onStop: () -> Void
   let onAdd: (() -> Void)?
+  let expandedBottomBar: AnyView?
 
   @State private var measuredHeight: CGFloat = 0
   @State private var isAtLatestForScrollButton: Bool = true
@@ -866,7 +1024,8 @@ private struct ChatComposerModifier: ViewModifier {
           onPasteImages: onPasteImages,
           onSend: onSend,
           onStop: onStop,
-          onAdd: onAdd
+          onAdd: onAdd,
+          expandedBottomBar: expandedBottomBar
         )
           .padding(.horizontal, 12)
           .padding(.vertical, 8)
@@ -919,7 +1078,8 @@ private struct ChatComposerModifier: ViewModifier {
           onPasteImages: onPasteImages,
           onSend: onSend,
           onStop: onStop,
-          onAdd: onAdd
+          onAdd: onAdd,
+          expandedBottomBar: expandedBottomBar
         )
           .padding(.horizontal, 12)
           .padding(.top, 8)

@@ -24,6 +24,15 @@ struct ContentView: View {
                         }
                     }
 
+                    NavigationLink(value: "demo/chat-bottom-bar") {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Chat Demo (Bottom Bar)")
+                            Text("Chat composer with expanded bottom buttons")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     NavigationLink(value: "demo/fresh-chat") {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Fresh Chat Demo")
@@ -92,6 +101,15 @@ struct ContentView: View {
                 #else
                 SimpleChatDemoView()
                     .navigationTitle("Chat Demo")
+                #endif
+            } else if selection == "demo/chat-bottom-bar" {
+                #if os(iOS)
+                BottomBarChatDemoView()
+                    .navigationTitle("Chat Demo (Bottom Bar)")
+                    .navigationBarTitleDisplayMode(.inline)
+                #else
+                BottomBarChatDemoView()
+                    .navigationTitle("Chat Demo (Bottom Bar)")
                 #endif
             } else if selection == "demo/fresh-chat" {
                 #if os(iOS)

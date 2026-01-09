@@ -45,8 +45,8 @@ final class ConversationScrollViewModelTests: XCTestCase {
       ConversationScrollEngine.planForSendLift(hasReservedTailSpace: true).steps
     )
 
-    // reservedTailSpace = 758 - 64 - 44 - bottomInset(=12) - 2 = 636
-    XCTAssertEqual(model.reservedTailSpace, 636, accuracy: 0.5)
+    // reservedTailSpace = 758 - 64 - 44 - bottomInset(=24) - 2 = 624
+    XCTAssertEqual(model.reservedTailSpace, 624, accuracy: 0.5)
     XCTAssertEqual(model.pendingLiftAlignmentMessageID, nil)
   }
 

@@ -37,6 +37,7 @@ public struct PromptInputStyleConfiguration {
   public var placeholder: String
   public var attachments: [ChatFilePart]
   public var editing: PromptInputEditingContext?
+  public var expandedBottomBar: AnyView?
   public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
   public var onStop: () -> Void
@@ -48,6 +49,7 @@ public struct PromptInputStyleConfiguration {
     placeholder: String,
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
+    expandedBottomBar: AnyView? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
@@ -58,6 +60,7 @@ public struct PromptInputStyleConfiguration {
     self.placeholder = placeholder
     self.attachments = attachments
     self.editing = editing
+    self.expandedBottomBar = expandedBottomBar
     self.onPasteImages = onPasteImages
     self.onSend = onSend
     self.onStop = onStop

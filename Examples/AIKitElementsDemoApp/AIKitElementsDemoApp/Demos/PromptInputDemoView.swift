@@ -14,8 +14,30 @@ struct PromptInputDemoView: View {
     case typing
     case streaming
     case withAttachments
+    case bottomBarIdle
+    case bottomBarTyping
+    case bottomBarStreaming
+    case bottomBarWithAttachments
 
     var id: String { rawValue }
+
+    var showsExpandedBottomBar: Bool {
+      switch self {
+      case .bottomBarIdle, .bottomBarTyping, .bottomBarStreaming, .bottomBarWithAttachments:
+        return true
+      case .idle, .typing, .streaming, .withAttachments:
+        return false
+      }
+    }
+
+    var promptStatus: ChatStatus {
+      switch self {
+      case .streaming, .bottomBarStreaming:
+        return .streaming
+      case .idle, .typing, .withAttachments, .bottomBarIdle, .bottomBarTyping, .bottomBarWithAttachments:
+        return .ready
+      }
+    }
   }
 
   let mode: Mode
@@ -28,13 +50,32 @@ struct PromptInputDemoView: View {
         .font(.caption)
         .foregroundStyle(.secondary)
 
-      PromptInput(
-        text: $text,
-        status: mode == .streaming ? .streaming : .ready,
-        attachments: attachments,
-        onSend: { _ in },
-        onStop: { }
-      )
+      Group {
+        if mode.showsExpandedBottomBar {
+          PromptInput(
+            text: $text,
+            status: mode.promptStatus,
+            attachments: attachments,
+            onSend: { _ in },
+            onStop: { },
+            expandedBottomBar: {
+            HStack(spacing: 8) {
+              circleButton(symbol: "plus")
+              circleButton(symbol: "magnifyingglass")
+              circleButton(symbol: "mic.fill")
+            }
+            }
+	          )
+        } else {
+          PromptInput(
+            text: $text,
+            status: mode.promptStatus,
+            attachments: attachments,
+            onSend: { _ in },
+            onStop: { }
+          )
+        }
+      }
       .onAppear {
         switch mode {
         case .idle:
@@ -49,10 +90,33 @@ struct PromptInputDemoView: View {
         case .withAttachments:
           text = "A message with attachments"
           attachments = sampleAttachments
+        case .bottomBarIdle:
+          text = ""
+          attachments = []
+        case .bottomBarTyping:
+          text = "Hello from the composer"
+          attachments = []
+        case .bottomBarStreaming:
+          text = "Streaming…"
+          attachments = []
+        case .bottomBarWithAttachments:
+          text = ""
+          attachments = sampleAttachments
         }
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func circleButton(symbol: String) -> some View {
+    Button {} label: {
+      Image(systemName: symbol)
+        .font(.system(size: 14, weight: .medium))
+        .frame(width: 34, height: 34)
+        .foregroundStyle(.primary)
+        .background(Color.gray.opacity(0.15), in: .circle)
+    }
+    .buttonStyle(.plain)
   }
 
   private var sampleAttachments: [ChatFilePart] {

@@ -58,12 +58,20 @@ private struct SheetChatConversationView: View {
           onStop: {}
         )
         .navigationTitle("Chat Sheet")
+#if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
           ToolbarItem(placement: .topBarTrailing) {
             Button("Done") { dismiss() }
           }
         }
+#else
+        .toolbar {
+          ToolbarItem(placement: .primaryAction) {
+            Button("Done") { dismiss() }
+          }
+        }
+#endif
     }
   }
 }
