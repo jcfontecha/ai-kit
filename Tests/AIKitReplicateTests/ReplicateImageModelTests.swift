@@ -92,6 +92,47 @@ final class ReplicateImageModelTests: XCTestCase {
     )
   }
 
+  func testGenerate_fallsBackToPredictionsCreateWhenModelPredictionsReturns404() async throws {
+    let server = ReplicateTestServer()
+    server.responses["POST https://api.replicate.com/v1/models/prunaai/z-image-turbo-img2img/predictions"] = .json(
+      (try? JSONEncoder().encode(JSONValue.object(["detail": .string("The requested resource could not be found."), "status": .number(404)])))
+        ?? Data(),
+      headers: ["content-type": "application/problem+json"],
+      status: 404
+    )
+    server.responses["GET https://api.replicate.com/v1/models/prunaai/z-image-turbo-img2img/versions"] = .json(
+      (try? JSONEncoder().encode(JSONValue.object([
+        "next": .null,
+        "previous": .null,
+        "results": .array([
+          .object([
+            "id": .string("5c958e90e0f904240629ee35c69196e3bd790b5528c0696705ebdb1656871dd8"),
+          ]),
+        ]),
+      ]))) ?? Data()
+    )
+    server.responses["POST https://api.replicate.com/v1/predictions"] = .json(
+      preparePredictionResponse(output: .string("https://replicate.delivery/xezq/abc/out-0.webp"))
+    )
+    server.responses["GET https://replicate.delivery/xezq/abc/out-0.webp"] = .binary(Data("test-binary-content".utf8))
+
+    let provider = createReplicate(.init(apiToken: "test-api-token", transport: server.transport()))
+    let model = provider.image("prunaai/z-image-turbo-img2img")
+
+    _ = try await model.generate(ImageRequest(prompt: prompt, n: 1))
+
+    XCTAssertEqual(server.calls[0].requestUrl, "https://api.replicate.com/v1/models/prunaai/z-image-turbo-img2img/predictions")
+    XCTAssertEqual(server.calls[1].requestUrl, "https://api.replicate.com/v1/models/prunaai/z-image-turbo-img2img/versions")
+    XCTAssertEqual(server.calls[2].requestUrl, "https://api.replicate.com/v1/predictions")
+
+    if case .object(let body)? = server.calls[2].requestBodyJSON,
+       case .string(let version)? = body["version"] {
+      XCTAssertEqual(version, "5c958e90e0f904240629ee35c69196e3bd790b5528c0696705ebdb1656871dd8")
+    } else {
+      XCTFail("Expected version in /predictions request body")
+    }
+  }
+
   func testGenerate_passesHeadersAndPreferWait() async throws {
     let server = ReplicateTestServer()
     server.responses["POST https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions"] = .json(

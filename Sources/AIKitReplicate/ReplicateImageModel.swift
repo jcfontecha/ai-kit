@@ -158,31 +158,84 @@ struct ReplicateImageModel: ImageModel, Sendable {
       return ["prefer": "wait"]
     }()
 
+    func requestJSON(
+      method: String,
+      urlString: String,
+      body: [String: JSONValue]? = nil,
+      extraHeaders: [String: String] = [:]
+    ) async throws -> (Data, HTTPURLResponse) {
+      var headers = combineHeaders([config.headers(), request.headers, extraHeaders])
+      if body != nil {
+        headers["content-type"] = "application/json"
+      }
+
+      var urlRequest = URLRequest(url: URL(string: urlString)!)
+      urlRequest.httpMethod = method
+      for (key, value) in headers {
+        urlRequest.setValue(value, forHTTPHeaderField: key)
+      }
+      if let body {
+        urlRequest.httpBody = try JSONEncoder().encode(JSONValue.object(body))
+      }
+      return try await config.transport.data(for: urlRequest)
+    }
+
+    func fetchLatestVersionID(modelRef: String) async throws -> String {
+      let urlString = "\(config.baseURL)/models/\(modelRef)/versions"
+      let (data, response) = try await requestJSON(method: "GET", urlString: urlString, extraHeaders: prefer)
+      if (200..<300).contains(response.statusCode) == false {
+        throw ReplicateAPIError(
+          message: parseReplicateErrorMessage(from: data) ?? "Unknown Replicate error",
+          statusCode: response.statusCode,
+          headers: flattenHeaders(response)
+        )
+      }
+
+      let json = try JSONDecoder().decode(JSONValue.self, from: data)
+      guard case .object(let obj) = json else {
+        throw AIKitError.invalidConfiguration("Invalid Replicate versions response.")
+      }
+      guard case .array(let results)? = obj["results"], let first = results.first,
+            case .object(let versionObj) = first,
+            case .string(let id)? = versionObj["id"],
+            id.isEmpty == false else {
+        throw AIKitError.invalidConfiguration("Replicate model has no versions.")
+      }
+      return id
+    }
+
     let urlString =
       version != nil
         ? "\(config.baseURL)/predictions"
         : "\(config.baseURL)/models/\(modelId)/predictions"
 
-    var headers = combineHeaders([config.headers(), request.headers, prefer])
-    headers["content-type"] = "application/json"
+    let (data, response) = try await requestJSON(method: "POST", urlString: urlString, body: body, extraHeaders: prefer)
 
-    var urlRequest = URLRequest(url: URL(string: urlString)!)
-    urlRequest.httpMethod = "POST"
-    for (key, value) in headers {
-      urlRequest.setValue(value, forHTTPHeaderField: key)
-    }
-    urlRequest.httpBody = try JSONEncoder().encode(JSONValue.object(body))
+    let resolved: (Data, HTTPURLResponse) = try await {
+      // Replicate HTTP API: `/models/{owner}/{name}/predictions` only works for "official models".
+      // For other models, use `POST /predictions` and include a version.
+      if response.statusCode == 404, version == nil {
+        let latestVersionID = try await fetchLatestVersionID(modelRef: modelId)
+        var updatedBody = body
+        updatedBody["version"] = .string(latestVersionID)
+        let url = "\(config.baseURL)/predictions"
+        return try await requestJSON(method: "POST", urlString: url, body: updatedBody, extraHeaders: prefer)
+      }
+      return (data, response)
+    }()
 
-    let (data, response) = try await config.transport.data(for: urlRequest)
-    if (200..<300).contains(response.statusCode) == false {
+    let finalData2 = resolved.0
+    let finalResponse2 = resolved.1
+
+    if (200..<300).contains(finalResponse2.statusCode) == false {
       throw ReplicateAPIError(
-        message: parseReplicateErrorMessage(from: data) ?? "Unknown Replicate error",
-        statusCode: response.statusCode,
-        headers: flattenHeaders(response)
+        message: parseReplicateErrorMessage(from: finalData2) ?? "Unknown Replicate error",
+        statusCode: finalResponse2.statusCode,
+        headers: flattenHeaders(finalResponse2)
       )
     }
 
-    let responseJSON = try JSONDecoder().decode(JSONValue.self, from: data)
+    let responseJSON = try JSONDecoder().decode(JSONValue.self, from: finalData2)
     let outputURLs = try extractOutputURLs(from: responseJSON)
 
     var images: [ImageResponse.ImageData] = []
@@ -200,7 +253,7 @@ struct ReplicateImageModel: ImageModel, Sendable {
       response: .init(
         timestamp: now,
         modelID: id,
-        headers: flattenHeaders(response)
+        headers: flattenHeaders(finalResponse2)
       )
     )
   }
