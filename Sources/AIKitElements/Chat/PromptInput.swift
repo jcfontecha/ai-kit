@@ -9,13 +9,20 @@ import UIKit
 public typealias PlatformImage = UIImage
 #endif
 
+private struct FocusRequestToken: Hashable {
+  var external: Int
+  var `internal`: Int
+
+  var shouldFocus: Bool { external > 0 || `internal` > 0 }
+}
+
 #if os(iOS)
 private struct PromptInputiOSTextField: UIViewRepresentable {
   @Binding var text: String
   @Binding var measuredHeight: CGFloat
   let placeholder: String
   let maxVisibleLines: Int
-  let focusRequestID: Int
+  let focusRequestToken: FocusRequestToken
   let onPasteImages: (([UIImage]) -> Void)?
   let onEditingChanged: ((Bool) -> Void)?
 
@@ -94,8 +101,8 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
       context.coordinator.updateHeight(for: uiView)
     }
 
-    if focusRequestID > 0, focusRequestID != context.coordinator.lastFocusRequestID {
-      context.coordinator.lastFocusRequestID = focusRequestID
+    if focusRequestToken.shouldFocus, focusRequestToken != context.coordinator.lastFocusRequestToken {
+      context.coordinator.lastFocusRequestToken = focusRequestToken
       DispatchQueue.main.async {
         guard uiView.window != nil else { return }
         // Only move the insertion point when we *actually* take focus.
@@ -125,7 +132,7 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
     let onPasteImages: (([UIImage]) -> Void)?
     let onEditingChanged: ((Bool) -> Void)?
     var lastProposedWidth: CGFloat = 0
-    var lastFocusRequestID: Int = 0
+    var lastFocusRequestToken: FocusRequestToken = .init(external: 0, internal: 0)
     var lastTextViewText: String = ""
     private var pendingCaretAfterNewline: NSRange?
 
@@ -290,7 +297,7 @@ private func dismissKeyboard() {
 private struct PromptInputMacTextField: NSViewRepresentable {
   @Binding var text: String
   let placeholder: String
-  let focusRequestID: Int
+  let focusRequestToken: FocusRequestToken
   let onPasteImages: (([NSImage]) -> Void)?
   let onEditingChanged: ((Bool) -> Void)?
 
@@ -318,8 +325,8 @@ private struct PromptInputMacTextField: NSViewRepresentable {
       nsView.stringValue = text
     }
 
-    if focusRequestID > 0, focusRequestID != context.coordinator.lastFocusRequestID {
-      context.coordinator.lastFocusRequestID = focusRequestID
+    if focusRequestToken.shouldFocus, focusRequestToken != context.coordinator.lastFocusRequestToken {
+      context.coordinator.lastFocusRequestToken = focusRequestToken
       DispatchQueue.main.async {
         guard nsView.window != nil else { return }
         nsView.window?.makeFirstResponder(nsView)
@@ -331,7 +338,7 @@ private struct PromptInputMacTextField: NSViewRepresentable {
     @Binding private var text: String
     let onPasteImages: (([NSImage]) -> Void)?
     let onEditingChanged: ((Bool) -> Void)?
-    var lastFocusRequestID: Int = 0
+    var lastFocusRequestToken: FocusRequestToken = .init(external: 0, internal: 0)
 
     init(
       text: Binding<String>,
@@ -378,6 +385,8 @@ public struct PromptInputField: View {
   public var attachments: [ChatFilePart]
   public var editing: PromptInputEditingContext?
   public var expandedBottomBar: AnyView?
+  /// A monotonically increasing token; bump it to request focus on the prompt input.
+  public var focusRequestID: Binding<Int>?
   public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
   public var onStop: () -> Void
@@ -399,7 +408,7 @@ public struct PromptInputField: View {
   #if os(iOS)
   @State private var iOSTextViewHeight: CGFloat = 0
   #endif
-  @State private var focusRequestID: Int = 0
+  @State private var internalFocusRequestID: Int = 0
   @State private var focusTask: Task<Void, Never>?
   @State private var isFocused: Bool = false
 
@@ -410,6 +419,7 @@ public struct PromptInputField: View {
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
     expandedBottomBar: AnyView? = nil,
+    focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void
@@ -420,6 +430,7 @@ public struct PromptInputField: View {
     self.attachments = attachments
     self.editing = editing
     self.expandedBottomBar = expandedBottomBar
+    self.focusRequestID = focusRequestID
     self.onPasteImages = onPasteImages
     self.onSend = onSend
     self.onStop = onStop
@@ -450,7 +461,7 @@ public struct PromptInputField: View {
         if editing != nil {
           scheduleFocus()
         } else {
-          focusRequestID = 0
+          internalFocusRequestID = 0
         }
       }
       .onChange(of: editing != nil) { _, newValue in
@@ -459,7 +470,7 @@ public struct PromptInputField: View {
         } else {
           focusTask?.cancel()
           focusTask = nil
-          focusRequestID = 0
+          internalFocusRequestID = 0
           withAnimation(expandedBottomBarAnimation) {
             isFocused = false
           }
@@ -471,7 +482,7 @@ public struct PromptInputField: View {
       .onDisappear {
         focusTask?.cancel()
         focusTask = nil
-        focusRequestID = 0
+        internalFocusRequestID = 0
         withAnimation(expandedBottomBarAnimation) {
           isFocused = false
         }
@@ -508,8 +519,15 @@ public struct PromptInputField: View {
     focusTask = Task { @MainActor in
       try? await Task.sleep(for: focusDelay)
       guard Task.isCancelled == false else { return }
-      focusRequestID += 1
+      internalFocusRequestID += 1
     }
+  }
+
+  private var resolvedFocusRequestToken: FocusRequestToken {
+    .init(
+      external: focusRequestID?.wrappedValue ?? 0,
+      internal: internalFocusRequestID
+    )
   }
 
   private var sendEnabled: Bool {
@@ -635,17 +653,17 @@ public struct PromptInputField: View {
   @ViewBuilder
   private var composerField: some View {
     #if os(iOS)
-      PromptInputiOSTextField(
-        text: $text,
-        measuredHeight: $iOSTextViewHeight,
-        placeholder: placeholder,
-        maxVisibleLines: 8,
-        focusRequestID: focusRequestID,
-        onPasteImages: onPasteImages,
-        onEditingChanged: { isEditing in
-          withAnimation(expandedBottomBarAnimation) {
-            isFocused = isEditing
-          }
+	      PromptInputiOSTextField(
+	        text: $text,
+	        measuredHeight: $iOSTextViewHeight,
+	        placeholder: placeholder,
+	        maxVisibleLines: 8,
+	        focusRequestToken: resolvedFocusRequestToken,
+	        onPasteImages: onPasteImages,
+	        onEditingChanged: { isEditing in
+	          withAnimation(expandedBottomBarAnimation) {
+	            isFocused = isEditing
+	          }
           guard isEditing else { return }
           keepChatSheetExpandedIfConfigured()
         }
@@ -661,14 +679,14 @@ public struct PromptInputField: View {
       )
       .padding(.leading, 6)
     #else
-    PromptInputMacTextField(
-      text: $text,
-      placeholder: placeholder,
-      focusRequestID: focusRequestID,
-      onPasteImages: onPasteImages,
-      onEditingChanged: { isEditing in
-        withAnimation(expandedBottomBarAnimation) {
-          isFocused = isEditing
+	    PromptInputMacTextField(
+	      text: $text,
+	      placeholder: placeholder,
+	      focusRequestToken: resolvedFocusRequestToken,
+	      onPasteImages: onPasteImages,
+	      onEditingChanged: { isEditing in
+	        withAnimation(expandedBottomBarAnimation) {
+	          isFocused = isEditing
         }
       }
     )
@@ -731,6 +749,7 @@ private struct StandardPromptInput: View {
           attachments: configuration.attachments,
           editing: configuration.editing,
           expandedBottomBar: configuration.expandedBottomBar,
+          focusRequestID: configuration.focusRequestID,
           onPasteImages: configuration.onPasteImages,
           onSend: configuration.onSend,
           onStop: configuration.onStop
@@ -785,6 +804,8 @@ public struct PromptInput: View {
   public var attachments: [ChatFilePart]
   public var editing: PromptInputEditingContext?
   public var expandedBottomBar: AnyView?
+  /// A monotonically increasing token; bump it to request focus on the prompt input.
+  public var focusRequestID: Binding<Int>?
   public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
   public var onStop: () -> Void
@@ -798,6 +819,7 @@ public struct PromptInput: View {
     placeholder: String = "Message",
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
+    focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
@@ -809,6 +831,7 @@ public struct PromptInput: View {
     self.placeholder = placeholder
     self.attachments = attachments
     self.editing = editing
+    self.focusRequestID = focusRequestID
     self.expandedBottomBar = expandedBottomBar
     self.onPasteImages = onPasteImages
     self.onSend = onSend
@@ -822,6 +845,7 @@ public struct PromptInput: View {
     placeholder: String = "Message",
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
+    focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
@@ -834,6 +858,7 @@ public struct PromptInput: View {
       placeholder: placeholder,
       attachments: attachments,
       editing: editing,
+      focusRequestID: focusRequestID,
       onPasteImages: onPasteImages,
       onSend: onSend,
       onStop: onStop,
@@ -850,6 +875,7 @@ public struct PromptInput: View {
       attachments: attachments,
       editing: editing,
       expandedBottomBar: expandedBottomBar,
+      focusRequestID: focusRequestID,
       onPasteImages: onPasteImages,
       onSend: onSend,
       onStop: onStop,
@@ -865,6 +891,7 @@ public extension View {
     placeholder: String = "Message",
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
+    focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     showsScrollToLatestButton: Bool = true,
     overlayPadding: CGFloat = 8,
@@ -879,6 +906,7 @@ public extension View {
       placeholder: placeholder,
       attachments: attachments,
       editing: editing,
+      focusRequestID: focusRequestID,
       onPasteImages: onPasteImages,
       height: nil,
       showsScrollToLatestButton: showsScrollToLatestButton,
@@ -896,6 +924,7 @@ public extension View {
     placeholder: String = "Message",
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
+    focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     showsScrollToLatestButton: Bool = true,
     overlayPadding: CGFloat = 8,
@@ -910,6 +939,7 @@ public extension View {
       placeholder: placeholder,
       attachments: attachments,
       editing: editing,
+      focusRequestID: focusRequestID,
       onPasteImages: onPasteImages,
       showsScrollToLatestButton: showsScrollToLatestButton,
       overlayPadding: overlayPadding,
@@ -925,6 +955,7 @@ public extension View {
     status: ChatStatus,
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
+    focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     height: Binding<CGFloat>,
     onSend: @escaping (String) -> Void,
@@ -939,6 +970,7 @@ public extension View {
         placeholder: "Message",
         attachments: attachments,
         editing: editing,
+        focusRequestID: focusRequestID,
         onPasteImages: onPasteImages,
         height: height,
         showsScrollToLatestButton: false,
@@ -956,6 +988,7 @@ public extension View {
     status: ChatStatus,
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
+    focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     height: Binding<CGFloat>,
     onSend: @escaping (String) -> Void,
@@ -968,6 +1001,7 @@ public extension View {
       status: status,
       attachments: attachments,
       editing: editing,
+      focusRequestID: focusRequestID,
       onPasteImages: onPasteImages,
       height: height,
       onSend: onSend,
@@ -984,6 +1018,7 @@ private struct ChatComposerModifier: ViewModifier {
   let placeholder: String
   let attachments: [ChatFilePart]
   let editing: PromptInputEditingContext?
+  let focusRequestID: Binding<Int>?
   let onPasteImages: (([PlatformImage]) -> Void)?
   var height: Binding<CGFloat>?
   let showsScrollToLatestButton: Bool
@@ -1021,6 +1056,7 @@ private struct ChatComposerModifier: ViewModifier {
           placeholder: placeholder,
           attachments: attachments,
           editing: editing,
+          focusRequestID: focusRequestID,
           onPasteImages: onPasteImages,
           onSend: onSend,
           onStop: onStop,
@@ -1075,6 +1111,7 @@ private struct ChatComposerModifier: ViewModifier {
           placeholder: placeholder,
           attachments: attachments,
           editing: editing,
+          focusRequestID: focusRequestID,
           onPasteImages: onPasteImages,
           onSend: onSend,
           onStop: onStop,

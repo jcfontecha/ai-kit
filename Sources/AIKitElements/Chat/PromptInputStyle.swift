@@ -38,6 +38,8 @@ public struct PromptInputStyleConfiguration {
   public var attachments: [ChatFilePart]
   public var editing: PromptInputEditingContext?
   public var expandedBottomBar: AnyView?
+  /// A monotonically increasing token; bump it to request focus on the prompt input.
+  public var focusRequestID: Binding<Int>?
   public var onPasteImages: (([PlatformImage]) -> Void)?
   public var onSend: (String) -> Void
   public var onStop: () -> Void
@@ -50,6 +52,7 @@ public struct PromptInputStyleConfiguration {
     attachments: [ChatFilePart] = [],
     editing: PromptInputEditingContext? = nil,
     expandedBottomBar: AnyView? = nil,
+    focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
@@ -61,6 +64,7 @@ public struct PromptInputStyleConfiguration {
     self.attachments = attachments
     self.editing = editing
     self.expandedBottomBar = expandedBottomBar
+    self.focusRequestID = focusRequestID
     self.onPasteImages = onPasteImages
     self.onSend = onSend
     self.onStop = onStop
