@@ -33,6 +33,7 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
     let view = PasteAwareTextView()
     view.text = text
     view.backgroundColor = .clear
+    view.clipsToBounds = true
     view.font = UIFont.preferredFont(forTextStyle: .body)
     view.delegate = context.coordinator
     view.isScrollEnabled = false
@@ -159,7 +160,15 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
           let utf16Length = (textView.text as NSString).length
           let clampedLocation = min(pending.location, utf16Length)
           textView.selectedRange = NSRange(location: clampedLocation, length: 0)
-          textView.scrollRangeToVisible(textView.selectedRange)
+
+          // When the text view is in "expanding" mode (`isScrollEnabled == false`), `scrollRangeToVisible`
+          // can temporarily push `contentOffset` while SwiftUI is still updating the view height. That leaves
+          // the text visually shifted upward even after the container grows.
+          if textView.isScrollEnabled {
+            textView.scrollRangeToVisible(textView.selectedRange)
+          } else {
+            textView.setContentOffset(.zero, animated: false)
+          }
         }
       }
     }
@@ -204,6 +213,10 @@ private struct PromptInputiOSTextField: UIViewRepresentable {
         if wasScrollEnabled, shouldScroll == false {
           textView.setContentOffset(.zero, animated: false)
         }
+      }
+
+      if shouldScroll == false, abs(textView.contentOffset.y) > 0.5 {
+        textView.setContentOffset(.zero, animated: false)
       }
 
       guard abs(clampedHeight - measuredHeight) > 0.5 else { return }
