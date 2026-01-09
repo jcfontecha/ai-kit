@@ -952,6 +952,72 @@ final class ChatSessionTests: XCTestCase {
     XCTAssertEqual(tool.state, .approvalResponded(approvalID: "approval-1", approved: true, reason: nil))
   }
 
+  func testAddToolOutput_updatesToolPartNotInLastAssistantMessage_andEmitsUpdate() async throws {
+    actor SnapshotLog {
+      private var snapshots: [ChatSessionSnapshot] = []
+      func append(_ snapshot: ChatSessionSnapshot) { snapshots.append(snapshot) }
+      func count() -> Int { snapshots.count }
+      func snapshot() -> [ChatSessionSnapshot] { snapshots }
+    }
+
+    let session = ChatSession(.init(
+      messages: [
+        .init(id: "id-0", role: .user, parts: [.text(.init(id: "u", text: "hi", state: .done))]),
+        .init(id: "id-1", role: .assistant, parts: [
+          .tool(.init(
+            toolCallID: "tool-1",
+            toolName: "test-tool",
+            input: .object(["a": .string("b")]),
+            state: .inputAvailable
+          )),
+        ]),
+        .init(id: "id-2", role: .assistant, parts: [.text(.init(id: "t", text: "later message", state: .done))]),
+      ]
+    ))
+
+    let log = SnapshotLog()
+    let stream = await session.updates(bufferingPolicy: .unbounded)
+    let collectTask = Task {
+      for await snap in stream {
+        await log.append(snap)
+        if await log.count() >= 2 { break }
+      }
+    }
+
+    try await waitUntil { (await log.count()) >= 1 }
+
+    await session.addToolOutput(
+      tool: ToolID<EmptyInput, String>("test-tool"),
+      toolCallID: "tool-1",
+      output: "new-output"
+    )
+
+    try await waitUntil { (await log.count()) >= 2 }
+    await collectTask.value
+
+    let messages = await session.messages
+    XCTAssertEqual(messages.count, 3)
+
+    guard case let .tool(toolPart)? = messages[1].parts.first else {
+      return XCTFail("missing tool part")
+    }
+
+    XCTAssertEqual(toolPart.output, .string("new-output"))
+    XCTAssertEqual(toolPart.state, .outputAvailable(preliminary: false))
+
+    let snapshots = await log.snapshot()
+    XCTAssertTrue(snapshots.contains(where: { snap in
+      snap.messages.contains(where: { message in
+        message.parts.contains(where: { part in
+          guard case let .tool(tool) = part else { return false }
+          return tool.toolCallID == "tool-1" &&
+            tool.output == .string("new-output") &&
+            tool.state == .outputAvailable(preliminary: false)
+        })
+      })
+    }))
+  }
+
   func testAddToolApprovalResponse_approved_withAutomaticSending_streamsToolResultAndText() async throws {
     let finishCapture = FinishCapture()
 

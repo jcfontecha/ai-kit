@@ -425,6 +425,7 @@ actor ChatSession {
         toolPart.output = jsonValue
         toolPart.state = .outputAvailable(preliminary: false)
       }
+      await emitUpdate()
       await maybeAutoSubmit()
     } catch {
       self.error = error
@@ -441,6 +442,7 @@ actor ChatSession {
     updateToolPart(toolCallID: toolCallID) { toolPart in
       toolPart.state = .outputError(errorText: errorText)
     }
+    await emitUpdate()
     await maybeAutoSubmit()
   }
 
@@ -453,6 +455,7 @@ actor ChatSession {
       toolPart.state = .approvalResponded(approvalID: approvalID, approved: approved, reason: reason)
       toolPart.approval = .init(id: approvalID, approved: approved, reason: reason)
     }
+    await emitUpdate()
     await maybeAutoSubmit()
   }
 
@@ -491,32 +494,50 @@ actor ChatSession {
     toolCallID: String,
     update: (inout ChatToolPart) -> Void
   ) {
-    guard let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant }) else { return }
-    guard let toolPartIndex = messages[lastAssistantIndex].parts.lastIndex(where: { part in
-      guard case let .tool(tool) = part else { return false }
-      return tool.toolCallID == toolCallID
-    }) else { return }
-    guard case var .tool(toolPart) = messages[lastAssistantIndex].parts[toolPartIndex] else { return }
+    guard let found = findToolPartIndex(toolCallID: toolCallID) else { return }
+    let (messageIndex, toolPartIndex) = found
+    guard case var .tool(toolPart) = messages[messageIndex].parts[toolPartIndex] else { return }
     update(&toolPart)
-    messages[lastAssistantIndex].parts[toolPartIndex] = .tool(toolPart)
+    messages[messageIndex].parts[toolPartIndex] = .tool(toolPart)
   }
 
   private func updateToolPart(
     matchingApprovalID approvalID: String,
     update: (inout ChatToolPart) -> Void
   ) {
-    guard let lastAssistantIndex = messages.lastIndex(where: { $0.role == .assistant }) else { return }
-    guard let toolPartIndex = messages[lastAssistantIndex].parts.lastIndex(where: { part in
-      guard case let .tool(tool) = part else { return false }
-      if tool.approval?.id == approvalID { return true }
-      if case let .approvalRequested(existingID) = tool.state {
-        return existingID == approvalID
-      }
-      return false
-    }) else { return }
-    guard case var .tool(toolPart) = messages[lastAssistantIndex].parts[toolPartIndex] else { return }
+    guard let found = findToolPartIndex(approvalID: approvalID) else { return }
+    let (messageIndex, toolPartIndex) = found
+    guard case var .tool(toolPart) = messages[messageIndex].parts[toolPartIndex] else { return }
     update(&toolPart)
-    messages[lastAssistantIndex].parts[toolPartIndex] = .tool(toolPart)
+    messages[messageIndex].parts[toolPartIndex] = .tool(toolPart)
+  }
+
+  private func findToolPartIndex(toolCallID: String) -> (messageIndex: Int, toolPartIndex: Int)? {
+    for messageIndex in messages.indices.reversed() {
+      if let toolPartIndex = messages[messageIndex].parts.lastIndex(where: { part in
+        guard case let .tool(tool) = part else { return false }
+        return tool.toolCallID == toolCallID
+      }) {
+        return (messageIndex, toolPartIndex)
+      }
+    }
+    return nil
+  }
+
+  private func findToolPartIndex(approvalID: String) -> (messageIndex: Int, toolPartIndex: Int)? {
+    for messageIndex in messages.indices.reversed() {
+      if let toolPartIndex = messages[messageIndex].parts.lastIndex(where: { part in
+        guard case let .tool(tool) = part else { return false }
+        if tool.approval?.id == approvalID { return true }
+        if case let .approvalRequested(existingID) = tool.state {
+          return existingID == approvalID
+        }
+        return false
+      }) {
+        return (messageIndex, toolPartIndex)
+      }
+    }
+    return nil
   }
 
   private func encodeJSONValue<T: Encodable>(_ value: T) throws -> JSONValue {
