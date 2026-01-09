@@ -3,11 +3,11 @@ import AIKit
 
 #if canImport(AppKit)
 import AppKit
-typealias AttachmentPreviewImage = NSImage
 #elseif canImport(UIKit)
 import UIKit
-typealias AttachmentPreviewImage = UIImage
 #endif
+
+import ImageIO
 
 public struct FileAttachment: Identifiable, Equatable {
   public var id: String
@@ -42,6 +42,9 @@ public struct FileAttachmentPreview: View {
   public var size: CGFloat
   public var cornerRadius: CGFloat
 
+  @Environment(\.displayScale) private var displayScale
+  @State private var thumbnail: CGImage?
+
   public init(
     attachment: ChatFilePart,
     size: CGFloat = 52,
@@ -54,8 +57,8 @@ public struct FileAttachmentPreview: View {
 
   public var body: some View {
     ZStack {
-      if let image = previewImage {
-        Image(platformImage: image)
+      if let thumbnail {
+        Image(decorative: thumbnail, scale: displayScale)
           .resizable()
           .scaledToFill()
       } else {
@@ -68,6 +71,9 @@ public struct FileAttachmentPreview: View {
     .background(Color.secondary.opacity(0.12))
     .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    .task(id: thumbnailCacheKey) {
+      await loadThumbnailIfNeeded()
+    }
   }
 
   private var iconName: String {
@@ -75,17 +81,43 @@ public struct FileAttachmentPreview: View {
     return "paperclip"
   }
 
-  private var previewImage: AttachmentPreviewImage? {
-    guard let mediaType = attachment.mediaType, mediaType.hasPrefix("image/") else { return nil }
-    switch attachment.data {
-    case .data(let data):
-      return platformImage(from: data)
-    case .base64(let base64):
-      guard let data = Data(base64Encoded: base64) else { return nil }
-      return platformImage(from: data)
-    case .url:
-      return nil
+  private var shouldAttemptImagePreview: Bool {
+    guard let mediaType = attachment.mediaType, mediaType.hasPrefix("image/") else { return false }
+    return true
+  }
+
+  private var thumbnailMaxPixelSize: Int {
+    Int((size * displayScale).rounded(.up))
+  }
+
+  private var thumbnailCacheKey: String {
+    guard shouldAttemptImagePreview else { return "no-preview" }
+    return makeAttachmentThumbnailCacheKey(attachment: attachment, maxPixelSize: thumbnailMaxPixelSize)
+  }
+
+  @MainActor
+  private func loadThumbnailIfNeeded() async {
+    guard shouldAttemptImagePreview else {
+      thumbnail = nil
+      return
     }
+
+    if let cached = await AttachmentThumbnailCache.shared.get(thumbnailCacheKey) {
+      thumbnail = cached
+      return
+    }
+
+    let maxPixelSize = thumbnailMaxPixelSize
+    let key = thumbnailCacheKey
+    let created = await Task.detached(priority: .utility) { () -> CGImage? in
+      guard let data = attachmentDataForThumbnail(attachment: attachment) else { return nil }
+      return makeThumbnailCGImage(from: data, maxPixelSize: maxPixelSize)
+    }.value
+
+    if let created {
+      await AttachmentThumbnailCache.shared.insert(created, for: key)
+    }
+    thumbnail = created
   }
 }
 
@@ -133,29 +165,112 @@ public struct FileAttachmentPreviewRow: View {
   }
 }
 
-#if canImport(AppKit)
-private func platformImage(from data: Data) -> AttachmentPreviewImage? {
-  NSImage(data: data)
+private func attachmentDataForThumbnail(attachment: ChatFilePart) -> Data? {
+  switch attachment.data {
+  case .data(let data):
+    return data
+  case .base64(let base64):
+    return Data(base64Encoded: base64)
+  case .url(let url):
+    guard url.isFileURL else { return nil }
+    return try? Data(contentsOf: url)
+  }
 }
-#elseif canImport(UIKit)
-private func platformImage(from data: Data) -> AttachmentPreviewImage? {
-  UIImage(data: data)
-}
-#endif
 
-#if canImport(AppKit)
-private extension Image {
-  init(platformImage: AttachmentPreviewImage) {
-    self.init(nsImage: platformImage)
+private func makeThumbnailCGImage(from data: Data, maxPixelSize: Int) -> CGImage? {
+  guard maxPixelSize > 0 else { return nil }
+  let sourceOptions: [CFString: Any] = [
+    kCGImageSourceShouldCache: false,
+    kCGImageSourceShouldCacheImmediately: false,
+  ]
+  guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions as CFDictionary) else { return nil }
+
+  let thumbnailOptions: [CFString: Any] = [
+    kCGImageSourceCreateThumbnailFromImageAlways: true,
+    kCGImageSourceCreateThumbnailWithTransform: true,
+    kCGImageSourceShouldCacheImmediately: true,
+    kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+  ]
+  return CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary)
+}
+
+private actor AttachmentThumbnailCache {
+  static let shared = AttachmentThumbnailCache()
+
+  private let cache: NSCache<NSString, CGImageBox> = {
+    let cache = NSCache<NSString, CGImageBox>()
+    cache.countLimit = 256
+    cache.totalCostLimit = 48 * 1024 * 1024
+    return cache
+  }()
+
+  func get(_ key: String) -> CGImage? {
+    cache.object(forKey: key as NSString)?.image
+  }
+
+  func insert(_ image: CGImage, for key: String) {
+    let cost = image.bytesPerRow * image.height
+    cache.setObject(CGImageBox(image), forKey: key as NSString, cost: cost)
   }
 }
-#elseif canImport(UIKit)
-private extension Image {
-  init(platformImage: AttachmentPreviewImage) {
-    self.init(uiImage: platformImage)
+
+private final class CGImageBox: NSObject {
+  let image: CGImage
+  init(_ image: CGImage) { self.image = image }
+}
+
+private func makeAttachmentThumbnailCacheKey(attachment: ChatFilePart, maxPixelSize: Int) -> String {
+  "\(maxPixelSize)|\(attachmentKeyFragment(attachment: attachment))"
+}
+
+private func attachmentKeyFragment(attachment: ChatFilePart) -> String {
+  let mediaType = attachment.mediaType ?? "unknown"
+  let filename = attachment.filename ?? "nil"
+  return "\(mediaType)|\(filename)|\(dataSignature(attachment.data))"
+}
+
+private func dataSignature(_ data: DataContent) -> String {
+  switch data {
+  case .data(let bytes):
+    return "d:\(bytes.count):\(dataEdgeSignature(bytes))"
+  case .base64(let base64):
+    return "b64:\(base64.count):\(stringEdgeSignature(base64))"
+  case .url(let url):
+    return "u:\(url.absoluteString)"
   }
 }
-#endif
+
+private func dataEdgeSignature(_ data: Data) -> String {
+  guard data.isEmpty == false else { return "empty" }
+  let prefix = dataUInt64Prefix(data)
+  let suffix = dataUInt64Suffix(data)
+  return String(format: "%016llx:%016llx", prefix, suffix)
+}
+
+private func stringEdgeSignature(_ string: String) -> String {
+  guard string.isEmpty == false else { return "empty" }
+  let prefix = String(string.prefix(16))
+  let suffix = String(string.suffix(16))
+  return "\(prefix):\(suffix)"
+}
+
+private func dataUInt64Prefix(_ data: Data) -> UInt64 {
+  var value: UInt64 = 0
+  let count = min(8, data.count)
+  for i in 0..<count {
+    value |= UInt64(data[data.startIndex.advanced(by: i)]) << (UInt64(i) * 8)
+  }
+  return value
+}
+
+private func dataUInt64Suffix(_ data: Data) -> UInt64 {
+  var value: UInt64 = 0
+  let count = min(8, data.count)
+  for i in 0..<count {
+    value |= UInt64(data[data.endIndex.advanced(by: -(count - i))]) << (UInt64(i) * 8)
+  }
+  return value
+}
 
 public struct FileChip: View {
   public var filename: String?
