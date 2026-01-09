@@ -33,6 +33,15 @@ struct ContentView: View {
                         }
                     }
 
+                    NavigationLink(value: "demo/long-chat") {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Long Chat Demo")
+                            Text("Long conversation with tool calls + images")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     NavigationLink(value: "demo/chat-sheet") {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Chat Sheet Demo")
@@ -92,6 +101,15 @@ struct ContentView: View {
                 #else
                 FreshChatDemoView()
                     .navigationTitle("Fresh Chat Demo")
+                #endif
+            } else if selection == "demo/long-chat" {
+                #if os(iOS)
+                LongChatWithImagesDemoView()
+                    .navigationTitle("Long Chat Demo")
+                    .navigationBarTitleDisplayMode(.inline)
+                #else
+                LongChatWithImagesDemoView()
+                    .navigationTitle("Long Chat Demo")
                 #endif
             } else if selection == "demo/chat-sheet" {
                 #if os(iOS)
