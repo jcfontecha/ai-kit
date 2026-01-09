@@ -44,11 +44,15 @@ public struct Conversation<MessageView: View>: View {
   @Environment(\.conversationShowsScrollButton) private var showsScrollButton
   @Environment(\.conversationAnchorsNewUserMessagesToTop) private var anchorsNewUserMessagesToTop
   @Environment(\.conversationDebugOverlayEnabled) private var debugOverlayEnabled
+  @Environment(\.conversationTopOverlayHeight) private var topOverlayHeight
   @Environment(\.conversationScrollToLatestRequest) private var scrollToLatestRequest
 
   @StateObject private var scrollModel = ConversationScrollViewModel()
   @State private var streamingFollowTask: Task<Void, Never>?
   @State private var pendingTailUpdateTask: Task<Void, Never>?
+  @State private var scrollDispatcher = ConversationScrollDispatcher()
+  @State private var interactionUnlockTask: Task<Void, Never>?
+  @State private var isStickyFollowingTail: Bool = false
   @State private var didCopyDebugState: Bool = false
 
   private let bottomInsetAnimation: Animation = .easeOut(duration: 0.18)
@@ -108,14 +112,13 @@ public struct Conversation<MessageView: View>: View {
             }
 
             ForEach(visibleMessages) { message in
-              if scrollModel.shouldMeasureMessageHeights {
-                messageView(message)
-                  .id(message.id)
-                  .background(measureHeight(id: message.id))
-              } else {
-                messageView(message)
-                  .id(message.id)
-              }
+              messageView(message)
+                .id(message.id)
+                .background {
+                  if scrollModel.shouldMeasureMessageHeights {
+                    measureHeight(id: message.id)
+                  }
+                }
             }
           }
 
@@ -125,7 +128,6 @@ public struct Conversation<MessageView: View>: View {
             // Tail spacer creates scroll range so the newest user message can be pinned to the top.
             Color.clear
               .frame(height: scrollModel.reservedTailSpace)
-              .animation(bottomInsetAnimation, value: scrollModel.reservedTailSpace)
 
             // A 1pt sentinel at the very end so "at bottom" detection isn't delayed by the spacer height.
             Color.clear
@@ -145,23 +147,21 @@ public struct Conversation<MessageView: View>: View {
               .onDisappear {
                 scrollModel.updateTailSentinelVisibility(isVisible: false)
               }
+
+            // Keep a tiny amount of scrollable content below the reserved-tail sentinel so the ScrollView isn't
+            // exactly at its max offset (which would cause SwiftUI to auto-pin to bottom during streaming updates).
+            Color.clear
+              .frame(height: 4)
           }
         }
         .padding(theme.spacing.contentPadding)
-        .scrollTargetLayout()
       }
       .coordinateSpace(name: conversationScrollCoordinateSpaceName)
-      #if os(iOS)
-      .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { notification in
-        guard let endFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
-        let screenHeight = UIScreen.main.bounds.height
-        let overlap = max(0, screenHeight - endFrame.minY)
-        scrollModel.updateKeyboardHeightIfNeeded(overlap)
-      }
-      #endif
+      .scrollDisabled(scrollModel.isScrollInteractionDisabled)
       .simultaneousGesture(
         DragGesture(minimumDistance: 2).onChanged { _ in
-          guard status == .streaming else { return }
+          scrollModel.handleUserScrollIntervention()
+          scrollDispatcher.cancel()
           stopStreamingFollow()
         }
       )
@@ -174,11 +174,6 @@ public struct Conversation<MessageView: View>: View {
       }
       .onPreferenceChange(TailSentinelMaxYPreferenceKey.self) { maxY in
         scrollModel.updateTailSentinelMaxY(maxY)
-        // Only schedule a tail update when we're waiting for the tail sentinel to become measurable for the
-        // initial send-anchoring plan. Scheduling on every maxY change causes feedback loops during scrolling.
-        if scrollModel.pendingSendAnchoringMessageID != nil {
-          scheduleTailUpdate(proxy: proxy)
-        }
       }
       .background {
         GeometryReader { geo in
@@ -195,22 +190,27 @@ public struct Conversation<MessageView: View>: View {
             }
         }
       }
-      .scrollPosition(id: $scrollModel.scrollPosition, anchor: .bottom)
       .modifier(ScrollEdgeEffectCompat())
-      .defaultScrollAnchor(.bottom)
+      // Default anchoring to `.bottom` causes visible content to shift during streaming content growth.
+      // Keep a stable top-anchored viewport; we explicitly scroll to follow the tail when desired.
+      .defaultScrollAnchor(.top)
       #if os(iOS)
       .modifier(ScrollDismissesKeyboardCompat())
       #endif
       .onAppear {
         scrollModel.updateBottomOverlayHeight(bottomOverlayHeight)
+        scrollModel.updateLiftedUserMessageTargetMinYIfNeeded(topOverlayHeight + theme.spacing.contentPadding.top)
         let steps = scrollModel.handleOnAppear(displayMessages: displayMessages)
         executeScrollSteps(steps, proxy: proxy)
-        startStreamingFollowIfNeeded()
+        startStreamingFollowIfNeeded(proxy: proxy)
       }
       .onDisappear {
         stopStreamingFollow()
         pendingTailUpdateTask?.cancel()
         pendingTailUpdateTask = nil
+        interactionUnlockTask?.cancel()
+        interactionUnlockTask = nil
+        scrollDispatcher.cancel()
       }
       .onChange(of: bottomOverlayHeight) { _, newValue in
         scrollModel.updateBottomOverlayHeight(newValue)
@@ -218,12 +218,13 @@ public struct Conversation<MessageView: View>: View {
         executeScrollSteps(steps, proxy: proxy)
         scheduleTailUpdate(proxy: proxy)
       }
+      .onChange(of: topOverlayHeight) { _, newValue in
+        scrollModel.updateLiftedUserMessageTargetMinYIfNeeded(newValue + theme.spacing.contentPadding.top)
+        scheduleTailUpdate(proxy: proxy)
+      }
       .onChange(of: sendTrigger) { _, _ in
         guard anchorsNewUserMessagesToTop else { return }
-
-        withAnimation(bottomInsetAnimation) {
-          scrollModel.handleSendTrigger(displayMessages: displayMessages)
-        }
+        scrollModel.handleSendTrigger(displayMessages: displayMessages)
       }
       .onChange(of: messages.count) { _, _ in
         let steps = scrollModel.handleMessagesCountChange(displayMessages: displayMessages)
@@ -235,42 +236,25 @@ public struct Conversation<MessageView: View>: View {
         executeScrollSteps(steps, proxy: proxy)
 
         if newStatus == .streaming {
-          startStreamingFollowIfNeeded()
+          startStreamingFollowIfNeeded(proxy: proxy)
         } else {
           stopStreamingFollow()
         }
 
-        if newStatus != .streaming || (scrollModel.scrollMode != .followBottom || scrollModel.isAtBottom == false) {
+        if newStatus != .streaming || scrollModel.isAtBottom == false {
           scheduleTailUpdate(proxy: proxy)
         }
       }
       .onChange(of: scrollModel.isAtBottom) { _, _ in
-        startStreamingFollowIfNeeded()
-      }
-      .onChange(of: scrollModel.scrollMode) { _, _ in
-        if scrollModel.scrollMode != .followBottom {
-          stopStreamingFollow()
-        } else {
-          startStreamingFollowIfNeeded()
-        }
-
-        // When we enter pinned mode, run a tail update once so we can clamp any initial overshoot.
-        if case .pinUserMessageToTop = scrollModel.scrollMode {
-          scheduleTailUpdate(proxy: proxy)
-        }
-      }
-      .onChange(of: scrollModel.scrollPosition) { _, newValue in
-        guard status == .streaming else { return }
-        guard let newValue else { return }
-        if newValue != conversationBottomSentinelID, newValue != conversationReservedTailSentinelID {
-          stopStreamingFollow()
+        if scrollModel.isAtBottom {
+          startStreamingFollowIfNeeded(proxy: proxy)
         }
       }
       .onChange(of: scrollToLatestRequest.wrappedValue) { _, _ in
         guard showsScrollButton else { return }
         let steps = scrollModel.handleScrollToLatestButtonTapped()
         executeScrollSteps(steps, proxy: proxy, forceAnimation: scrollAnimation)
-        startStreamingFollowIfNeeded()
+        startStreamingFollowIfNeeded(proxy: proxy, assumeWantsFollow: true)
       }
       #if DEBUG
       .overlay(alignment: .topTrailing) {
@@ -295,8 +279,8 @@ public struct Conversation<MessageView: View>: View {
   private var shouldMeasureViewport: Bool {
     anchorsNewUserMessagesToTop
       || scrollModel.reservedTailSpace > 0
-      || scrollModel.pendingPinToTopAfterSend
-      || scrollModel.scrollMode != .followBottom
+      || scrollModel.pendingLiftAfterSend
+      || scrollModel.isScrollInteractionDisabled
       || showsScrollButton
       || debugOverlayEnabled
   }
@@ -344,104 +328,109 @@ public struct Conversation<MessageView: View>: View {
     }
   }
 
-  private func startStreamingFollowIfNeeded() {
+  private func startStreamingFollowIfNeeded(proxy: ScrollViewProxy, assumeWantsFollow: Bool = false) {
     guard status == .streaming else { return }
-    guard scrollModel.scrollMode == .followBottom else { return }
-    guard scrollModel.isAtBottom else { return }
+    guard scrollModel.isScrollInteractionDisabled == false else { return }
+    // While reserve-mode is active, we want the lifted user message to remain visually stable while the assistant
+    // fills the reserved space. Following the tail would fight that.
+    guard scrollModel.reservedTailSpace <= 0 else { return }
+
+    if assumeWantsFollow {
+      isStickyFollowingTail = true
+    } else {
+      guard scrollModel.isAtBottom else { return }
+      isStickyFollowingTail = true
+    }
+
     guard streamingFollowTask == nil else { return }
 
     streamingFollowTask = Task { @MainActor in
       defer { streamingFollowTask = nil }
       while Task.isCancelled == false {
         try? await Task.sleep(nanoseconds: streamingScrollThrottleNanoseconds)
-        guard scrollModel.scrollMode == .followBottom else { return }
+        guard isStickyFollowingTail else { return }
+        guard status == .streaming else { return }
+        guard scrollModel.isScrollInteractionDisabled == false else { return }
+        guard scrollModel.reservedTailSpace <= 0 else { return }
+        if scrollDispatcher.isBusy { continue }
+
+        if scrollModel.viewportHeight > 0, scrollModel.bottomSentinelMaxY >= 0 {
+          if ConversationScrollEngine.computeIsAtLatest(maxY: scrollModel.bottomSentinelMaxY, viewportHeight: scrollModel.viewportHeight) {
+            continue
+          }
+        }
+
+        let id = scrollModel.reservedTailSpace > 0 ? conversationReservedTailSentinelID : conversationBottomSentinelID
         withAnimation(streamingScrollAnimation) {
-          scrollModel.scrollPosition = conversationBottomSentinelID
+          proxy.scrollTo(id, anchor: .bottom)
         }
       }
     }
   }
 
   private func stopStreamingFollow() {
+    isStickyFollowingTail = false
     streamingFollowTask?.cancel()
     streamingFollowTask = nil
   }
 
   private func scheduleTailUpdate(proxy: ScrollViewProxy) {
-    guard scrollModel.reservedTailBaseline > 0 else { return }
-    guard scrollModel.pinnedUserMessageID != nil else { return }
+    guard scrollModel.liftedUserMessageID != nil else { return }
     guard pendingTailUpdateTask == nil else { return }
 
     pendingTailUpdateTask = Task { @MainActor in
       defer { pendingTailUpdateTask = nil }
       try? await Task.sleep(nanoseconds: tailUpdateThrottleNanoseconds)
-      var steps: [ConversationScrollEngine.Step] = []
-      withAnimation(bottomInsetAnimation) {
-        steps = scrollModel.computeTailUpdate()
+      let steps = scrollModel.computeTailUpdate()
+      executeScrollSteps(steps, proxy: proxy, replaceQueue: false, forceAnimation: streamingScrollAnimation)
+
+      // If we just exited reserve-mode due to overflow, we may temporarily not be "at bottom" by measurement yet.
+      // Start sticky follow anyway so we keep tracking the assistant tail as it continues streaming.
+      let didScrollToBottom = steps.contains { step in
+        if case .scrollTo(target: .bottomSentinel, anchor: .bottom, animated: _) = step { return true }
+        return false
       }
-      executeScrollSteps(steps, proxy: proxy, forceAnimation: streamingScrollAnimation)
+
+      startStreamingFollowIfNeeded(proxy: proxy, assumeWantsFollow: didScrollToBottom)
     }
   }
 
   private func executeScrollSteps(
     _ steps: [ConversationScrollEngine.Step],
     proxy: ScrollViewProxy,
+    replaceQueue: Bool = true,
     forceAnimation: Animation? = nil
   ) {
     guard steps.isEmpty == false else { return }
 
-    Task { @MainActor in
-      for step in steps {
-        switch step {
-        case .yield:
-          await Task.yield()
-
-        case .setMode(let mode):
-          switch mode {
-          case .followBottom:
-            scrollModel.scrollMode = .followBottom
-          case .pinUserMessageToTop(let messageID):
-            scrollModel.scrollMode = .pinUserMessageToTop(messageID: messageID)
-            scrollModel.isAtBottom = false
-          }
-
-        case .scrollTo(let target, let stepAnchor, let animated):
-          let id: String
-          let anchor: UnitPoint
-          switch target {
-          case .bottomSentinel:
-            id = conversationBottomSentinelID
-          case .reservedTailSentinel:
-            id = conversationReservedTailSentinelID
-          case .message(let messageID):
-            id = messageID
-          }
-
-          switch stepAnchor {
-          case .top:
-            anchor = .top
-          case .bottom:
-            anchor = .bottom
-          }
-
-          let animation = forceAnimation ?? scrollAnimation
-          if animated {
-            withAnimation(animation) {
-              proxy.scrollTo(id, anchor: anchor)
-            }
-          } else {
-            proxy.scrollTo(id, anchor: anchor)
-          }
-
-        case .reassertPinnedUserMessageIfNeeded(messageID: _):
-          if scrollModel.reservedTailSpace > 0,
-             scrollModel.tailSentinelMaxY >= 0,
-             ConversationScrollEngine.computeIsAtLatest(maxY: scrollModel.tailSentinelMaxY, viewportHeight: scrollModel.viewportHeight) == false {
-            withAnimation(scrollAnimation) {
-              proxy.scrollTo(conversationReservedTailSentinelID, anchor: .bottom)
-            }
+    let resolvedAnimation = forceAnimation ?? scrollAnimation
+    scrollDispatcher.submit(
+      steps,
+      proxy: proxy,
+      forceAnimation: resolvedAnimation,
+      replaceQueue: replaceQueue,
+      reassertLatestIfNeeded: { [scrollModel, resolvedAnimation] proxy, animation in
+        let metrics = ConversationScrollEngine.LatestMetrics(
+          viewportHeight: scrollModel.viewportHeight,
+          reservedTailSpace: scrollModel.reservedTailSpace,
+          bottomSentinelMaxY: scrollModel.bottomSentinelMaxY,
+          tailSentinelMaxY: scrollModel.tailSentinelMaxY
+        )
+        if ConversationScrollEngine.computeIsAtLatest(metrics: metrics) == false {
+          let id = scrollModel.reservedTailSpace > 0 ? conversationReservedTailSentinelID : conversationBottomSentinelID
+          withAnimation(animation ?? resolvedAnimation) {
+            proxy.scrollTo(id, anchor: .bottom)
           }
         }
+      }
+    )
+
+    if scrollModel.isScrollInteractionDisabled {
+      interactionUnlockTask?.cancel()
+      interactionUnlockTask = Task { @MainActor [scrollModel] in
+        // Match Conversation scroll animation tuning (plus a small buffer).
+        try? await Task.sleep(nanoseconds: 320_000_000)
+        scrollModel.releaseScrollInteractionIfNeeded()
       }
     }
   }
@@ -486,21 +475,19 @@ public struct Conversation<MessageView: View>: View {
   }
 
   private func debugStateString() -> String {
-    let pinned = scrollModel.pinnedUserMessageID ?? "nil"
+    let lifted = scrollModel.liftedUserMessageID ?? "nil"
     let displayMessages = Self.filteredDisplayMessages(messages)
 
     return [
       "AIKitElements.Conversation debug",
       "status=\(status)",
-      "scrollMode=\(scrollModel.scrollMode)",
       "isAtBottom=\(scrollModel.isAtBottom)",
-      "scrollPosition=\(scrollModel.scrollPosition ?? "nil")",
+      "isScrollInteractionDisabled=\(scrollModel.isScrollInteractionDisabled)",
       "viewportHeight=\(String(format: "%.1f", scrollModel.viewportHeight))",
       "maxViewportHeightSinceAppear=\(String(format: "%.1f", scrollModel.maxViewportHeightSinceAppear))",
       "keyboardInsetApprox=\(String(format: "%.1f", scrollModel.keyboardInsetApprox))",
       "bottomInset=\(String(format: "%.1f", bottomInset))",
       "reservedTailSpace=\(String(format: "%.1f", scrollModel.reservedTailSpace))",
-      "reservedTailBaseline=\(String(format: "%.1f", scrollModel.reservedTailBaseline))",
       "bottomSentinelIsVisible=\(scrollModel.debugBottomSentinelIsVisible)",
       "tailSentinelIsVisible=\(scrollModel.debugTailSentinelIsVisible)",
       "bottomSentinelMaxY=\(String(format: "%.1f", scrollModel.bottomSentinelMaxY))",
@@ -508,9 +495,10 @@ public struct Conversation<MessageView: View>: View {
       "bottomSentinelDelta=\(String(format: "%.1f", scrollModel.bottomSentinelMaxY - scrollModel.viewportHeight))",
       "tailSentinelDelta=\(String(format: "%.1f", scrollModel.tailSentinelMaxY - scrollModel.viewportHeight))",
       "isAtLatestForScrollButton=\(scrollModel.isAtLatestForScrollButton)",
-      "pendingPinToTopAfterSend=\(scrollModel.pendingPinToTopAfterSend)",
-      "pendingSendAnchoringMessageID=\(scrollModel.debugPendingSendAnchoringMessageID ?? "nil")",
-      "pinnedUserMessageID=\(pinned)",
+      "liftedUserMessageTargetMinY=\(String(format: "%.1f", scrollModel.debugLiftedUserMessageTargetMinY))",
+      "pendingLiftAfterSend=\(scrollModel.pendingLiftAfterSend)",
+      "pendingLiftAlignmentMessageID=\(scrollModel.debugPendingLiftAlignmentMessageID ?? "nil")",
+      "liftedUserMessageID=\(lifted)",
       "displayMessages.count=\(displayMessages.count)",
       "visibleMessages.count=\(scrollModel.visibleMessages(displayMessages: displayMessages).count)",
       "knownDisplayMessageIDs.count=\(scrollModel.debugKnownDisplayMessageIDsCount)",

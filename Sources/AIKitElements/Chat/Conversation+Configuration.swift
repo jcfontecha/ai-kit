@@ -16,6 +16,10 @@ private struct ConversationDebugOverlayEnabledKey: EnvironmentKey {
   static let defaultValue: Bool = false
 }
 
+private struct ConversationTopOverlayHeightKey: EnvironmentKey {
+  static let defaultValue: CGFloat = 0
+}
+
 public extension EnvironmentValues {
   var conversationBottomOverlayHeight: CGFloat {
     get { self[ConversationBottomOverlayHeightKey.self] }
@@ -40,6 +44,14 @@ public extension EnvironmentValues {
     get { self[ConversationDebugOverlayEnabledKey.self] }
     set { self[ConversationDebugOverlayEnabledKey.self] = newValue }
   }
+
+  /// Height of any top overlay that visually covers the Conversation scroll viewport (e.g. a custom nav header).
+  /// Used to align the newest user message right below that overlay when `conversationAnchorsNewUserMessagesToTop`
+  /// is enabled.
+  var conversationTopOverlayHeight: CGFloat {
+    get { self[ConversationTopOverlayHeightKey.self] }
+    set { self[ConversationTopOverlayHeightKey.self] = newValue }
+  }
 }
 
 public extension View {
@@ -57,5 +69,9 @@ public extension View {
 
   func conversationDebugOverlayEnabled(_ enabled: Bool) -> some View {
     environment(\.conversationDebugOverlayEnabled, enabled)
+  }
+
+  func conversationTopOverlayHeight(_ height: CGFloat) -> some View {
+    environment(\.conversationTopOverlayHeight, height)
   }
 }

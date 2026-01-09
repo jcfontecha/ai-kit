@@ -5,11 +5,6 @@ import CoreGraphics
 /// The Conversation view remains responsible for executing scroll commands (via `ScrollViewProxy`),
 /// but the logic that decides *what* should happen lives here.
 enum ConversationScrollEngine {
-  enum Mode: Equatable {
-    case followBottom
-    case pinUserMessageToTop(messageID: String)
-  }
-
   enum ScrollTarget: Equatable {
     case bottomSentinel
     case reservedTailSentinel
@@ -23,9 +18,8 @@ enum ConversationScrollEngine {
 
   enum Step: Equatable {
     case yield
-    case setMode(Mode)
     case scrollTo(target: ScrollTarget, anchor: Anchor, animated: Bool)
-    case reassertPinnedUserMessageIfNeeded(messageID: String)
+    case reassertLatestIfNeeded
   }
 
   struct Plan: Equatable {
@@ -70,20 +64,18 @@ enum ConversationScrollEngine {
     return maxY <= (viewportHeight + threshold)
   }
 
-  /// Produces the programmatic scrolling sequence for "anchor new user message to top".
+  /// Produces the programmatic scrolling sequence for "lift latest into place".
   ///
   /// The intent is to end at the latest scroll position while in "pinned" mode, so the newly sent user message
   /// is positioned near the top with reserved tail space below it.
-  static func planForSendAnchoring(userMessageID: String, hasReservedTailSpace: Bool) -> Plan {
+  static func planForSendLift(hasReservedTailSpace: Bool) -> Plan {
     let latestTarget: ScrollTarget = hasReservedTailSpace ? .reservedTailSentinel : .bottomSentinel
     return Plan(steps: [
-      .yield,
-      .setMode(.pinUserMessageToTop(messageID: userMessageID)),
       .yield,
       .scrollTo(target: latestTarget, anchor: .bottom, animated: true),
       .yield,
       .yield,
-      .reassertPinnedUserMessageIfNeeded(messageID: userMessageID),
+      .reassertLatestIfNeeded,
     ])
   }
 }

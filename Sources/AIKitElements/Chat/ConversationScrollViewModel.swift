@@ -10,15 +10,13 @@ final class ConversationScrollViewModel: ObservableObject {
 
   @Published var isAtBottom: Bool = true
   @Published private(set) var isAtLatestForScrollButton: Bool = true
-  @Published var scrollPosition: String? = ConversationScrollConstants.bottomSentinelID
-  @Published var scrollMode: ScrollMode = .followBottom
+  @Published private(set) var isScrollInteractionDisabled: Bool = false
 
   @Published var bottomOverlayHeight: CGFloat = 0
 
   @Published var reservedTailSpace: CGFloat = 0
-  @Published var reservedTailBaseline: CGFloat = 0
 
-  @Published var pendingPinToTopAfterSend: Bool = false
+  @Published var pendingLiftAfterSend: Bool = false
 
   // MARK: - Internal state (not observed by the view)
 
@@ -27,17 +25,15 @@ final class ConversationScrollViewModel: ObservableObject {
   var viewportHeight: CGFloat = 0
   var maxViewportHeightSinceAppear: CGFloat = 0
 
-  var keyboardHeight: CGFloat = 0
-  private var sendTriggerViewportHeight: CGFloat = 0
-
-  var pinnedUserMessageID: String?
-  private(set) var pendingSendAnchoringMessageID: String?
+  var liftedUserMessageID: String?
+  private(set) var pendingLiftAlignmentMessageID: String?
 
   private var knownDisplayMessageIDs: Set<String> = []
   private var preSendDisplayMessageIDs: Set<String> = []
   private var postSendDisplayMessageIDs: Set<String> = []
 
   private var messageHeights: [String: CGFloat] = [:]
+  private var liftedUserMessageTargetMinY: CGFloat = 0
 
   private var bottomSentinelIsVisible: Bool = true
   private var tailSentinelIsVisible: Bool = true
@@ -47,21 +43,19 @@ final class ConversationScrollViewModel: ObservableObject {
   #if DEBUG
   var debugBottomSentinelIsVisible: Bool { bottomSentinelIsVisible }
   var debugTailSentinelIsVisible: Bool { tailSentinelIsVisible }
-  var debugPendingSendAnchoringMessageID: String? { pendingSendAnchoringMessageID }
+  var debugPendingLiftAlignmentMessageID: String? { pendingLiftAlignmentMessageID }
+  var debugLiftedUserMessageTargetMinY: CGFloat { liftedUserMessageTargetMinY }
   var debugKnownDisplayMessageIDsCount: Int { knownDisplayMessageIDs.count }
   var debugPreSendDisplayMessageIDsCount: Int { preSendDisplayMessageIDs.count }
   var debugPostSendDisplayMessageIDsCount: Int { postSendDisplayMessageIDs.count }
   var debugMessageHeightsCount: Int { messageHeights.count }
   #endif
 
-  // MARK: - Internal calibration state
-
-  private var didCalibrateReservedTailForPinnedMessageID: String?
-  private var sendAnchoringAttemptCount: Int = 0
-
   // MARK: - Configuration
 
-  let extraBottomPadding: CGFloat = 0
+  // Extra breathing room between the last message and the bottom overlay (e.g. prompt input).
+  // This is intentionally a small, constant UI polish rather than another configurable knob.
+  let extraBottomPadding: CGFloat = 24
 
   // MARK: - Derived
 
@@ -76,7 +70,7 @@ final class ConversationScrollViewModel: ObservableObject {
   }
 
   var shouldMeasureMessageHeights: Bool {
-    reservedTailBaseline > 0
+    pendingLiftAlignmentMessageID != nil || reservedTailSpace > 0
   }
 
   // MARK: - Lifecycle
@@ -86,18 +80,15 @@ final class ConversationScrollViewModel: ObservableObject {
     knownDisplayMessageIDs = Set(displayMessages.map(\.id))
 
     maxViewportHeightSinceAppear = max(0, viewportHeight)
-    scrollMode = .followBottom
     isAtBottom = true
     isAtLatestForScrollButton = true
     reservedTailSpace = 0
-    reservedTailBaseline = 0
-    didCalibrateReservedTailForPinnedMessageID = nil
-    sendAnchoringAttemptCount = 0
+    isScrollInteractionDisabled = false
     preSendDisplayMessageIDs = []
     postSendDisplayMessageIDs = []
-    pinnedUserMessageID = nil
-    pendingPinToTopAfterSend = false
-    pendingSendAnchoringMessageID = nil
+    liftedUserMessageID = nil
+    pendingLiftAfterSend = false
+    pendingLiftAlignmentMessageID = nil
     tailSentinelIsVisible = false
     bottomSentinelIsVisible = true
     bottomSentinelMaxY = -1
@@ -121,13 +112,6 @@ final class ConversationScrollViewModel: ObservableObject {
     }
     recomputeIsAtBottomIfNeeded()
     recomputeIsAtLatestForScrollButtonIfNeeded()
-  }
-
-  func updateKeyboardHeightIfNeeded(_ newHeight: CGFloat) {
-    guard newHeight.isFinite, newHeight >= 0 else { return }
-    if abs(keyboardHeight - newHeight) > 1 {
-      keyboardHeight = newHeight
-    }
   }
 
   func updateBottomOverlayHeight(_ newHeight: CGFloat) {
@@ -159,85 +143,91 @@ final class ConversationScrollViewModel: ObservableObject {
   }
 
   func ingestMessageHeights(_ heights: [String: CGFloat]) {
-    guard reservedTailBaseline > 0 else { return }
+    guard shouldMeasureMessageHeights else { return }
     for (id, height) in heights where height.isFinite && height > 0 {
       messageHeights[id] = height
     }
   }
 
+  func updateLiftedUserMessageTargetMinYIfNeeded(_ newValue: CGFloat) {
+    guard newValue.isFinite, newValue >= 0 else { return }
+    if abs(liftedUserMessageTargetMinY - newValue) > 0.75 {
+      liftedUserMessageTargetMinY = newValue
+    }
+  }
+
   // MARK: - Event handling
 
+  func handleUserScrollIntervention() {
+    if pendingLiftAlignmentMessageID != nil || reservedTailSpace > 0 || pendingLiftAfterSend {
+      pendingLiftAfterSend = false
+      reservedTailSpace = 0
+      preSendDisplayMessageIDs = []
+      postSendDisplayMessageIDs = []
+      liftedUserMessageID = nil
+      pendingLiftAlignmentMessageID = nil
+      isScrollInteractionDisabled = false
+      recomputeIsAtBottomIfNeeded()
+      recomputeIsAtLatestForScrollButtonIfNeeded()
+    }
+  }
+
+  func releaseScrollInteractionIfNeeded() {
+    if isScrollInteractionDisabled {
+      isScrollInteractionDisabled = false
+    }
+  }
+
   func handleSendTrigger(displayMessages: [ChatMessage]) {
-    pendingPinToTopAfterSend = true
-    pinnedUserMessageID = nil
-    pendingSendAnchoringMessageID = nil
-    didCalibrateReservedTailForPinnedMessageID = nil
-    sendAnchoringAttemptCount = 0
+    pendingLiftAfterSend = true
+    isScrollInteractionDisabled = false
+    liftedUserMessageID = nil
+    pendingLiftAlignmentMessageID = nil
     preSendDisplayMessageIDs = Set(displayMessages.map(\.id))
     postSendDisplayMessageIDs = []
     messageHeights = [:]
-
-    sendTriggerViewportHeight = viewportHeight
-
-    // Reserve tail space using a "keyboard-free" viewport estimate for the *current* presentation size.
-    //
-    // `keyboardHeight` comes from platform keyboard notifications and avoids relying on
-    // `maxViewportHeightSinceAppear` (which can include prior sheet detents).
-    let effectiveViewportHeight: CGFloat
-    if viewportHeight > 0 {
-      let keyboardAdjusted = viewportHeight + keyboardHeight
-      if maxViewportHeightSinceAppear > 0 {
-        effectiveViewportHeight = min(keyboardAdjusted, maxViewportHeightSinceAppear)
-      } else {
-        effectiveViewportHeight = keyboardAdjusted
-      }
-    } else {
-      effectiveViewportHeight = maxViewportHeightSinceAppear
-    }
-    reservedTailSpace = reserveTailSpaceForSend(viewportHeight: effectiveViewportHeight)
-    reservedTailBaseline = reservedTailSpace
     recomputeIsAtBottomIfNeeded()
     recomputeIsAtLatestForScrollButtonIfNeeded()
 
     // Defer actual scrolling until we see the new message inserted.
-    scrollMode = .followBottom
   }
 
   func handleMessagesCountChange(displayMessages: [ChatMessage]) -> [ConversationScrollEngine.Step] {
     syncVisibleCountWithMessages(displayMessages: displayMessages)
     guard didPerformInitialScroll else { return [] }
 
-    if reservedTailBaseline > 0 {
+    if pendingLiftAfterSend || pendingLiftAlignmentMessageID != nil || reservedTailSpace > 0 {
       let now = Set(displayMessages.map(\.id))
       postSendDisplayMessageIDs = now.subtracting(preSendDisplayMessageIDs)
     }
 
-    if pendingPinToTopAfterSend, let newUserMessageID = newlyInsertedUserMessageID(displayMessages: displayMessages) {
-      pinnedUserMessageID = newUserMessageID
-      pendingSendAnchoringMessageID = newUserMessageID
-      pendingPinToTopAfterSend = false
+    if pendingLiftAfterSend, let newUserMessageID = newlyInsertedUserMessageID(displayMessages: displayMessages) {
+      liftedUserMessageID = newUserMessageID
+      pendingLiftAlignmentMessageID = newUserMessageID
+      pendingLiftAfterSend = false
+      isScrollInteractionDisabled = true
       knownDisplayMessageIDs = Set(displayMessages.map(\.id))
-      sendAnchoringAttemptCount = 0
-      // Scroll immediately so the user sees their sent message, even if we need to reassert later.
-      return ConversationScrollEngine.planForSendAnchoring(
-        userMessageID: newUserMessageID,
-        hasReservedTailSpace: reservedTailSpace > 0
-      ).steps
+      // Defer scrolling until we have a measurement of the inserted message height so we can compute a precise
+      // reserved tail space. (Avoids multiple "bounce" scrolls.)
+      return []
     }
 
     knownDisplayMessageIDs = Set(displayMessages.map(\.id))
 
-    guard scrollMode == .followBottom else { return [] }
+    // While reserved tail space is present, we intentionally do not auto-follow message insertions.
+    // (We want the user's message to remain visually stable until reserve is exhausted.)
+    if reservedTailSpace > 0 { return [] }
+
     guard isAtBottom else { return [] }
     return [
-      .scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true)
+      .scrollTo(target: latestScrollTarget(), anchor: .bottom, animated: true)
     ]
   }
 
   func handleStatusChange(old: ChatStatus, new: ChatStatus) -> [ConversationScrollEngine.Step] {
     if old == .streaming, new != .streaming {
       // Do not clear reserved tail space on finish — keep remaining space so we don't snap.
-      if reservedTailBaseline == 0, scrollMode == .followBottom {
+      if reservedTailSpace == 0, isAtBottom {
         return [.scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true)]
       }
       return []
@@ -246,9 +236,9 @@ final class ConversationScrollViewModel: ObservableObject {
   }
 
   func handleBottomInsetChange() -> [ConversationScrollEngine.Step] {
-    guard scrollMode == .followBottom else { return [] }
+    if reservedTailSpace > 0 { return [] }
     guard isAtBottom else { return [] }
-    return [.scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true)]
+    return [.scrollTo(target: latestScrollTarget(), anchor: .bottom, animated: true)]
   }
 
   func handleLoadOlderMessages(displayMessages: [ChatMessage], currentFirstVisibleID: String?) -> [ConversationScrollEngine.Step] {
@@ -266,119 +256,87 @@ final class ConversationScrollViewModel: ObservableObject {
   }
 
   func handleScrollToLatestButtonTapped() -> [ConversationScrollEngine.Step] {
-    if reservedTailBaseline > 0 {
-      if let pinnedUserMessageID {
-        return [
-          .setMode(.pinUserMessageToTop(messageID: pinnedUserMessageID)),
-          .scrollTo(target: .reservedTailSentinel, anchor: .bottom, animated: true),
-        ]
-      } else if reservedTailSpace > 0 {
-        return [
-          .setMode(.followBottom),
-          .scrollTo(target: .reservedTailSentinel, anchor: .bottom, animated: true),
-        ]
-      }
-    }
-
+    // Cancel any reserve-mode state and jump to the real tail.
     reservedTailSpace = 0
-    reservedTailBaseline = 0
-    didCalibrateReservedTailForPinnedMessageID = nil
     preSendDisplayMessageIDs = []
     postSendDisplayMessageIDs = []
-    pinnedUserMessageID = nil
-    pendingSendAnchoringMessageID = nil
-    scrollMode = .followBottom
+    liftedUserMessageID = nil
+    pendingLiftAlignmentMessageID = nil
+    isScrollInteractionDisabled = false
     recomputeIsAtBottomIfNeeded()
     recomputeIsAtLatestForScrollButtonIfNeeded()
     return [
-      .setMode(.followBottom),
       .scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true),
     ]
   }
 
   func computeTailUpdate() -> [ConversationScrollEngine.Step] {
-    guard reservedTailBaseline > 0 else { return [] }
-    guard let pinnedUserMessageID else { return [] }
-
     var steps: [ConversationScrollEngine.Step] = []
 
+    // Phase 1: Once we have the inserted user message height, compute a *precise* reserved tail and scroll
+    // exactly once. (Avoids iterative "baseline calibration" and associated bounces.)
+    if let liftedUserMessageID, let id = pendingLiftAlignmentMessageID, id == liftedUserMessageID {
+      guard viewportHeight.isFinite, viewportHeight > 0 else { return [] }
+      guard let liftedHeight = messageHeights[id] else { return [] }
+
+      reservedTailSpace = max(0, computeReservedTailSpaceForLift(
+        viewportHeight: viewportHeight,
+        liftedUserMessageTargetMinY: liftedUserMessageTargetMinY,
+        liftedUserMessageHeight: liftedHeight
+      ))
+      pendingLiftAlignmentMessageID = nil
+
+      if reservedTailSpace > 0.5 {
+        steps.append(contentsOf: ConversationScrollEngine.planForSendLift(hasReservedTailSpace: true).steps)
+      } else {
+        reservedTailSpace = 0
+        preSendDisplayMessageIDs = []
+        postSendDisplayMessageIDs = []
+        self.liftedUserMessageID = nil
+        pendingLiftAlignmentMessageID = nil
+        isScrollInteractionDisabled = false
+        steps.append(.scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true))
+      }
+
+      recomputeIsAtBottomIfNeeded()
+      recomputeIsAtLatestForScrollButtonIfNeeded()
+      return steps
+    }
+
+    // Phase 2: While reserve is active, do not auto-scroll. Once the assistant has consumed the reserve,
+    // exit reserve mode and resume bottom-follow.
+    guard reservedTailSpace > 0 else { return [] }
+    guard let liftedUserMessageID else { return [] }
+
     let responseHeight = postSendDisplayMessageIDs
-      .filter { $0 != pinnedUserMessageID }
+      .filter { $0 != liftedUserMessageID }
       .compactMap { messageHeights[$0] }
       .reduce(0, +)
 
-    // If the viewport (or composer) size changed after the send trigger was recorded, the initial reserved tail
-    // estimate can become too small to actually pin the user message near the top. Expand the baseline
-    // opportunistically, including after keyboard dismissal (viewport expands) even if some response height is
-    // already present.
-    let effectiveViewportHeight = viewportHeight > 0 ? viewportHeight : maxViewportHeightSinceAppear
-    let desiredBaseline = reserveTailSpaceForSend(viewportHeight: effectiveViewportHeight)
-    let viewportExpandedAfterSend = (sendTriggerViewportHeight > 0) && ((viewportHeight - sendTriggerViewportHeight) > 60)
-    if desiredBaseline > (reservedTailBaseline + 2.5),
-       (responseHeight <= 0.5 || viewportExpandedAfterSend) {
-      reservedTailBaseline = desiredBaseline
-      didCalibrateReservedTailForPinnedMessageID = nil
-      // Re-assert latest positioning once the scroll range expands.
-      steps.append(.scrollTo(target: .reservedTailSentinel, anchor: .bottom, animated: true))
-    }
-
-    if pendingSendAnchoringMessageID == pinnedUserMessageID {
-      let pinnedIsLaidOut = (messageHeights[pinnedUserMessageID] != nil)
-      let tailIsLaidOut = (reservedTailSpace <= 0) || (tailSentinelMaxY >= 0)
-      if pinnedIsLaidOut, tailIsLaidOut, viewportHeight > 0 {
-        let isAtLatest: Bool
-        if reservedTailSpace > 0 {
-          isAtLatest = ConversationScrollEngine.computeIsAtLatest(maxY: tailSentinelMaxY, viewportHeight: viewportHeight)
-        } else {
-          isAtLatest = ConversationScrollEngine.computeIsAtLatest(maxY: bottomSentinelMaxY, viewportHeight: viewportHeight)
-        }
-
-        if isAtLatest {
-          pendingSendAnchoringMessageID = nil
-          sendAnchoringAttemptCount = 0
-        } else if sendAnchoringAttemptCount < 6 {
-          sendAnchoringAttemptCount += 1
-          steps.append(contentsOf: ConversationScrollEngine.planForSendAnchoring(
-            userMessageID: pinnedUserMessageID,
-            hasReservedTailSpace: reservedTailSpace > 0
-          ).steps)
-        } else {
-          // Give up rather than looping forever; user can tap "scroll to latest".
-          pendingSendAnchoringMessageID = nil
-          sendAnchoringAttemptCount = 0
-        }
-      }
-    }
-
-    let remaining = max(0, reservedTailBaseline - responseHeight)
-
-    if remaining <= 0.5 {
-      // Response overflowed the reserved space: exit reserve mode and resume stick-to-bottom.
+    if responseHeight >= (reservedTailSpace - 0.5) {
       reservedTailSpace = 0
-      reservedTailBaseline = 0
-      didCalibrateReservedTailForPinnedMessageID = nil
       preSendDisplayMessageIDs = []
       postSendDisplayMessageIDs = []
-      self.pinnedUserMessageID = nil
-      pendingSendAnchoringMessageID = nil
-      scrollMode = .followBottom
+      self.liftedUserMessageID = nil
+      pendingLiftAlignmentMessageID = nil
+      isScrollInteractionDisabled = false
       recomputeIsAtBottomIfNeeded()
       recomputeIsAtLatestForScrollButtonIfNeeded()
       steps.append(.scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true))
       return steps
     }
 
-    reservedTailSpace = remaining
-
-    // NOTE: Do not attempt to clamp `reservedTailBaseline` based on tail-sentinel geometry here.
-    // Those measurements depend on transient scroll state and can collapse the reserved tail space,
-    // preventing the pinned message from reaching the top.
     recomputeIsAtBottomIfNeeded()
     recomputeIsAtLatestForScrollButtonIfNeeded()
     return steps
   }
 
   // MARK: - Helpers
+
+  func latestScrollTarget() -> ConversationScrollEngine.ScrollTarget {
+    if reservedTailSpace > 0 { return .reservedTailSentinel }
+    return .bottomSentinel
+  }
 
   func shouldShowLoadMoreSentinel(displayMessages: [ChatMessage]) -> Bool {
     resolvedVisibleCount(displayMessages: displayMessages) < displayMessages.count
@@ -423,28 +381,29 @@ final class ConversationScrollViewModel: ObservableObject {
 
     return nil
   }
+  
+  private func computeReservedTailSpaceForLift(
+    viewportHeight: CGFloat,
+    liftedUserMessageTargetMinY: CGFloat,
+    liftedUserMessageHeight: CGFloat
+  ) -> CGFloat {
+    guard viewportHeight.isFinite, viewportHeight > 0 else { return 0 }
+    guard liftedUserMessageHeight.isFinite, liftedUserMessageHeight > 0 else { return 0 }
+    let targetMinY = max(0, liftedUserMessageTargetMinY)
 
-  private func reserveTailSpaceForSend(viewportHeight: CGFloat) -> CGFloat {
-    // Keep in sync with Conversation.swift tuning.
-    if viewportHeight <= 0 { return 420 }
-
-    // Extra top breathing room: reduces the reserved tail so the pinned user message lands slightly lower.
-    let pinnedTopOffset: CGFloat = 20
-
-    // We want "space for the agent" such that the newest user message can be pinned near the top of the viewport.
-    // A good heuristic is: enough tail to almost fill the viewport below the last message, accounting for the composer.
-    let desired = viewportHeight - (bottomInset + 24 + pinnedTopOffset)
-    let minTail: CGFloat = 320
-    let maxTail: CGFloat = max(minTail, viewportHeight - (bottomInset + 8 + pinnedTopOffset))
-    return min(max(desired, minTail), maxTail)
+    // Layout model when scrolling to the reserved-tail sentinel (1pt) anchored to viewport bottom:
+    // [user message][bottom inset (incl. 1pt bottom sentinel)][reservedTailSpace][1pt reserved-tail sentinel]
+    //
+    // We want `userMessage.minY == targetMinY`.
+    //
+    // distance(userTop -> reservedTailSentinelBottom) =
+    //   userMessageHeight + bottomInset + 1 + reservedTailSpace + 1
+    //
+    // So: reservedTailSpace = viewportHeight - targetMinY - userMessageHeight - bottomInset - 2
+    return viewportHeight - targetMinY - liftedUserMessageHeight - bottomInset - 2
   }
 
   private func recomputeIsAtBottomIfNeeded() {
-    guard scrollMode == .followBottom else {
-      if isAtBottom != false { isAtBottom = false }
-      return
-    }
-
     let newValue: Bool
     if reservedTailSpace > 0 {
       if tailSentinelMaxY >= 0 {

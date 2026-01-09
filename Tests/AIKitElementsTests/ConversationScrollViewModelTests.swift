@@ -12,8 +12,9 @@ final class ConversationScrollViewModelTests: XCTestCase {
     XCTAssertTrue(model.didPerformInitialScroll)
   }
 
-  func testSendTrigger_thenMessageInsertion_producesSendAnchoringPlan() {
+  func testSendTrigger_thenMessageInsertion_thenHeightMeasurement_producesLiftPlan_withComputedReservedTailSpace() {
     let model = ConversationScrollViewModel()
+    model.updateLiftedUserMessageTargetMinYIfNeeded(64)
     model.updateViewportHeightIfNeeded(758)
 
     let before: [ChatMessage] = [
@@ -24,92 +25,91 @@ final class ConversationScrollViewModelTests: XCTestCase {
     _ = model.handleOnAppear(displayMessages: before)
     model.handleSendTrigger(displayMessages: before)
 
-    XCTAssertTrue(model.reservedTailBaseline > 0)
-    XCTAssertTrue(model.pendingPinToTopAfterSend)
+    XCTAssertTrue(model.pendingLiftAfterSend)
 
     let after: [ChatMessage] = before + [
       .init(id: "u-2", role: .user, parts: [.text(.init(id: "t3", text: "new", state: .done))]),
       .init(id: "a-2", role: .assistant, parts: [.text(.init(id: "t4", text: "", state: .streaming))]),
     ]
 
-    let steps = model.handleMessagesCountChange(displayMessages: after)
+    XCTAssertEqual(model.handleMessagesCountChange(displayMessages: after), [])
+    XCTAssertEqual(model.liftedUserMessageID, "u-2")
+    XCTAssertEqual(model.pendingLiftAlignmentMessageID, "u-2")
+    XCTAssertFalse(model.pendingLiftAfterSend)
+    XCTAssertTrue(model.isScrollInteractionDisabled)
+
+    // Simulate layout measurement arriving for the inserted user message.
+    model.ingestMessageHeights(["u-2": 44])
     XCTAssertEqual(
-      steps,
-      ConversationScrollEngine.planForSendAnchoring(userMessageID: "u-2", hasReservedTailSpace: true).steps
+      model.computeTailUpdate(),
+      ConversationScrollEngine.planForSendLift(hasReservedTailSpace: true).steps
     )
-    XCTAssertEqual(model.pinnedUserMessageID, "u-2")
-    XCTAssertEqual(model.pendingSendAnchoringMessageID, "u-2")
-    XCTAssertFalse(model.pendingPinToTopAfterSend)
 
-    // Simulate layout measurements arriving: the pinned message height and tail sentinel position.
-    model.ingestMessageHeights(["u-2": 44, "a-2": 18])
-    model.updateTailSentinelMaxY(1419)
-
-    let deferredSteps = model.computeTailUpdate()
-    XCTAssertEqual(
-      deferredSteps,
-      ConversationScrollEngine.planForSendAnchoring(userMessageID: "u-2", hasReservedTailSpace: true).steps
-    )
-    XCTAssertEqual(model.pendingSendAnchoringMessageID, "u-2")
-
-    // Once we reach "latest", we clear the pending anchoring state.
-    model.updateTailSentinelMaxY(742)
-    XCTAssertEqual(model.computeTailUpdate(), [])
-    XCTAssertEqual(model.pendingSendAnchoringMessageID, nil)
+    // reservedTailSpace = 758 - 64 - 44 - bottomInset(=12) - 2 = 636
+    XCTAssertEqual(model.reservedTailSpace, 636, accuracy: 0.5)
+    XCTAssertEqual(model.pendingLiftAlignmentMessageID, nil)
   }
 
-  func testSendTrigger_usesCurrentViewportHeight_notMaxViewportHeightSinceAppear() {
+  func testComputeTailUpdate_doesNotChangeReservedTailSpaceWhileAssistantGrows() {
     let model = ConversationScrollViewModel()
-
-    let before: [ChatMessage] = [
-      .init(id: "u-1", role: .user, parts: [.text(.init(id: "t1", text: "hi", state: .done))]),
-      .init(id: "a-1", role: .assistant, parts: [.text(.init(id: "t2", text: "hello", state: .done))]),
-    ]
-
-    _ = model.handleOnAppear(displayMessages: before)
-
-    // Simulate a sheet that was previously at a larger detent, then shrank.
-    model.updateViewportHeightIfNeeded(920)
-    model.updateViewportHeightIfNeeded(520)
-
-    XCTAssertEqual(model.viewportHeight, 520)
-    XCTAssertEqual(model.maxViewportHeightSinceAppear, 920)
-
-    model.handleSendTrigger(displayMessages: before)
-
-    // Reserved tail should match the current viewport (≈495 with default inset tuning), not the prior max.
-    XCTAssertLessThan(model.reservedTailBaseline, 600)
-  }
-
-  func testSendTrigger_thenViewportExpands_recomputesReservedTailBaseline() {
-    let model = ConversationScrollViewModel()
-    model.updateBottomOverlayHeight(74)
-
-    let before: [ChatMessage] = [
-      .init(id: "u-1", role: .user, parts: [.text(.init(id: "t1", text: "hi", state: .done))]),
-      .init(id: "a-1", role: .assistant, parts: [.text(.init(id: "t2", text: "hello", state: .done))]),
-    ]
-
-    // Start at a smaller viewport (e.g. sheet detent), then expand after send.
-    model.updateViewportHeightIfNeeded(472)
-    _ = model.handleOnAppear(displayMessages: before)
-    model.handleSendTrigger(displayMessages: before)
-
-    XCTAssertEqual(model.reservedTailBaseline, 354, accuracy: 0.5)
-
+    model.updateLiftedUserMessageTargetMinYIfNeeded(64)
     model.updateViewportHeightIfNeeded(758)
+
+    let before: [ChatMessage] = [
+      .init(id: "u-1", role: .user, parts: [.text(.init(id: "t1", text: "hi", state: .done))]),
+      .init(id: "a-1", role: .assistant, parts: [.text(.init(id: "t2", text: "hello", state: .done))]),
+    ]
+
+    _ = model.handleOnAppear(displayMessages: before)
+    model.handleSendTrigger(displayMessages: before)
 
     let after: [ChatMessage] = before + [
       .init(id: "u-2", role: .user, parts: [.text(.init(id: "t3", text: "new", state: .done))]),
+      .init(id: "a-2", role: .assistant, parts: [.text(.init(id: "t4", text: "", state: .streaming))]),
     ]
 
     _ = model.handleMessagesCountChange(displayMessages: after)
     model.ingestMessageHeights(["u-2": 44])
-    model.updateTailSentinelMaxY(758)
     _ = model.computeTailUpdate()
 
-    XCTAssertEqual(model.reservedTailBaseline, 640, accuracy: 0.5)
+    let baseline = model.reservedTailSpace
+    XCTAssertTrue(baseline > 0)
+
+    model.ingestMessageHeights(["a-2": 18])
+    XCTAssertEqual(model.computeTailUpdate(), [])
+    XCTAssertEqual(model.reservedTailSpace, baseline, accuracy: 0.5)
   }
 
+  func testComputeTailUpdate_exitsReserveMode_whenAssistantConsumesReserve() {
+    let model = ConversationScrollViewModel()
+    model.updateLiftedUserMessageTargetMinYIfNeeded(64)
+    model.updateViewportHeightIfNeeded(240)
 
+    let before: [ChatMessage] = [
+      .init(id: "u-1", role: .user, parts: [.text(.init(id: "t1", text: "hi", state: .done))]),
+    ]
+
+    _ = model.handleOnAppear(displayMessages: before)
+    model.handleSendTrigger(displayMessages: before)
+
+    let after: [ChatMessage] = before + [
+      .init(id: "u-2", role: .user, parts: [.text(.init(id: "t2", text: "new", state: .done))]),
+      .init(id: "a-1", role: .assistant, parts: [.text(.init(id: "t3", text: "x", state: .streaming))]),
+    ]
+
+    _ = model.handleMessagesCountChange(displayMessages: after)
+    model.ingestMessageHeights(["u-2": 44])
+    _ = model.computeTailUpdate()
+
+    let baseline = model.reservedTailSpace
+    XCTAssertTrue(baseline > 0)
+
+    model.ingestMessageHeights(["a-1": baseline + 10])
+    XCTAssertEqual(
+      model.computeTailUpdate(),
+      [.scrollTo(target: .bottomSentinel, anchor: .bottom, animated: true)]
+    )
+    XCTAssertEqual(model.reservedTailSpace, 0)
+    XCTAssertEqual(model.liftedUserMessageID, nil)
+  }
 }
