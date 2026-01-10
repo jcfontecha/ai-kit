@@ -2,12 +2,13 @@
 import SwiftUI
 import UIKit
 
-/// Helps parent containers (e.g. sidebars) receive horizontal swipes over a vertical ScrollView.
+/// Observes vertical scroll intent without claiming horizontal swipes.
 ///
-/// Installs a horizontal-only `UIPanGestureRecognizer` on the nearest `UIScrollView` and makes the
-/// scroll view's own pan recognizer wait for it to fail. Vertical pans bypass this recognizer, so
-/// normal scrolling remains unaffected.
-struct ConversationScrollViewPanPassthrough: UIViewRepresentable {
+/// This avoids stealing horizontal drags from parent containers (e.g. sliding sidebars) while still
+/// letting Conversation react to user-initiated scrolling (cancel auto-follow, etc.).
+struct ConversationScrollInterventionGesture: UIViewRepresentable {
+  let onChanged: () -> Void
+
   func makeUIView(context: Context) -> UIView {
     let view = UIView(frame: .zero)
     view.isUserInteractionEnabled = false
@@ -16,20 +17,27 @@ struct ConversationScrollViewPanPassthrough: UIViewRepresentable {
   }
 
   func updateUIView(_ uiView: UIView, context: Context) {
+    context.coordinator.onChanged = onChanged
     context.coordinator.installIfNeeded(from: uiView)
   }
 
   func makeCoordinator() -> Coordinator {
-    Coordinator()
+    Coordinator(onChanged: onChanged)
   }
 
   final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+    var onChanged: () -> Void
+
     private weak var scrollView: UIScrollView?
-    private weak var horizontalPan: UIPanGestureRecognizer?
+    private weak var pan: UIPanGestureRecognizer?
+
+    init(onChanged: @escaping () -> Void) {
+      self.onChanged = onChanged
+    }
 
     func installIfNeeded(from leafView: UIView) {
       guard let scrollView = nearestScrollView(from: leafView) else { return }
-      if self.scrollView === scrollView, horizontalPan != nil { return }
+      if self.scrollView === scrollView, pan != nil { return }
 
       let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
       pan.maximumNumberOfTouches = 1
@@ -37,10 +45,9 @@ struct ConversationScrollViewPanPassthrough: UIViewRepresentable {
       pan.delegate = self
 
       scrollView.addGestureRecognizer(pan)
-      scrollView.panGestureRecognizer.require(toFail: pan)
 
       self.scrollView = scrollView
-      self.horizontalPan = pan
+      self.pan = pan
     }
 
     private func nearestScrollView(from leafView: UIView) -> UIScrollView? {
@@ -54,14 +61,18 @@ struct ConversationScrollViewPanPassthrough: UIViewRepresentable {
 
     @objc
     private func handlePan(_ recognizer: UIPanGestureRecognizer) {
-      // Intentionally empty: this recognizer exists purely to keep the vertical scroll view
-      // from claiming horizontal swipes, so parent containers can handle them.
+      switch recognizer.state {
+      case .began, .changed:
+        onChanged()
+      default:
+        break
+      }
     }
 
     func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
       guard let pan = gestureRecognizer as? UIPanGestureRecognizer else { return true }
       let v = pan.velocity(in: pan.view)
-      return abs(v.x) > abs(v.y) * 1.15
+      return abs(v.y) > abs(v.x) * 1.15
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {

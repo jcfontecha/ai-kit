@@ -160,17 +160,14 @@ public struct Conversation<MessageView: View>: View {
       .scrollDisabled(scrollModel.isScrollInteractionDisabled)
       .background {
         #if canImport(UIKit)
-        ConversationScrollViewPanPassthrough()
-          .frame(width: 0, height: 0)
-        #endif
-      }
-      .simultaneousGesture(
-        DragGesture(minimumDistance: 2).onChanged { _ in
+        ConversationScrollInterventionGesture {
           scrollModel.handleUserScrollIntervention()
           scrollDispatcher.cancel()
           stopStreamingFollow()
         }
-      )
+        .frame(width: 0, height: 0)
+        #endif
+      }
       .onPreferenceChange(MessageHeightsPreferenceKey.self) { heights in
         scrollModel.ingestMessageHeights(heights)
         scheduleTailUpdate(proxy: proxy)
