@@ -158,6 +158,12 @@ public struct Conversation<MessageView: View>: View {
       }
       .coordinateSpace(name: conversationScrollCoordinateSpaceName)
       .scrollDisabled(scrollModel.isScrollInteractionDisabled)
+      .background {
+        #if canImport(UIKit)
+        ConversationScrollViewPanPassthrough()
+          .frame(width: 0, height: 0)
+        #endif
+      }
       .simultaneousGesture(
         DragGesture(minimumDistance: 2).onChanged { _ in
           scrollModel.handleUserScrollIntervention()
