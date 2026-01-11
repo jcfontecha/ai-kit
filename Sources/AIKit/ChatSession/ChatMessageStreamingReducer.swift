@@ -65,6 +65,8 @@ enum ChatMessageStreamingReducer {
     case .textStart(let id, let providerMetadata):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
+      insertStepStartAfterToolIfNeeded(&messages)
       messages[messages.count - 1].parts.append(
         .text(.init(id: id, text: "", state: .streaming, providerMetadata: providerMetadata))
       )
@@ -94,6 +96,8 @@ enum ChatMessageStreamingReducer {
     case .reasoningStart(let id, let providerMetadata):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
+      insertStepStartAfterToolIfNeeded(&messages)
       messages[messages.count - 1].parts.append(
         .reasoning(.init(id: id, text: "", state: .streaming, providerMetadata: providerMetadata))
       )
@@ -123,6 +127,7 @@ enum ChatMessageStreamingReducer {
     case .toolInputStart(let start):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       state.partialToolInputs[start.toolCallID] = ""
       messages[messages.count - 1].parts.append(
         .tool(.init(
@@ -157,30 +162,35 @@ enum ChatMessageStreamingReducer {
     case .toolInputAvailable(let available):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       state.partialToolInputs.removeValue(forKey: available.toolCallID)
       upsertToolInputAvailable(from: available, messages: &messages)
 
     case .toolOutputAvailable(let available):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       state.partialToolInputs.removeValue(forKey: available.toolCallID)
       upsertToolOutputAvailable(from: available, messages: &messages)
 
     case .toolInputError(let error):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       state.partialToolInputs.removeValue(forKey: error.toolCallID)
       upsertToolInputError(from: error, messages: &messages)
 
     case .toolOutputError(let error):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       state.partialToolInputs.removeValue(forKey: error.toolCallID)
       upsertToolOutputError(from: error, messages: &messages)
 
     case .toolOutputDenied(let toolCallID):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       state.partialToolInputs.removeValue(forKey: toolCallID)
       guard let index = lastIndexOfToolPart(with: toolCallID, in: messages[messages.count - 1].parts) else {
         return
@@ -208,6 +218,7 @@ enum ChatMessageStreamingReducer {
     case .toolApprovalRequest(let approvalID, let toolCallID):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       guard let index = lastIndexOfToolPart(with: toolCallID, in: messages[messages.count - 1].parts) else {
         messages[messages.count - 1].parts.append(.tool(.init(
           toolCallID: toolCallID,
@@ -232,6 +243,7 @@ enum ChatMessageStreamingReducer {
 
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
 
       if let id = chunk.id,
          let index = firstIndexOfDataPart(type: chunk.type, id: id, in: messages[messages.count - 1].parts),
@@ -246,6 +258,7 @@ enum ChatMessageStreamingReducer {
     case .file(let file):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       if let url = URL(string: file.url) {
         // Match AI SDK behavior: file UI part does not include providerMetadata.
         messages[messages.count - 1].parts.append(.file(.init(data: .url(url), filename: nil, mediaType: file.mediaType)))
@@ -254,6 +267,7 @@ enum ChatMessageStreamingReducer {
     case .sourceURL(let source):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       messages[messages.count - 1].parts.append(
         .sourceURL(.init(sourceID: source.sourceID, url: source.url, title: source.title, providerMetadata: source.providerMetadata))
       )
@@ -261,6 +275,7 @@ enum ChatMessageStreamingReducer {
     case .sourceDocument(let source):
       flushPendingStepStartIfNeeded(&messages, state: &state, makeMessageID: makeMessageID)
       ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
+      insertImplicitStepStartIfNeeded(&messages, state: &state)
       messages[messages.count - 1].parts.append(
         .sourceDocument(.init(
           sourceID: source.sourceID,
@@ -316,6 +331,26 @@ enum ChatMessageStreamingReducer {
     state.pendingStepStart = false
     ensureLastAssistantMessage(&messages, makeMessageID: makeMessageID)
     messages[messages.count - 1].parts.append(.stepStart)
+  }
+
+  private static func insertImplicitStepStartIfNeeded(
+    _ messages: inout [ChatMessage],
+    state: inout State
+  ) {
+    guard state.pendingStepStart == false else { return }
+    guard let lastIndex = messages.indices.last else { return }
+    guard messages[lastIndex].role == .assistant else { return }
+    guard messages[lastIndex].parts.isEmpty else { return }
+    messages[lastIndex].parts.append(.stepStart)
+  }
+
+  private static func insertStepStartAfterToolIfNeeded(
+    _ messages: inout [ChatMessage]
+  ) {
+    guard let lastIndex = messages.indices.last else { return }
+    guard messages[lastIndex].role == .assistant else { return }
+    guard case .tool = messages[lastIndex].parts.last else { return }
+    messages[lastIndex].parts.append(.stepStart)
   }
 
   private static func lastIndexOfTextPart(with id: String, in parts: [ChatMessagePart]) -> Int? {

@@ -23,6 +23,9 @@ public final class ChatStore: ObservableObject {
     /// Receives non-transient `data-*` parts emitted by the server.
     public var onData: (@Sendable (_ dataPart: AIUIMessageStreamDataPart) async -> Void)?
 
+    /// When true, drop tool calls that have not received outputs before encoding UI messages.
+    public var ignoreIncompleteToolCalls: Bool
+
     public var validateMessageMetadata: ValidateJSONValue?
     public var validateDataParts: [String: ValidateJSONValue]?
 
@@ -33,6 +36,7 @@ public final class ChatStore: ObservableObject {
       body: (@Sendable () async throws -> JSONValue?)? = nil,
       onToolCall: (@Sendable (_ toolCall: ChatToolPart) async -> Void)? = nil,
       onData: (@Sendable (_ dataPart: AIUIMessageStreamDataPart) async -> Void)? = nil,
+      ignoreIncompleteToolCalls: Bool = false,
       validateMessageMetadata: ValidateJSONValue? = nil,
       validateDataParts: [String: ValidateJSONValue]? = nil
     ) {
@@ -42,6 +46,7 @@ public final class ChatStore: ObservableObject {
       self.body = body
       self.onToolCall = onToolCall
       self.onData = onData
+      self.ignoreIncompleteToolCalls = ignoreIncompleteToolCalls
       self.validateMessageMetadata = validateMessageMetadata
       self.validateDataParts = validateDataParts
     }
@@ -78,7 +83,8 @@ public final class ChatStore: ObservableObject {
       url: url,
       httpTransport: URLSessionHTTPTransport(),
       headers: configuration.headers,
-      body: configuration.body
+      body: configuration.body,
+      encoder: AIUIMessageEncoder(ignoreIncompleteToolCalls: configuration.ignoreIncompleteToolCalls)
     )
     self.session = ChatSession(.init(
       id: configuration.id,

@@ -82,7 +82,7 @@ public extension View {
   /// In a resizable sheet, SwiftUI defaults to resizing the sheet before letting an embedded `ScrollView`
   /// scroll. Chat UIs typically want the opposite: scroll the conversation first, and let the user resize
   /// using the drag indicator.
-  func chatSheetDefaults(
+  public func chatSheetDefaults(
     detents: Set<PresentationDetent> = [.medium, .large],
     initialDetent: PresentationDetent = .medium,
     dragIndicator: Visibility = .visible,

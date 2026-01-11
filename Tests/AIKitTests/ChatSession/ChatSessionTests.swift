@@ -699,6 +699,94 @@ final class ChatSessionTests: XCTestCase {
     XCTAssertEqual(text?.state, .done)
   }
 
+  func testSendAutomaticallyWhen_dynamicToolOutput_insertsImplicitStepStartsWhenStreamOmitsStepMarkers() async throws {
+    let streams = StreamQueue()
+    let model = MockLanguageModel(
+      generate: { _ in throw AIKitError.invalidConfiguration("not used") },
+      stream: { _ in
+        AsyncThrowingStream(ModelStreamPart.self) { continuation in
+          Task { await streams.enqueue(continuation) }
+        }
+      }
+    )
+
+    let session = ChatSession(.init(
+      model: model,
+      sendAutomaticallyWhen: { messages in
+        ChatAutoSubmitPredicates.lastAssistantMessageIsCompleteWithToolCalls(messages: messages)
+      }
+    ))
+
+    let sendTask = Task {
+      await session.send(.init(role: .user, parts: [.text(.init(id: "u", text: "hi", state: .done))]))
+    }
+
+    for _ in 0..<200 {
+      if await streams.count() >= 1 { break }
+      try await Task.sleep(nanoseconds: 2_000_000)
+    }
+
+    let c0 = await streams.continuation(at: 0)
+    c0?.yield(.streamStart())
+    c0?.yield(.toolCall(.init(
+      toolCallID: "tool-1",
+      toolName: "test-tool",
+      inputJSON: "{}",
+      input: .object(["testArg": .string("test-value")]),
+      dynamic: true
+    )))
+    c0?.yield(.finish(finishReason: .toolCalls))
+    c0?.finish()
+
+    _ = await sendTask.value
+
+    await session.addToolOutput(tool: ToolID<EmptyInput, String>("test-tool"), toolCallID: "tool-1", output: "test-output")
+
+    for _ in 0..<500 {
+      if model.recordedRequests().count >= 2 { break }
+      try await Task.sleep(nanoseconds: 2_000_000)
+    }
+    XCTAssertEqual(model.recordedRequests().count, 2)
+
+    for _ in 0..<200 {
+      if await streams.count() >= 2 { break }
+      try await Task.sleep(nanoseconds: 2_000_000)
+    }
+
+    let c1 = await streams.continuation(at: 1)
+    XCTAssertNotNil(c1)
+    c1?.yield(.streamStart())
+    c1?.yield(.textStart(id: "t1"))
+    c1?.yield(.textDelta(id: "t1", text: "implicit-step"))
+    c1?.yield(.textEnd(id: "t1"))
+    c1?.yield(.finish(finishReason: .stop))
+    c1?.finish()
+
+    try await waitUntil {
+      let messages = await session.messages
+      guard messages.count == 2, messages[1].role == .assistant else { return false }
+      return messages[1].parts.contains(where: { part in
+        guard case let .text(text) = part else { return false }
+        return text.text == "implicit-step" && text.state == .done
+      })
+    }
+
+    let finalMessages = await session.messages
+    XCTAssertEqual(finalMessages.count, 2)
+    XCTAssertEqual(finalMessages[1].role, .assistant)
+
+    let assistantParts = finalMessages[1].parts
+    XCTAssertEqual(assistantParts.filter { $0 == .stepStart }.count, 2)
+
+    XCTAssertTrue(assistantParts.contains(where: { part in
+      guard case let .tool(tool) = part else { return false }
+      return tool.toolCallID == "tool-1" &&
+        tool.toolName == "test-tool" &&
+        tool.dynamic == true &&
+        tool.output == .string("test-output")
+    }))
+  }
+
   func testStop_cancelsInFlightRequestAndReturnsToReady() async throws {
     let streams = StreamQueue()
     let model = MockLanguageModel(

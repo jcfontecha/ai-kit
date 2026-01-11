@@ -133,6 +133,45 @@ final class AIUIMessageEncodingTests: XCTestCase {
     XCTAssertEqual(json, expected)
   }
 
+  func testEncode_ignoresIncompleteToolCallsWhenEnabled() throws {
+    let messages: [ChatMessage] = [
+      .init(id: "a1", role: .assistant, parts: [
+        .text(.init(id: "t-a1", text: "Sure.", state: .done)),
+        .tool(.init(
+          toolCallID: "tool-1",
+          toolName: "updateProjectIdea",
+          title: nil,
+          providerExecuted: false,
+          dynamic: false,
+          input: .object(["content": .string("Draft")]),
+          rawInput: nil,
+          output: nil,
+          callProviderMetadata: nil,
+          state: .inputAvailable
+        )),
+      ]),
+    ]
+
+    let uiMessages = try AIUIMessageEncoder(ignoreIncompleteToolCalls: true).encode(messages)
+    let json = try encodeToJSONValue(uiMessages)
+
+    let expected = JSONValue.array([
+      .object([
+        "id": .string("a1"),
+        "role": .string("assistant"),
+        "parts": .array([
+          .object([
+            "type": .string("text"),
+            "text": .string("Sure."),
+            "state": .string("done"),
+          ]),
+        ]),
+      ]),
+    ])
+
+    XCTAssertEqual(json, expected)
+  }
+
   private func encodeToJSONValue<T: Encodable>(_ value: T) throws -> JSONValue {
     let data = try JSONEncoder().encode(value)
     let object = try JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
