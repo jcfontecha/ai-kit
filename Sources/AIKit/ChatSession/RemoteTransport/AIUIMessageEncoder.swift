@@ -60,7 +60,7 @@ public struct AIUIMessageEncoder: Sendable {
     guard ignoreIncompleteToolCalls else { return true }
     guard case let .tool(tool) = part else { return true }
     switch tool.state {
-    case .inputStreaming, .inputAvailable:
+    case .inputStreaming, .inputAvailable, .approvalRequested, .approvalResponded:
       return false
     default:
       return true
