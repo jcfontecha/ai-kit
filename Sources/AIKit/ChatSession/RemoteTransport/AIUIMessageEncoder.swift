@@ -28,11 +28,7 @@ public enum AIUIMessageEncodingError: Error, LocalizedError, Sendable, Equatable
 ///
 /// Source of truth: `ai-sdk/packages/ai/src/ui/ui-messages.ts`.
 public struct AIUIMessageEncoder: Sendable {
-  public var ignoreIncompleteToolCalls: Bool
-
-  public init(ignoreIncompleteToolCalls: Bool = false) {
-    self.ignoreIncompleteToolCalls = ignoreIncompleteToolCalls
-  }
+  public init() {}
 
   public func encode(_ messages: [ChatMessage]) throws -> [AIUIMessage] {
     try messages.map(encodeMessage(_:))
@@ -50,21 +46,10 @@ public struct AIUIMessageEncoder: Sendable {
 
     var parts: [JSONValue] = []
     parts.reserveCapacity(message.parts.count)
-    for part in message.parts where shouldInclude(part) {
+    for part in message.parts {
       parts.append(try encodePart(part, messageID: message.id))
     }
     return .init(id: message.id, role: role, metadata: message.metadata, parts: parts)
-  }
-
-  private func shouldInclude(_ part: ChatMessagePart) -> Bool {
-    guard ignoreIncompleteToolCalls else { return true }
-    guard case let .tool(tool) = part else { return true }
-    switch tool.state {
-    case .inputStreaming, .inputAvailable, .approvalRequested:
-      return false
-    default:
-      return true
-    }
   }
 
   private func encodePart(_ part: ChatMessagePart, messageID: String) throws -> JSONValue {
