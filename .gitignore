@@ -1,0 +1,42 @@
+# SwiftPM / Xcode
+.DS_Store
+.swiftpm/
+.build/
+Packages/
+DerivedData/
+xcuserdata/
+Package.resolved
+*.xcodeproj
+*.xcworkspace
+
+# Commit demo apps (component gallery) under Examples/
+!Examples/**/*.xcodeproj
+!Examples/**/*.xcodeproj/**
+!Examples/**/*.xcworkspace
+!Examples/**/*.xcworkspace/**
+
+# Re-ignore Xcode user state inside example projects
+Examples/**/xcuserdata/
+Examples/**/*.xcodeproj/**/xcuserdata/
+Examples/**/*.xcworkspace/**/xcuserdata/
+Examples/**/*.xcuserstate
+
+# Codex (agent) local config (keep skills tracked; ignore local settings)
+.codex/settings.local.json
+
+# Node (in case tools/examples add it)
+**/node_modules/
+
+# Apple reference docs
+internal_docs/references/apple-developer-docs/
+
+# Repo-local analysis artifacts / upstream vendor
+vendored/ai-sdk/
+vendored/openrouter-provider/
+vendored/ai-elements/
+
+# xcb-cache
+.xcb-cache/
+
+# Public release audit artifacts
+.public-release/
