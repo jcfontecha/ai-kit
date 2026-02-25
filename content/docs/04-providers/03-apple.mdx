@@ -1,0 +1,58 @@
+---
+title: Apple (On-device)
+description: Use Apple Foundation Models for on-device generation on iOS/macOS 26+.
+---
+
+# Apple on-device provider
+
+The Apple provider lives in `AIKitApple` and uses Apple `FoundationModels` (`SystemLanguageModel` + `LanguageModelSession`) for on-device generation.
+
+## Create a client
+
+```swift
+import AIKitApple
+
+let provider = createApple()
+let model = provider.languageModel()
+```
+
+## Generate text with the same AIKit interface
+
+```swift
+import AIKit
+import AIKitApple
+
+let model = apple.languageModel()
+
+let result = try await generateText(.init(
+  model: model,
+  prompt: "Write one sentence about Swift concurrency.",
+  output: Output.text()
+))
+
+print(result.text)
+```
+
+## Provider settings
+
+You can configure:
+
+- `useCase` (`.general` / `.contentTagging`)
+- `guardrails`
+- `includeSchemaInPrompt` (for JSON schema outputs)
+- `includeToolSchemaInInstructions`
+
+```swift
+let model = apple.languageModel(.init(
+  modelID: "apple/system",
+  useCase: .general,
+  guardrails: .default,
+  includeSchemaInPrompt: true
+))
+```
+
+## Notes
+
+- Requires iOS 26+ / macOS 26+.
+- Input messages are currently text-only.
+- Works with AIKit `generateText`/`streamText` and tool-loop flow.
