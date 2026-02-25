@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report (private)
+    url: mailto:jcfontecha@gmail.com
+    about: Report vulnerabilities privately via email (do not open public issues).

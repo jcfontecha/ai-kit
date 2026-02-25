@@ -1,0 +1,13 @@
+title = "AIKit Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ignore upstream/example fixture files"
+paths = [
+  '''(^|.*/)vercel-sdk/examples/ai-core/\.env\.example$''',
+  '''(^|.*/)vendored/.*''',
+  '''(^|.*/)internal_docs/references/.*''',
+  '''(^|.*/)\.public-release/.*''',
+]
