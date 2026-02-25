@@ -1,0 +1,126 @@
+---
+title: Chat Persistence
+description: Load and save chat history for local ChatStore and remote chat endpoints.
+---
+
+# Chat Persistence
+
+AI SDK's UI guidance recommends **persisting UI messages** (not model messages). AIKit follows the same approach via `ChatMessage` and the AI SDK-compatible `AIUIMessage` shape.
+
+There are two paths:
+
+1) **Local chat** (client-side generation via `ChatStore(model:)` or `ChatStore(agent:)`): you own the transcript and should persist it on-device.
+2) **Remote chat endpoint** (server-side AI SDK `streamText`): the server should persist, and the client should **load** only.
+
+> Local here means client-side generation, not local inference.
+
+---
+
+## Load history into `ChatStore` (local or remote)
+
+`ChatStore` accepts `initialMessages` for both local and remote configurations. Use `AIUIMessageDecoder` to hydrate `[ChatMessage]` from persisted UI messages.
+
+```swift
+import Foundation
+import AIKit
+
+struct ChatHistoryStore {
+  let url: URL
+
+  func loadMessages() async throws -> [ChatMessage] {
+    guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+    let data = try Data(contentsOf: url)
+    return try await AIUIMessageDecoder().decodeJSONData(data)
+  }
+}
+
+@MainActor
+func makeLocalChatStore(
+  model: any LanguageModel,
+  historyURL: URL
+) async throws -> ChatStore {
+  let history = try await ChatHistoryStore(url: historyURL).loadMessages()
+  return ChatStore(
+    model: model,
+    initialMessages: history
+  )
+}
+
+@MainActor
+func makeRemoteChatStore(
+  url: URL,
+  chatID: String,
+  historyURL: URL
+) async throws -> ChatStore {
+  let history = try await ChatHistoryStore(url: historyURL).loadMessages()
+  return ChatStore(
+    remote: url,
+    configuration: .init(
+      id: chatID,
+      initialMessages: history
+    )
+  )
+}
+```
+
+For a **remote** AI SDK endpoint, treat the server as the source of truth and load history from the server (or a server-authored cache). Client-side caching is fine for offline UX, but the canonical store should live server-side.
+
+---
+
+## Save/persist messages for local chat
+
+When running locally, persist on every stable update:
+
+1) Convert `[ChatMessage]` → `[AIUIMessage]` using `AIUIMessageEncoder`
+2) Encode and store the JSON
+
+```swift
+import Combine
+import Foundation
+import AIKit
+
+final class ChatPersistenceController {
+  private var cancellables: Set<AnyCancellable> = []
+  private let url: URL
+
+  init(store: ChatStore, url: URL) {
+    self.url = url
+
+    // Save after streaming completes.
+    store.$status
+      .removeDuplicates()
+      .filter { $0 == .ready }
+      .combineLatest(store.$messages)
+      .sink { [weak self] (_, messages) in
+        self?.save(messages)
+      }
+      .store(in: &cancellables)
+  }
+
+  private func save(_ messages: [ChatMessage]) {
+    do {
+      let uiMessages = try AIUIMessageEncoder().encode(messages)
+      let data = try JSONEncoder().encode(uiMessages)
+      try data.write(to: url, options: .atomic)
+    } catch {
+      // In production, surface or log persistence errors.
+    }
+  }
+}
+```
+
+Notes:
+- `AIUIMessageEncoder` can throw if required fields are missing (e.g. a file part without `mediaType`).
+- Saving on `.ready` avoids persisting mid-stream partials.
+- If you want autosave while streaming, debounce `messages` updates.
+
+---
+
+## Remote persistence (server-side)
+
+For **remote** chat endpoints, saving should happen **server-side** (mirroring AI SDK’s persistence guidance):
+
+- **Server**: persist `UIMessage[]` in `onFinish` of `streamText` / `toUIMessageStreamResponse`
+- **Client**: request history by chat ID and load it into `ChatStore(initialMessages: ...)`
+
+This keeps message IDs consistent across devices and avoids split-brain history.

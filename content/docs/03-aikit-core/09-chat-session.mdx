@@ -1,0 +1,48 @@
+---
+title: ChatStore
+description: useChat-style chat state for SwiftUI/Combine.
+---
+
+# ChatStore
+
+`ChatStore` is the single “useChat-shaped” API for app code:
+
+- stores messages (`[ChatMessage]`)
+- exposes request status + errors
+- can stream assistant messages into the transcript
+- supports tool calls, tool outputs, and tool approvals
+
+## Remote chat (recommended)
+
+```swift
+import AIKit
+
+@StateObject var chat = ChatStore(remote: URL(string: "https://example.com/api/chat")!)
+
+chat.sendMessage("Hello!")
+```
+
+## Local chat (on-device / client-side model)
+
+```swift
+import AIKit
+
+var tools = ToolRegistry()
+// tools.register(...)
+
+@StateObject var chat = ChatStore(
+  model: model,
+  system: .instructions("You are helpful."),
+  tools: tools
+)
+
+chat.sendMessage("Hello!")
+```
+
+See `Sources/AIKit/ChatStore.swift`.
+
+## Node server streaming
+
+If your backend runs Vercel AI SDK `streamText` and returns the UI message stream (SSE v1), see:
+
+- [Node Server + iOS ChatStore](../06-advanced/04-node-server-chat-session.mdx)

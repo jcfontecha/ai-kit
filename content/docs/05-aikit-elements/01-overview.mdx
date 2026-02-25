@@ -1,0 +1,122 @@
+---
+title: Overview
+description: Core components, composition patterns, and built-in Markdown rendering.
+---
+
+# AIKitElements overview
+
+AIKitElements provides SwiftUI-first building blocks for chat UIs that pair with AIKit’s
+`ChatStore`, `ChatMessage`, and tool-approval flows.
+
+## Requirements
+
+- iOS 26+
+- macOS 26+
+
+## What you get
+
+Core primitives:
+- `Conversation` (stream-aware scrolling + paging)
+- `AssistantMessage` (interleaved parts: text, reasoning, tools, sources, files)
+- `UserBubble`
+- `PromptInput` / `PromptInputField`
+- `ApprovalBanner`
+- `ToolPartView` / `ToolPartReasoningView`
+- `FileAttachmentsRow`, `SourceLinkRow`, `SourceDocumentRow`
+- `AssistantMarkdown` (built-in Markdown rendering)
+- `GlassSurface` (styling helper)
+- `ChatTheme` + `.chatTheme(...)` (theming via `Environment`)
+
+## Basic composition
+
+```swift
+import SwiftUI
+import AIKit
+import AIKitElements
+
+struct ChatView: View {
+  @State private var composerText = ""
+  @StateObject private var chat = ChatStore(
+    model: /* your chat model */,
+    tools: nil,
+    initialMessages: []
+  )
+
+  var body: some View {
+    Conversation(messages: chat.messages, status: chat.status)
+      .chatComposer(
+        text: $composerText,
+        status: chat.status,
+        onSend: { chat.sendMessage($0) },
+        onStop: { chat.stop() }
+      )
+  }
+}
+```
+
+### Composer note
+
+`chatComposer(...)` is the recommended (and most reliable) way to attach a composer to `Conversation`.
+It automatically:
+
+- Reserves the correct bottom inset so the last message doesn’t render under the composer
+- Wires up the built-in “scroll to latest” down-arrow button
+
+If you render your own composer bar instead of using `chatComposer(...)`, you must provide the bottom inset yourself via
+`conversationBottomOverlayHeight(...)`, and you should provide your own “scroll to latest” affordance.
+
+## AssistantMessage
+
+`AssistantMessage` renders interleaved parts (text, reasoning, tools, sources, files).
+For details on composing assistant output and tool rendering, see:
+
+- [Tools](../03-aikit-core/04-tools.mdx)
+- [Tool approvals](../03-aikit-core/05-tool-approvals.mdx)
+
+## Assistant Markdown
+
+By default, `AssistantMessage` uses `AssistantMarkdown`.
+Customize Markdown layout via `ChatTheme`:
+
+```swift
+let style = AssistantMarkdownStyle(
+  lineSpacingEm: 0.26,
+  paragraphSpacingEm: 0.6,
+  listItemSpacingEm: 0.35
+)
+
+Conversation(messages: chat.messages, status: chat.status)
+  .chatTheme(.init(markdown: .init(style: style)))
+```
+
+## Tool approvals
+
+Wire approval responses back into your `ChatStore`:
+
+```swift
+AssistantMessage(parts: message.parts)
+  .assistantMessageOnToolApprovalResponse { approvalID, approved, reason in
+    chat.addToolApprovalResponse(approvalID: approvalID, approved: approved, reason: reason)
+  }
+```
+
+## Tool renderers
+
+Prefer attaching tool renderers at a parent view so every `AssistantMessage` inherits them:
+
+```swift
+Conversation(messages: chat.messages, status: chat.status)
+  .assistantMessageToolRenderer("fetch_weather") { context in
+    ToolPartReasoningView(
+      tool: context.tool,
+      icon: Image(systemName: "cloud.sun"),
+      sendApproval: context.sendApproval,
+      statusStrings: .init(loading: "Fetching…", success: "Done", error: "Failed")
+    )
+  }
+```
+
+## Readiness
+
+AIKitElements is ready for **early** use in apps with the expectation of API iteration.
+If you need stability, isolate usage in a thin adapter layer.

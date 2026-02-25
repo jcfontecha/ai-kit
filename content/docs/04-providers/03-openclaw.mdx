@@ -1,0 +1,53 @@
+---
+title: OpenClaw
+description: Use OpenClaw Gateway as a streaming language model provider.
+---
+
+# OpenClaw provider
+
+The OpenClaw provider lives in `AIKitOpenClaw`.
+
+## Create a client
+
+```swift
+import AIKitOpenClaw
+
+let openclaw = createOpenClaw(.init(
+  gatewayURL: URL(string: "ws://127.0.0.1:18789")!,
+  token: "<TOKEN>",
+  sessionKey: "main"
+))
+```
+
+## Select a model
+
+```swift
+let model = openclaw.agent()
+```
+
+## Streaming behavior
+
+- Stream completion is driven by OpenClaw's final `agent` response (not intermediate lifecycle events), which prevents early stream termination during retries/fallbacks.
+- Tool events are streamed as `toolCall` / `toolResult` / `toolError`.
+- If the gateway only reports pending tool calls in final metadata, AIKit emits fallback streamed tool calls so they still appear in the stream.
+
+## Conversation and thread routing
+
+You can route by session, conversation, and thread:
+
+- Defaults from `OpenClawProviderSettings`:
+  - `sessionKey`
+  - `agentId`
+  - `conversationID`
+  - `threadID`
+- Per-request overrides via `providerOptions["openclaw"]`:
+  - `sessionKey`
+  - `agentId`
+  - `conversationId`
+  - `threadId`
+
+When `conversationId` / `threadId` are set, AIKit derives a scoped session key suffix:
+
+`<sessionKey>:conversation:<id>:thread:<id>`
+
+This makes concurrent conversations/threads independent while using the same provider instance.

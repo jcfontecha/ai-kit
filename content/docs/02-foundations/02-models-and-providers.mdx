@@ -1,0 +1,29 @@
+---
+title: Models and providers
+description: LanguageModel, provider packages, and how to plug in your own model.
+---
+
+# Models and providers
+
+AIKit is provider-agnostic. Providers implement `LanguageModel` from `AIKitProviders`:
+
+```swift
+public protocol LanguageModel: Sendable {
+  var id: String { get }
+  var capabilities: ModelCapabilities { get }
+
+  func generate(_ request: ModelRequest) async throws -> ModelResponse
+  func stream(_ request: ModelRequest) -> AsyncThrowingStream<ModelStreamPart, Error>
+}
+```
+
+AIKit uses this protocol to implement tool loops, output parsing, retries, and streaming event aggregation.
+
+## Built-in providers
+
+- OpenRouter (`AIKitOpenRouter`): `createOpenRouter(...)` / `openrouter(...)`.
+- OpenAI (`AIKitOpenAI`): `createOpenAI(...)` / `openai(...)` (surface only; implementations are not yet available).
+
+## Custom providers
+
+If you have an internal gateway or a model with a custom wire format, implement `LanguageModel` and map your provider’s streaming protocol into `ModelStreamPart`. AIKit will take it from there.

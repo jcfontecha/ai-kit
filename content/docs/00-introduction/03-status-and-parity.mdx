@@ -1,0 +1,27 @@
+---
+title: Status and parity
+description: What’s implemented today, and how it maps to the upstream AI SDK.
+---
+
+# Status and parity
+
+AIKit is implemented by translating AI SDK semantics into Swift. The source of truth for expected behavior is the upstream AI SDK, pinned here (as of 2026-02-24):
+
+<https://github.com/vercel/ai/tree/73d5c5920e0fea7633027fdd87374adc9ba49743>
+
+## What AIKit focuses on
+
+- `generateText` and `streamText` behavior parity (multi-step tool loop, stop conditions, usage aggregation, errors)
+- streaming event model that can represent tool input deltas and non-delta tool inputs
+- type-safe structured outputs (`OutputSpec` + `ObjectSchema<T>`)
+
+## Provider status
+
+- `AIKitOpenRouter`: implemented (chat, completion, embeddings; streaming supported).
+- `AIKitOpenAI`: public provider surface exists, but model implementations currently throw `AIKitError.notImplemented(...)`.
+
+## Tests
+
+AIKit uses a translation-first, test-driven workflow. Tests live under `Tests/` and mirror AI SDK scenario groupings where possible.
+
+For `useChat` / `ChatStore` parity tracking, see `AIKIT_USECHAT_TRACKER.md` at the repo root.

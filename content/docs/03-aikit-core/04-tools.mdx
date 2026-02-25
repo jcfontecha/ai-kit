@@ -1,0 +1,47 @@
+---
+title: Tools
+description: Define tools, tool schemas, and tool execution behavior.
+---
+
+# Tools
+
+Tools are registered in a `ToolRegistry` and passed to `GenerateTextOptions` / `StreamTextOptions` (or to `Agent`).
+
+## Registering a tool
+
+```swift
+import AIKit
+import AIKitMacro
+
+@AIModel
+struct WeatherInput: Codable, Sendable {
+  @Field("City name", minLength: 1, maxLength: 100)
+  var city: String
+}
+
+let weather = ToolID<WeatherInput, String>("weather")
+
+var tools = ToolRegistry()
+tools.register(
+  weather,
+  ToolSpec(
+    title: "Weather",
+    description: "Get current weather for a city.",
+    inputSchema: WeatherInput.schema,
+    execute: { input, _ in
+      .final("Sunny in \(input.city)")
+    }
+  )
+)
+```
+
+## Tool kinds
+
+`ToolKind` determines whether the tool runs locally or is executed by the provider:
+
+- `.client`: AIKit executes `execute(...)` locally.
+- `.provider(supportsDeferredResults: Bool)`: tool results come from the provider stream; AIKit should not run it locally.
+
+## Streaming tool execution
+
+Tools can stream progress back into the loop via `ToolExecution.streaming(...)`. AIKit will forward these into the overall `TextStreamPart` stream as tool result parts.

@@ -1,0 +1,21 @@
+---
+title: Streaming events
+description: Understand TextStreamPart and how it maps to provider stream parts.
+---
+
+# Streaming events
+
+`streamText` exposes `fullStream: AsyncThrowingStream<TextStreamPart, Error>`.
+
+`TextStreamPart` includes:
+
+- lifecycle: `.start`, `.finish(...)`, `.abort`
+- step boundaries: `.startStep(...)`, `.finishStep(...)`
+- text/reasoning deltas: `.textStart/.textDelta/.textEnd`, `.reasoningStart/.reasoningDelta/.reasoningEnd`
+- tool input streaming: `.toolInputStart/.toolInputDelta/.toolInputEnd`
+- tool loop events: `.toolCall`, `.toolResult`, `.toolError`, `.toolApprovalRequest/.toolApprovalResponse`
+- payload passthrough: `.raw(JSONValue)` and `.error(String)`
+
+Providers emit `ModelStreamPart` values; AIKit translates them into `TextStreamPart` and aggregates them into steps and the final result.
+
+For concrete examples, see `StreamTextTests.swift`.

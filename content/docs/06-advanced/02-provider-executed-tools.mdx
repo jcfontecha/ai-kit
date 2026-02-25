@@ -1,0 +1,16 @@
+---
+title: Provider-executed tools
+description: Tools that are executed by the provider instead of locally.
+---
+
+# Provider-executed tools
+
+Some providers can execute tools on their side (or return tool results without AIKit executing the tool locally).
+
+AIKit models this via `ToolKind.provider(supportsDeferredResults:)`.
+
+- When a tool is provider-executed, AIKit does not call `ToolSpec.execute`.
+- Tool results are expected to arrive through the provider stream / response.
+- If `supportsDeferredResults` is `true`, results may arrive later; the loop finish waits for pending results.
+
+See deferred-results tracking (via `pendingDeferredToolCalls`) in `Sources/AIKit/Generation/GenerateText.swift`, and the tool loop code paths in `generateText` / `streamText`.

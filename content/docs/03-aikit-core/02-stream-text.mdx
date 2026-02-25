@@ -1,0 +1,68 @@
+---
+title: streamText
+description: Stream deltas, tool events, and step boundaries.
+---
+
+# `streamText`
+
+`streamText` runs the same core behavior as `generateText`, but exposes streaming views of the response:
+
+- `textStream`: a stream of emitted text deltas (strings)
+- `fullStream`: a stream of structured `TextStreamPart` events
+- `partialOutputStream`: partial structured output (depends on `OutputSpec.parsePartial`)
+
+## Basic usage (text deltas)
+
+```swift
+let stream = streamText(.init(
+  model: model,
+  prompt: "Write a short poem.",
+  output: Output.text()
+))
+
+for try await delta in stream.textStream {
+  print(delta, terminator: "")
+}
+```
+
+## Full event stream (tools, approvals, steps)
+
+```swift
+let stream = streamText(.init(
+  model: model,
+  prompt: "Use tools if needed.",
+  tools: tools,
+  stopWhen: [Stop.stepCountIs(10)],
+  output: Output.text()
+))
+
+for try await part in stream.fullStream {
+  switch part {
+  case .startStep(let request, _):
+    print("step started", request)
+  case .toolCall(let call):
+    print("tool call", call)
+  case .toolResult(let result):
+    print("tool result", result)
+  case .finish(let finishReason, _, let usage):
+    print("done", finishReason, usage)
+  default:
+    break
+  }
+}
+```
+
+## Await the final output
+
+`StreamTextResult` is also a collector. After the streams finish, you can await the final value:
+
+```swift
+let stream = streamText(.init(
+  model: model,
+  prompt: "Write a short poem.",
+  output: Output.text()
+))
+
+let finalText = try await stream.text
+let output = try await stream.output
+```

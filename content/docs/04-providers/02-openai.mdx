@@ -1,0 +1,14 @@
+---
+title: OpenAI
+description: OpenAI provider surface and current implementation status.
+---
+
+# OpenAI provider
+
+The OpenAI provider lives in `AIKitOpenAI` and currently provides:
+
+- model ID types (chat/completion/responses/embeddings/etc.)
+- a provider façade (`createOpenAI(...)` / `openai`)
+
+At the moment, the model implementations are placeholders and throw `AIKitError.notImplemented(...)`. See `Sources/AIKitOpenAI/OpenAIProvider.swift`.
+

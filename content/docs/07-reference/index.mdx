@@ -1,0 +1,25 @@
+---
+title: Reference
+description: Entry points, key types, and where to find the source.
+---
+
+# Reference
+
+AIKit’s public API surface lives primarily under:
+
+- `Sources/AIKit` (core orchestration and types)
+- `Sources/AIKitProviders` (provider protocol + shared wire types)
+- `Sources/AIKitOpenRouter` (OpenRouter provider)
+
+Key entry points:
+
+- `generateText` (`Sources/AIKit/Generation/GenerateText.swift`)
+- `streamText` (`Sources/AIKit/Streaming/StreamText.swift`)
+- `Agent` (`Sources/AIKit/Agent/Agent.swift`)
+- `ChatStore` (`Sources/AIKit/ChatStore.swift`)
+- outputs (`Sources/AIKit/Output/OutputSpec.swift`)
+- tools (`Sources/AIKit/Tools/Tools.swift`)
+
+If you’re looking for behavior parity details, the translation source-of-truth is the upstream AI SDK pinned here (as of 2026-02-24):
+
+<https://github.com/vercel/ai/tree/73d5c5920e0fea7633027fdd87374adc9ba49743>

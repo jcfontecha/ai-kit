@@ -1,0 +1,28 @@
+---
+title: Introduction
+description: What AIKit is, how it’s organized, and what to use first.
+---
+
+# Introduction
+
+AIKit is a Swift-first framework for calling LLMs with a unified API, with first-class support for:
+
+- single-step calls (`generateText`)
+- streaming (`streamText`)
+- multi-step tool loops (tools + approvals + stop conditions)
+- structured outputs (`OutputSpec` / `Output`)
+
+AIKit is **client-only** (iOS/macOS). It intentionally avoids server framework helpers (HTTP response piping, server actions, edge adapters).
+
+## Packages
+
+- `AIKit`: app-facing APIs, including orchestration (`generateText`, `streamText`, tool loop), messages, tools, outputs, stop conditions.
+- `AIKitProviders`: provider protocols + shared wire/streaming types.
+- `AIKitOpenRouter`: OpenRouter provider (HTTP client).
+- `AIKitOpenAI`: OpenAI provider surface (currently a stub; see Providers).
+
+## Start here
+
+- [Installation](./01-installation.mdx)
+- [Quickstart](./02-quickstart.mdx)
+- [Status and parity](./03-status-and-parity.mdx)
