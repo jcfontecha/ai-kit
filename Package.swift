@@ -13,7 +13,6 @@ let package = Package(
     .library(name: "AIKitProviders", targets: ["AIKitProviders"]),
     .library(name: "AIKitElements", targets: ["AIKitElements"]),
     .library(name: "AIKitOpenAI", targets: ["AIKitOpenAI"]),
-    .library(name: "AIKitOpenClaw", targets: ["AIKitOpenClaw"]),
     .library(name: "AIKitOpenRouter", targets: ["AIKitOpenRouter"]),
     .library(name: "AIKitReplicate", targets: ["AIKitReplicate"]),
     .library(name: "AIKitFal", targets: ["AIKitFal"]),
@@ -43,10 +42,6 @@ let package = Package(
     ),
     .target(
       name: "AIKitOpenAI",
-      dependencies: ["AIKitProviders"]
-    ),
-    .target(
-      name: "AIKitOpenClaw",
       dependencies: ["AIKitProviders"]
     ),
     .target(
@@ -97,10 +92,6 @@ let package = Package(
     .testTarget(
       name: "AIKitOpenRouterTests",
       dependencies: ["AIKitOpenRouter", "AIKitProviders", "AIKitTestKit"]
-    ),
-    .testTarget(
-      name: "AIKitOpenClawTests",
-      dependencies: ["AIKitOpenClaw", "AIKitProviders", "AIKitTestKit"]
     ),
     .testTarget(
       name: "AIKitElementsTests",

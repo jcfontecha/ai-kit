@@ -2,7 +2,7 @@
 
 Swift-first, type-safe AI SDK for iOS and macOS apps.
 
-AIKit translates the semantics of Vercel's AI SDK into Swift APIs that feel native to Apple platforms, with strong typing, structured concurrency, and comprehensive tests.
+AIKit is inspired by modern web AI frameworks (including Vercel AI SDK) and adapts those ideas into Swift APIs that feel native to Apple platforms, with strong typing, structured concurrency, and comprehensive tests.
 
 ## Why AIKit
 
@@ -10,7 +10,7 @@ AIKit translates the semantics of Vercel's AI SDK into Swift APIs that feel nati
 - Type-safe outputs and tool calling
 - Multi-provider architecture with shared wire/protocol types
 - Streaming support for text, reasoning, tool input deltas, tool calls/results, and step boundaries
-- Large parity-oriented test suite
+- Comprehensive provider and behavior test suite
 
 ## Requirements
 
@@ -34,7 +34,6 @@ Then depend on one or more products:
 - `AIKitProviders`
 - `AIKitElements`
 - `AIKitOpenRouter`
-- `AIKitOpenClaw`
 - `AIKitOpenAI`
 - `AIKitReplicate`
 - `AIKitFal`
@@ -74,29 +73,34 @@ for try await delta in stream.textStream {
 let finalText = try await stream.text
 ```
 
+## Server Compatibility (Vercel AI SDK)
+
+AIKit is designed to work well with a Node backend powered by Vercel AI SDK.
+
+- Server: run `streamText(...)` and return `toUIMessageStreamResponse()`.
+- Wire protocol: `text/event-stream` with `x-vercel-ai-ui-message-stream: v1` and terminal `data: [DONE]`.
+- Client: use `ChatStore(remote: ...)` on iOS/macOS.
+- Endpoint shape: `POST /api/chat` for send/regenerate, optional `GET /api/chat/:id/stream` for resume (`200` stream or `204` when no active stream).
+
+This gives you a practical split: Vercel AI SDK on the server, AIKit on Apple clients.
+
 ## Documentation
 
 Full docs live in [`content/docs/`](content/docs/).
+For end-to-end server/client setup, see [`content/docs/06-advanced/04-node-server-chat-session.mdx`](content/docs/06-advanced/04-node-server-chat-session.mdx).
 
 ## Project Status
 
 AIKit is production-usable for early adopters, with active API iteration expected.
+AIKit does not provide strict parity guarantees with any JavaScript SDK.
 
 ### What's not implemented yet
 
 - `AIKitOpenAI` currently exposes provider/model entry points, but concrete language/embedding/image/speech/transcription model implementations still throw `AIKitError.notImplemented(...)`.
 
-## Upstream Parity References
-
-AIKit behavior is tracked against upstream references pinned as of February 24, 2026:
-
-- AI SDK (`vercel/ai`) @ `73d5c5920e0fea7633027fdd87374adc9ba49743`: <https://github.com/vercel/ai/tree/73d5c5920e0fea7633027fdd87374adc9ba49743>
-- OpenRouter provider (`OpenRouterTeam/ai-sdk-provider`) @ `7c043a085f796fa89b7181eedac356e8e53bf237`: <https://github.com/OpenRouterTeam/ai-sdk-provider/tree/7c043a085f796fa89b7181eedac356e8e53bf237>
-- AI Elements (`vercel/ai-elements`) @ `10a5e65257b7f838ee3fe367713941f57b0e212c`: <https://github.com/vercel/ai-elements/tree/10a5e65257b7f838ee3fe367713941f57b0e212c>
-
 ## Roadmap (Short-Term)
 
-- Continue AI SDK semantic parity work for `generateText` / `streamText`
+- Expand server compatibility coverage for remote chat endpoints
 - Complete OpenAI provider implementations
 - Expand docs and migration guides
 - Stabilize `AIKitElements` surface after early adopter feedback
