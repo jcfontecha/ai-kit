@@ -104,6 +104,9 @@ struct SimpleChatDemoView: View {
           .background(Color.red.opacity(0.85))
       }
     }
+    .chatTheme(ChatTheme(composer: .init(
+      surfaceTint: Color(red: 0.55, green: 0.78, blue: 1.0).opacity(0.22)
+    )))
     base
   }
 
