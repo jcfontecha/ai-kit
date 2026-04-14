@@ -48,6 +48,55 @@ final class AIKitElementsSnapshotTests: XCTestCase {
     SnapshotTesting.assertSnapshotImage(view, size: size)
   }
 
+  func testSnapshot_promptInput_ready_hidesUnavailableAddButtonViaTheme() {
+    let size = CGSize(width: 420, height: 140)
+
+    let view = snapshotRoot(
+      PromptInput(
+        text: .constant("Hello from snapshots"),
+        status: .ready,
+        onSend: { _ in },
+        onStop: {}
+      )
+      .chatTheme(
+        .init(
+          composer: .init(
+            addButton: .init(unavailableVisibility: .hidden)
+          )
+        )
+      ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_promptInput_ready_withThemeOverrides() {
+    let size = CGSize(width: 420, height: 140)
+
+    let view = snapshotRoot(
+      PromptInput(
+        text: .constant("Hello from snapshots"),
+        status: .ready,
+        onSend: { _ in },
+        onStop: {}
+      )
+      .chatTheme(
+        .init(
+          composer: .init(
+            sendButton: .init(
+              foreground: .black,
+              background: .orange
+            )
+          )
+        )
+      ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
   func testSnapshot_assistantMessage_interleavedParts() {
     let size = CGSize(width: 480, height: 680)
 
@@ -216,6 +265,24 @@ final class AIKitElementsSnapshotTests: XCTestCase {
 
     let view = snapshotRoot(
       GeneratedImageGridItem(phase: .success(file)),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_userBubble_withThemeOverride() {
+    let size = CGSize(width: 300, height: 120)
+
+    let view = snapshotRoot(
+      UserBubble(text: "Themed user bubble")
+        .chatTheme(
+          .init(
+            message: .init(
+              userBubble: .init(background: .mint)
+            )
+          )
+        ),
       size: size
     )
 

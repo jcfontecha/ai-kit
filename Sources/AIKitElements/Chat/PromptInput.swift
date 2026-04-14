@@ -534,23 +534,27 @@ public struct PromptInputField: View {
     text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false || attachments.isEmpty == false
   }
 
+  @Environment(\.chatTheme) private var chatTheme
+
   private var enabledControlForeground: Color {
+    if let themed = chatTheme.composer.sendButton?.foreground { return themed }
     #if os(iOS) || os(tvOS) || os(watchOS)
-    Color(uiColor: .systemBackground)
+    return Color(uiColor: .systemBackground)
     #elseif os(macOS)
-    Color(nsColor: .windowBackgroundColor)
+    return Color(nsColor: .windowBackgroundColor)
     #else
-    Color.white
+    return Color.white
     #endif
   }
 
   private var enabledControlBackground: Color {
+    if let themed = chatTheme.composer.sendButton?.background { return themed }
     #if os(iOS) || os(tvOS) || os(watchOS)
-    Color(uiColor: .label)
+    return Color(uiColor: .label)
     #elseif os(macOS)
-    Color(nsColor: .labelColor)
+    return Color(nsColor: .labelColor)
     #else
-    Color.black
+    return Color.black
     #endif
   }
 
@@ -731,17 +735,28 @@ public struct StandardPromptInputStyle: PromptInputStyle {
 private struct StandardPromptInput: View {
   let configuration: PromptInputStyleConfiguration
 
+  @Environment(\.chatTheme) private var chatTheme
+
   private let cornerRadius: CGFloat = 24
   private let plusButtonIconSize: CGFloat = 18
   private let plusButtonPadding: CGFloat = 14
   private let plusButtonSpacing: CGFloat = 8
   private var plusButtonSize: CGFloat { plusButtonIconSize + (plusButtonPadding * 2) }
   private let bottomInset: CGFloat = 4
+  private var addButtonVisibility: ChatTheme.ControlVisibility {
+    chatTheme.composer.addButton?.unavailableVisibility ?? .disabled
+  }
+  private var showsAddButton: Bool {
+    configuration.onAdd != nil || addButtonVisibility == .disabled
+  }
+  private var isAddButtonEnabled: Bool { configuration.onAdd != nil }
 
   var body: some View {
     GlassEffectContainer(spacing: plusButtonSpacing) {
       HStack(alignment: .bottom, spacing: plusButtonSpacing) {
-        plusButton
+        if showsAddButton {
+          plusButton
+        }
         PromptInputField(
           text: configuration.text,
           status: configuration.status,
@@ -764,7 +779,7 @@ private struct StandardPromptInput: View {
   }
 
   private var plusButton: some View {
-    let enabled = configuration.onAdd != nil
+    let enabled = isAddButtonEnabled
     let action = configuration.onAdd ?? {}
 
     // NOTE: `glassEffect(.clear.interactive(), ...)` can consume touch events when nested in a `Button` label.

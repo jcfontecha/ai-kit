@@ -1,6 +1,11 @@
 import SwiftUI
 
 public struct ChatTheme: Sendable {
+  public enum ControlVisibility: Sendable {
+    case disabled
+    case hidden
+  }
+
   public struct Spacing: Sendable {
     public var messageRow: CGFloat
     public var messageStack: CGFloat
@@ -33,15 +38,71 @@ public struct ChatTheme: Sendable {
     }
   }
 
+  public struct ControlTheme: Sendable {
+    public var foreground: Color?
+    public var background: Color?
+
+    public init(
+      foreground: Color? = nil,
+      background: Color? = nil
+    ) {
+      self.foreground = foreground
+      self.background = background
+    }
+  }
+
+  public struct AddButtonTheme: Sendable {
+    public var unavailableVisibility: ControlVisibility?
+
+    public init(unavailableVisibility: ControlVisibility? = nil) {
+      self.unavailableVisibility = unavailableVisibility
+    }
+  }
+
+  public struct BubbleTheme: Sendable {
+    public var background: Color?
+
+    public init(background: Color? = nil) {
+      self.background = background
+    }
+  }
+
+  public struct ComposerTheme: Sendable {
+    public var sendButton: ControlTheme?
+    public var addButton: AddButtonTheme?
+
+    public init(
+      sendButton: ControlTheme? = nil,
+      addButton: AddButtonTheme? = nil
+    ) {
+      self.sendButton = sendButton
+      self.addButton = addButton
+    }
+  }
+
+  public struct MessageTheme: Sendable {
+    public var userBubble: BubbleTheme?
+
+    public init(userBubble: BubbleTheme? = nil) {
+      self.userBubble = userBubble
+    }
+  }
+
+  public var composer: ComposerTheme
+  public var message: MessageTheme
   public var spacing: Spacing
   public var tool: Tool
   public var markdown: Markdown
 
   public init(
+    composer: ComposerTheme = .init(),
+    message: MessageTheme = .init(),
     spacing: Spacing = .init(),
     tool: Tool = .init(),
     markdown: Markdown = .init()
   ) {
+    self.composer = composer
+    self.message = message
     self.spacing = spacing
     self.tool = tool
     self.markdown = markdown
