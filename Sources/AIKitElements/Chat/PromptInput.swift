@@ -751,6 +751,13 @@ private struct StandardPromptInput: View {
   }
   private var isAddButtonEnabled: Bool { configuration.onAdd != nil }
 
+  private var surfaceGlass: Glass {
+    if let tint = chatTheme.composer.surfaceTint {
+      return .regular.tint(tint).interactive()
+    }
+    return .clear.interactive()
+  }
+
   var body: some View {
     GlassEffectContainer(spacing: plusButtonSpacing) {
       HStack(alignment: .bottom, spacing: plusButtonSpacing) {
@@ -772,7 +779,7 @@ private struct StandardPromptInput: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: plusButtonSize, alignment: .center)
         .clipShape(.rect(cornerRadius: cornerRadius))
-        .glassEffect(.clear.interactive(), in: .rect(cornerRadius: cornerRadius))
+        .glassEffect(surfaceGlass, in: .rect(cornerRadius: cornerRadius))
       }
     }
     .padding(.bottom, bottomInset)
@@ -798,7 +805,7 @@ private struct StandardPromptInput: View {
       .frame(width: plusButtonSize, height: plusButtonSize)
       .font(.system(size: plusButtonIconSize, weight: .medium))
       .foregroundStyle(plusIconColor)
-      .glassEffect(.clear.interactive(), in: .circle)
+      .glassEffect(surfaceGlass, in: .circle)
       .contentShape(Circle())
   }
 

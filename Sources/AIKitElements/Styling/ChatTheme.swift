@@ -70,13 +70,16 @@ public struct ChatTheme: Sendable {
   public struct ComposerTheme: Sendable {
     public var sendButton: ControlTheme?
     public var addButton: AddButtonTheme?
+    public var surfaceTint: Color?
 
     public init(
       sendButton: ControlTheme? = nil,
-      addButton: AddButtonTheme? = nil
+      addButton: AddButtonTheme? = nil,
+      surfaceTint: Color? = nil
     ) {
       self.sendButton = sendButton
       self.addButton = addButton
+      self.surfaceTint = surfaceTint
     }
   }
 
