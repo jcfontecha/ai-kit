@@ -1,0 +1,5 @@
+{
+  "scheme": "AIKitElementsDemoApp",
+  "bundleId": "com.fontecha.AIKitElementsDemoApp",
+  "build": "make build"
+}
