@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nucleo Icons"
+  short_description: "Search and export SVG icons"
+  default_prompt: "Use $nucleo-icons to find the best matching icons and export the SVGs I need."
