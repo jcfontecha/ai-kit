@@ -771,6 +771,7 @@ private struct StandardPromptInput: View {
         )
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: plusButtonSize, alignment: .center)
+        .clipShape(.rect(cornerRadius: cornerRadius))
         .glassEffect(.clear.interactive(), in: .rect(cornerRadius: cornerRadius))
       }
     }
