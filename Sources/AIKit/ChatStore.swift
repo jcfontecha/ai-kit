@@ -168,6 +168,7 @@ public final class ChatStore: ObservableObject {
     _ text: String? = nil,
     files: [ChatFilePart],
     dataParts: [ChatDataPart] = [],
+    metadata: JSONValue? = nil,
     options: ChatRequestOptions? = nil
   ) {
     let resolvedText = text ?? input
@@ -183,7 +184,7 @@ public final class ChatStore: ObservableObject {
 
     let merged = merge(defaultRequestOptions, options)
     Task { [session] in
-      let message = ChatDraftMessage(role: .user, parts: parts)
+      let message = ChatDraftMessage(role: .user, parts: parts, metadata: metadata)
       await session.send(message, options: merged)
     }
   }
