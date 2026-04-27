@@ -6,17 +6,23 @@ struct ReplicateImageModelConfig: Sendable {
   var headers: @Sendable () -> [String: String]
   var transport: HTTPTransport
   var currentDate: @Sendable () -> Date
+  var predictionPollIntervalNanoseconds: UInt64
+  var predictionPollTimeoutSeconds: TimeInterval
 
   init(
     baseURL: String,
     headers: @escaping @Sendable () -> [String: String],
     transport: HTTPTransport,
-    currentDate: @escaping @Sendable () -> Date = { Date() }
+    currentDate: @escaping @Sendable () -> Date = { Date() },
+    predictionPollIntervalNanoseconds: UInt64 = 2_000_000_000,
+    predictionPollTimeoutSeconds: TimeInterval = 35 * 60
   ) {
     self.baseURL = baseURL
     self.headers = headers
     self.transport = transport
     self.currentDate = currentDate
+    self.predictionPollIntervalNanoseconds = predictionPollIntervalNanoseconds
+    self.predictionPollTimeoutSeconds = predictionPollTimeoutSeconds
   }
 }
 
@@ -25,7 +31,7 @@ struct ReplicateImageModel: ImageModel, Sendable {
   let config: ReplicateImageModelConfig
   private var isFlux2Model: Bool { id.hasPrefix("black-forest-labs/flux-2-") }
   private var isNanoBananaModel: Bool { id.hasPrefix("google/nano-banana") }
-  private var isOpenAIGPTImage15: Bool { id == "openai/gpt-image-1.5" }
+  private var isOpenAIGPTImageModel: Bool { id == "openai/gpt-image-1.5" || id == "openai/gpt-image-2" }
 
   init(modelId: String, config: ReplicateImageModelConfig) {
     self.id = modelId
@@ -33,7 +39,7 @@ struct ReplicateImageModel: ImageModel, Sendable {
   }
 
   func maxImagesPerCall() async -> Int? {
-    if isOpenAIGPTImage15 { return 10 }
+    if isOpenAIGPTImageModel { return 10 }
     if isFlux2Model { return 8 }
     return 1
   }
@@ -55,8 +61,8 @@ struct ReplicateImageModel: ImageModel, Sendable {
 
     var imageInputs: [String: JSONValue] = [:]
     if let files = request.files, files.isEmpty == false {
-      if isOpenAIGPTImage15 {
-        // openai/gpt-image-1.5 expects: input_images: [uri...]
+      if isOpenAIGPTImageModel {
+        // openai/gpt-image-* expects: input_images: [uri...]
         imageInputs["input_images"] = .array(try files.map { .string(try convertFileToDataURI($0)) })
       } else if isNanoBananaModel {
         // Nano Banana models expect: image_input: [uri...]
@@ -100,10 +106,10 @@ struct ReplicateImageModel: ImageModel, Sendable {
             code: "other"
           )
         )
-      } else if isOpenAIGPTImage15 {
+      } else if isOpenAIGPTImageModel {
         warnings.append(
           .init(
-            message: "openai/gpt-image-1.5 does not support mask input. The mask will be ignored.",
+            message: "openai/gpt-image models do not support mask input. The mask will be ignored.",
             code: "other"
           )
         )
@@ -113,7 +119,7 @@ struct ReplicateImageModel: ImageModel, Sendable {
     }
 
     var input: [String: JSONValue] = ["prompt": .string(request.prompt ?? "")]
-    if isOpenAIGPTImage15 {
+    if isOpenAIGPTImageModel {
       input["number_of_images"] = .number(Double(request.n))
     } else if isNanoBananaModel == false {
       input["num_outputs"] = .number(Double(request.n))
@@ -121,10 +127,10 @@ struct ReplicateImageModel: ImageModel, Sendable {
     if let aspectRatio = request.aspectRatio {
       input["aspect_ratio"] = .string(aspectRatio)
     }
-    if let size = request.size, isOpenAIGPTImage15 == false, isNanoBananaModel == false {
+    if let size = request.size, isOpenAIGPTImageModel == false, isNanoBananaModel == false {
       input["size"] = .string(size)
     }
-    if let seed = request.seed, isOpenAIGPTImage15 == false, isNanoBananaModel == false {
+    if let seed = request.seed, isOpenAIGPTImageModel == false, isNanoBananaModel == false {
       input["seed"] = .number(Double(seed))
     }
 
@@ -224,18 +230,16 @@ struct ReplicateImageModel: ImageModel, Sendable {
       return (data, response)
     }()
 
-    let finalData2 = resolved.0
-    let finalResponse2 = resolved.1
-
-    if (200..<300).contains(finalResponse2.statusCode) == false {
+    if (200..<300).contains(resolved.1.statusCode) == false {
       throw ReplicateAPIError(
-        message: parseReplicateErrorMessage(from: finalData2) ?? "Unknown Replicate error",
-        statusCode: finalResponse2.statusCode,
-        headers: flattenHeaders(finalResponse2)
+        message: parseReplicateErrorMessage(from: resolved.0) ?? "Unknown Replicate error",
+        statusCode: resolved.1.statusCode,
+        headers: flattenHeaders(resolved.1)
       )
     }
 
-    let responseJSON = try JSONDecoder().decode(JSONValue.self, from: finalData2)
+    let finalResponse = try await waitForTerminalPrediction(initial: resolved)
+    let responseJSON = try JSONDecoder().decode(JSONValue.self, from: finalResponse.data)
     let outputURLs = try extractOutputURLs(from: responseJSON)
 
     var images: [ImageResponse.ImageData] = []
@@ -253,9 +257,89 @@ struct ReplicateImageModel: ImageModel, Sendable {
       response: .init(
         timestamp: now,
         modelID: id,
-        headers: flattenHeaders(finalResponse2)
+        headers: flattenHeaders(finalResponse.response)
       )
     )
+  }
+
+  private func waitForTerminalPrediction(
+    initial: (data: Data, response: HTTPURLResponse)
+  ) async throws -> (data: Data, response: HTTPURLResponse) {
+    let snapshot = predictionSnapshot(from: initial.data, response: initial.response)
+
+    if snapshot.outputURLs.isEmpty == false || snapshot.status == .succeeded {
+      return initial
+    }
+
+    switch snapshot.status {
+    case .failed, .canceled:
+      throw ReplicateAPIError(
+        message: predictionFailureMessage(snapshot: snapshot, fallbackData: initial.data),
+        statusCode: initial.response.statusCode,
+        headers: flattenHeaders(initial.response)
+      )
+    case .starting, .processing, .none:
+      guard let getURL = snapshot.getURL else {
+        throw AIKitError.invalidConfiguration(
+          "Replicate prediction is still processing, but the API did not return a status URL."
+        )
+      }
+      return try await pollPrediction(getURL: getURL)
+    case .succeeded:
+      return initial
+    }
+  }
+
+  private func pollPrediction(getURL: URL) async throws -> (data: Data, response: HTTPURLResponse) {
+    let deadline = Date().addingTimeInterval(config.predictionPollTimeoutSeconds)
+
+    while true {
+      try Task.checkCancellation()
+      if Date() >= deadline {
+        throw AIKitError.invalidConfiguration("Replicate prediction timed out while processing.")
+      }
+
+      if config.predictionPollIntervalNanoseconds > 0 {
+        try await Task.sleep(nanoseconds: config.predictionPollIntervalNanoseconds)
+      }
+
+      let result = try await requestPrediction(getURL: getURL)
+      let snapshot = predictionSnapshot(from: result.data, response: result.response, fallbackGetURL: getURL)
+      if snapshot.outputURLs.isEmpty == false || snapshot.status == .succeeded {
+        return result
+      }
+
+      switch snapshot.status {
+      case .failed, .canceled:
+        throw ReplicateAPIError(
+          message: predictionFailureMessage(snapshot: snapshot, fallbackData: result.data),
+          statusCode: result.response.statusCode,
+          headers: flattenHeaders(result.response)
+        )
+      case .starting, .processing, .none:
+        continue
+      case .succeeded:
+        return result
+      }
+    }
+  }
+
+  private func requestPrediction(getURL: URL) async throws -> (data: Data, response: HTTPURLResponse) {
+    var request = URLRequest(url: getURL)
+    request.httpMethod = "GET"
+    for (key, value) in config.headers() {
+      request.setValue(value, forHTTPHeaderField: key)
+    }
+
+    let (data, response) = try await config.transport.data(for: request)
+    if (200..<300).contains(response.statusCode) == false {
+      throw ReplicateAPIError(
+        message: parseReplicateErrorMessage(from: data) ?? "Unknown Replicate error",
+        statusCode: response.statusCode,
+        headers: flattenHeaders(response)
+      )
+    }
+    return (data, response)
   }
 }
 
@@ -283,6 +367,90 @@ private func convertFileToDataURI(_ file: ImageRequest.File) throws -> String {
   }
 }
 
+private struct PredictionSnapshot: Equatable {
+  enum Status: String, Equatable {
+    case starting
+    case processing
+    case succeeded
+    case failed
+    case canceled
+  }
+
+  var id: String?
+  var status: Status?
+  var outputURLs: [String]
+  var getURL: URL?
+  var errorMessage: String?
+  var logs: String?
+}
+
+private func predictionSnapshot(
+  from data: Data,
+  response: HTTPURLResponse? = nil,
+  fallbackGetURL: URL? = nil
+) -> PredictionSnapshot {
+  let json = try? JSONDecoder().decode(JSONValue.self, from: data)
+  guard case .object(let object) = json else {
+    return .init(
+      id: nil,
+      status: nil,
+      outputURLs: [],
+      getURL: fallbackGetURL ?? predictionGetURL(from: response, predictionID: nil),
+      errorMessage: parseReplicateErrorMessage(from: data),
+      logs: nil
+    )
+  }
+
+  let id: String? = {
+    guard case .string(let value)? = object["id"], value.isEmpty == false else { return nil }
+    return value
+  }()
+  let status: PredictionSnapshot.Status? = {
+    guard case .string(let value)? = object["status"] else { return nil }
+    return .init(rawValue: value)
+  }()
+  let getURL: URL? = {
+    if case .object(let urls)? = object["urls"],
+       case .string(let value)? = urls["get"],
+       let url = URL(string: value) {
+      return url
+    }
+    if let fallbackGetURL {
+      return fallbackGetURL
+    }
+    return predictionGetURL(from: response, predictionID: id)
+  }()
+  let outputURLs = (try? extractOutputURLs(from: .object(object))) ?? []
+
+  let errorMessage: String? = {
+    if case .string(let value)? = object["error"], value.isEmpty == false {
+      return value
+    }
+    return parseReplicateErrorMessage(from: data)
+  }()
+  let logs: String? = {
+    guard case .string(let value)? = object["logs"], value.isEmpty == false else { return nil }
+    return value
+  }()
+
+  return .init(
+    id: id,
+    status: status,
+    outputURLs: outputURLs,
+    getURL: getURL,
+    errorMessage: errorMessage,
+    logs: logs
+  )
+}
+
+private func predictionGetURL(from response: HTTPURLResponse?, predictionID: String?) -> URL? {
+  if let location = response?.value(forHTTPHeaderField: "Location"), let url = URL(string: location) {
+    return url
+  }
+  guard let predictionID, let baseURL = response?.url else { return nil }
+  return URL(string: "\(baseURL.scheme ?? "https")://\(baseURL.host ?? "api.replicate.com")/v1/predictions/\(predictionID)")
+}
+
 private func extractOutputURLs(from json: JSONValue) throws -> [String] {
   guard case .object(let obj) = json else {
     throw AIKitError.invalidConfiguration("Invalid Replicate response.")
@@ -301,6 +469,14 @@ private func extractOutputURLs(from json: JSONValue) throws -> [String] {
   default:
     throw AIKitError.invalidConfiguration("Invalid Replicate response: invalid output type.")
   }
+}
+
+private func predictionFailureMessage(snapshot: PredictionSnapshot, fallbackData: Data) -> String {
+  let base = snapshot.errorMessage ?? parseReplicateErrorMessage(from: fallbackData) ?? "Replicate prediction failed."
+  guard let logs = snapshot.logs?.trimmingCharacters(in: .whitespacesAndNewlines), logs.isEmpty == false else {
+    return base
+  }
+  return "\(base)\n\nReplicate logs:\n\(logs)"
 }
 
 private func parseReplicateErrorMessage(from data: Data) -> String? {
