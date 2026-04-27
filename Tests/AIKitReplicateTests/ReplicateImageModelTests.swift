@@ -220,6 +220,50 @@ final class ReplicateImageModelTests: XCTestCase {
     XCTAssertEqual(server.calls[1].requestUrl, "https://replicate.delivery/xezq/abc/out-0.webp")
   }
 
+  func testGenerate_pollsProcessingPredictionWithoutCreatingAnotherPrediction() async throws {
+    let server = ReplicateTestServer()
+    server.responses["POST https://api.replicate.com/v1/models/openai/gpt-image-2/predictions"] = .json(
+      (try? JSONEncoder().encode(JSONValue.object([
+        "id": .string("pred_123"),
+        "status": .string("processing"),
+        "output": .null,
+        "urls": .object([
+          "get": .string("https://api.replicate.com/v1/predictions/pred_123"),
+        ]),
+      ]))) ?? Data()
+    )
+    server.responses["GET https://api.replicate.com/v1/predictions/pred_123"] = .json(
+      (try? JSONEncoder().encode(JSONValue.object([
+        "id": .string("pred_123"),
+        "status": .string("succeeded"),
+        "output": .array([.string("https://replicate.delivery/xezq/abc/out-0.png")]),
+      ]))) ?? Data()
+    )
+    server.responses["GET https://replicate.delivery/xezq/abc/out-0.png"] = .binary(Data("test-binary-content".utf8))
+
+    let model = ReplicateImageModel(
+      modelId: "openai/gpt-image-2",
+      config: .init(
+        baseURL: "https://api.replicate.com/v1",
+        headers: { ["authorization": "Bearer test-api-token", "user-agent": "ai-sdk/replicate/0.0.0-test"] },
+        transport: server.transport(),
+        predictionPollIntervalNanoseconds: 0
+      )
+    )
+
+    let result = try await model.generate(ImageRequest(prompt: prompt, n: 1))
+
+    XCTAssertEqual(result.images, [.data(Data("test-binary-content".utf8))])
+    XCTAssertEqual(
+      server.calls.map { "\($0.requestMethod) \($0.requestUrl)" },
+      [
+        "POST https://api.replicate.com/v1/models/openai/gpt-image-2/predictions",
+        "GET https://api.replicate.com/v1/predictions/pred_123",
+        "GET https://replicate.delivery/xezq/abc/out-0.png",
+      ]
+    )
+  }
+
   func testGenerate_returnsResponseMetadataWithTimestampAndHeaders() async throws {
     let server = ReplicateTestServer()
     server.responses["POST https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions"] = .json(
@@ -546,7 +590,7 @@ final class ReplicateImageModelTests: XCTestCase {
       result.warnings,
       [
         .init(
-          message: "openai/gpt-image-1.5 does not support mask input. The mask will be ignored.",
+          message: "openai/gpt-image models do not support mask input. The mask will be ignored.",
           code: "other"
         ),
       ]
@@ -648,6 +692,83 @@ final class ReplicateImageModelTests: XCTestCase {
   func testMaxImagesPerCall_gptImage15_returns10() async throws {
     let model = ReplicateImageModel(
       modelId: "openai/gpt-image-1.5",
+      config: .init(
+        baseURL: "https://api.replicate.com/v1",
+        headers: { [:] },
+        transport: ReplicateTestServer().transport()
+      )
+    )
+
+    let maxImagesPerCall = await model.maxImagesPerCall()
+    XCTAssertEqual(maxImagesPerCall, 10)
+  }
+
+  func testGenerate_gptImage2_usesExpectedInputKeysAndIgnoresMaskSizeAndSeed() async throws {
+    let server = ReplicateTestServer()
+    server.responses["POST https://api.replicate.com/v1/models/openai/gpt-image-2/predictions"] = .json(
+      preparePredictionResponse(output: .array([.string("https://replicate.delivery/xezq/abc/out-0.webp")])),
+      headers: ["content-type": "application/json", "content-length": "646"]
+    )
+    server.responses["GET https://replicate.delivery/xezq/abc/out-0.webp"] = .binary(Data("test-binary-content".utf8))
+
+    let provider = createReplicate(.init(apiToken: "test-api-token", transport: server.transport()))
+    let model = provider.image("openai/gpt-image-2")
+
+    let result = try await model.generate(
+      ImageRequest(
+        prompt: prompt,
+        files: [
+          .url(URL(string: "https://example.com/input1.jpg")!),
+          .url(URL(string: "https://example.com/input2.jpg")!),
+        ],
+        mask: .url(URL(string: "https://example.com/mask.png")!),
+        n: 2,
+        size: "1024x1024",
+        aspectRatio: "3:2",
+        seed: 123,
+        providerOptions: [
+          "replicate": [
+            "moderation": .string("low"),
+            "user_id": .string("geppetto-ios-app"),
+          ],
+        ]
+      )
+    )
+
+    XCTAssertEqual(
+      result.warnings,
+      [
+        .init(
+          message: "openai/gpt-image models do not support mask input. The mask will be ignored.",
+          code: "other"
+        ),
+      ]
+    )
+
+    guard case .object(let root)? = server.calls[0].requestBodyJSON,
+          case .object(let input)? = root["input"] else {
+      return XCTFail("Unexpected request body")
+    }
+
+    XCTAssertEqual(input["prompt"], .string(prompt))
+    XCTAssertEqual(input["number_of_images"], .number(2))
+    XCTAssertEqual(input["aspect_ratio"], .string("3:2"))
+    XCTAssertEqual(input["moderation"], .string("low"))
+    XCTAssertEqual(input["user_id"], .string("geppetto-ios-app"))
+    XCTAssertEqual(
+      input["input_images"],
+      .array([.string("https://example.com/input1.jpg"), .string("https://example.com/input2.jpg")])
+    )
+
+    XCTAssertNil(input["num_outputs"])
+    XCTAssertNil(input["mask"])
+    XCTAssertNil(input["size"])
+    XCTAssertNil(input["seed"])
+  }
+
+  func testMaxImagesPerCall_gptImage2_returns10() async throws {
+    let model = ReplicateImageModel(
+      modelId: "openai/gpt-image-2",
       config: .init(
         baseURL: "https://api.replicate.com/v1",
         headers: { [:] },
