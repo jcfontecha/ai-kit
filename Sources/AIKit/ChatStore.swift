@@ -22,6 +22,7 @@ public final class ChatStore: ObservableObject {
 
     /// Receives non-transient `data-*` parts emitted by the server.
     public var onData: (@Sendable (_ dataPart: AIUIMessageStreamDataPart) async -> Void)?
+    public var onError: (@Sendable (_ error: Error) async -> Void)?
 
     public var validateMessageMetadata: ValidateJSONValue?
     public var validateDataParts: [String: ValidateJSONValue]?
@@ -33,6 +34,7 @@ public final class ChatStore: ObservableObject {
       body: (@Sendable () async throws -> JSONValue?)? = nil,
       onToolCall: (@Sendable (_ toolCall: ChatToolPart) async -> Void)? = nil,
       onData: (@Sendable (_ dataPart: AIUIMessageStreamDataPart) async -> Void)? = nil,
+      onError: (@Sendable (_ error: Error) async -> Void)? = nil,
       validateMessageMetadata: ValidateJSONValue? = nil,
       validateDataParts: [String: ValidateJSONValue]? = nil
     ) {
@@ -42,6 +44,7 @@ public final class ChatStore: ObservableObject {
       self.body = body
       self.onToolCall = onToolCall
       self.onData = onData
+      self.onError = onError
       self.validateMessageMetadata = validateMessageMetadata
       self.validateDataParts = validateDataParts
     }
@@ -89,6 +92,7 @@ public final class ChatStore: ObservableObject {
       sendAutomaticallyWhen: sendAutomaticallyWhen,
       validateMessageMetadata: configuration.validateMessageMetadata,
       validateDataParts: configuration.validateDataParts,
+      onError: configuration.onError,
       messages: configuration.initialMessages
     ))
 
