@@ -37,6 +37,7 @@ Then depend on one or more products:
 - `AIKitOpenAI`
 - `AIKitReplicate`
 - `AIKitFal`
+- `AIKitApple`
 - `AIKitMacro`
 
 ## Quickstart
