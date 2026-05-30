@@ -47,4 +47,76 @@ final class OpenAISpeechModelTests: XCTestCase {
     }
     XCTAssertEqual(body["voice"], .string("alloy"))
   }
+
+  func testSpeakPassesInstructionsOption() async throws {
+    let server = OpenAITestServer(config: [
+      OpenAITestServer.audioSpeechURL: .init(type: .rawData(Data([0x00])))
+    ])
+
+    let model = server.speechModel("gpt-4o-mini-tts")
+    _ = try await model.speak(
+      .init(
+        text: "hi",
+        providerOptions: ["openai": [
+          "instructions": .string("speak cheerfully"),
+        ]]
+      )
+    )
+
+    guard case let .object(body)? = server.calls.first?.requestBodyJSON else {
+      return XCTFail("Expected JSON body")
+    }
+    XCTAssertEqual(body["instructions"], .string("speak cheerfully"))
+  }
+
+  func testSpeakOmitsUnsetOptions() async throws {
+    let server = OpenAITestServer(config: [
+      OpenAITestServer.audioSpeechURL: .init(type: .rawData(Data([0x00])))
+    ])
+
+    let model = server.speechModel("tts-1")
+    _ = try await model.speak(.init(text: "hi"))
+
+    guard case let .object(body)? = server.calls.first?.requestBodyJSON else {
+      return XCTFail("Expected JSON body")
+    }
+    XCTAssertNil(body["response_format"])
+    XCTAssertNil(body["speed"])
+    XCTAssertNil(body["instructions"])
+  }
+
+  func testSpeakReturnsRawAudioForDifferentFormats() async throws {
+    // The audio bytes are returned verbatim regardless of the requested format.
+    let wavBytes = Data([0x52, 0x49, 0x46, 0x46])
+    let server = OpenAITestServer(config: [
+      OpenAITestServer.audioSpeechURL: .init(type: .rawData(wavBytes))
+    ])
+
+    let model = server.speechModel("tts-1")
+    let result = try await model.speak(
+      .init(
+        text: "hi",
+        providerOptions: ["openai": ["response_format": .string("wav")]]
+      )
+    )
+
+    guard case let .object(body)? = server.calls.first?.requestBodyJSON else {
+      return XCTFail("Expected JSON body")
+    }
+    XCTAssertEqual(body["response_format"], .string("wav"))
+    XCTAssertEqual(result.audio, wavBytes)
+  }
+
+  func testSpeakPassesConfigHeaders() async throws {
+    let server = OpenAITestServer(config: [
+      OpenAITestServer.audioSpeechURL: .init(type: .rawData(Data([0x00])))
+    ])
+
+    let model = server.speechModel("tts-1")
+    _ = try await model.speak(.init(text: "hi"))
+
+    let headers = server.calls.first?.requestHeaders ?? [:]
+    XCTAssertEqual(headers["authorization"], "Bearer test-api-key")
+    XCTAssertEqual(headers["content-type"], "application/json")
+  }
 }
