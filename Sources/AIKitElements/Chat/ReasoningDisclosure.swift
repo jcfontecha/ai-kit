@@ -1,5 +1,4 @@
 import SwiftUI
-import Shimmer
 
 public struct ReasoningDisclosure<Content: View>: View {
   public typealias ThinkingMessageProvider = (_ isStreaming: Bool, _ durationSeconds: Int?) -> AnyView
@@ -12,8 +11,6 @@ public struct ReasoningDisclosure<Content: View>: View {
   public var getThinkingMessage: ThinkingMessageProvider?
 
   @ViewBuilder public var content: () -> Content
-
-  @Environment(\.colorScheme) private var colorScheme
 
   @State private var isOpenState: Bool
   @State private var durationState: Int?
@@ -133,32 +130,11 @@ public struct ReasoningDisclosure<Content: View>: View {
 
   private func defaultThinkingMessage(isStreaming: Bool, duration: Int?) -> AnyView {
     if isStreaming || duration == 0 {
-      return AnyView(
-        ZStack(alignment: .leading) {
-          Text("Thinking...")
-            .foregroundStyle(.secondary)
-
-          Text("Thinking...")
-            .foregroundStyle(thinkingShimmerHighlightColor)
-            .shimmering()
-            .accessibilityHidden(true)
-        }
-      )
+      return AnyView(ShimmerText("Thinking..."))
     }
     if duration == nil {
       return AnyView(Text("Thought for a few seconds").foregroundStyle(.secondary))
     }
     return AnyView(Text("Thought for \(duration ?? 0) seconds").foregroundStyle(.secondary))
-  }
-
-  private var thinkingShimmerHighlightColor: Color {
-    switch colorScheme {
-    case .dark:
-      return Color.white.opacity(1.0)
-    case .light:
-      return Color.black.opacity(0.30)
-    @unknown default:
-      return Color.white.opacity(0.95)
-    }
   }
 }
