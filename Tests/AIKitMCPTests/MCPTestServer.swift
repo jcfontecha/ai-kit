@@ -12,12 +12,18 @@ final class MCPTestServer: @unchecked Sendable {
     var method: String
     var params: JSONValue?
     var headers: [String: String]
+    /// The HTTP method of the request (POST for RPC/notifications, DELETE for close()).
+    var httpMethod: String
   }
 
   /// method -> result JSONValue
   var results: [String: JSONValue]
   /// method -> (code, message) to return a JSON-RPC error instead of a result
   var errors: [String: (Int, String)]
+  /// method -> non-2xx HTTP status (with the body taken from `bodies`, defaulting to a plain string).
+  var statuses: [String: Int]
+  /// method -> raw response body, bypassing JSON-RPC framing (used to exercise invalid/garbage bodies).
+  var bodies: [String: Data]
   var useSSE: Bool
   var sessionID: String?
 
@@ -26,11 +32,15 @@ final class MCPTestServer: @unchecked Sendable {
   init(
     results: [String: JSONValue] = [:],
     errors: [String: (Int, String)] = [:],
+    statuses: [String: Int] = [:],
+    bodies: [String: Data] = [:],
     useSSE: Bool = false,
     sessionID: String? = nil
   ) {
     self.results = results
     self.errors = errors
+    self.statuses = statuses
+    self.bodies = bodies
     self.useSSE = useSSE
     self.sessionID = sessionID
   }
@@ -45,6 +55,18 @@ final class MCPTestServer: @unchecked Sendable {
   func call(forMethod method: String) -> CallRecord? {
     lock.lock(); defer { lock.unlock() }
     return calls.last { $0.method == method }
+  }
+
+  /// All recorded calls, in order.
+  func allCalls() -> [CallRecord] {
+    lock.lock(); defer { lock.unlock() }
+    return calls
+  }
+
+  /// The most recent call made with the given HTTP method (e.g. "DELETE" for close()).
+  func call(forHTTPMethod httpMethod: String) -> CallRecord? {
+    lock.lock(); defer { lock.unlock() }
+    return calls.last { $0.httpMethod == httpMethod }
   }
 
   private func record(_ record: CallRecord) {
@@ -83,11 +105,26 @@ final class MCPTestServer: @unchecked Sendable {
 
       var headers: [String: String] = [:]
       for (key, value) in request.allHTTPHeaderFields ?? [:] { headers[key.lowercased()] = value }
-      server.record(CallRecord(method: method, params: params, headers: headers))
+      let httpMethod = request.httpMethod ?? "POST"
+      server.record(CallRecord(method: method, params: params, headers: headers, httpMethod: httpMethod))
 
       var responseHeaders: [String: String] = [:]
       if method == "initialize", let sessionID = server.sessionID {
         responseHeaders["Mcp-Session-Id"] = sessionID
+      }
+
+      // Configurable non-2xx HTTP status for a method, surfacing a body for the transport error.
+      if let status = server.statuses[method] {
+        let body = server.bodies[method] ?? Data("error: \(status)".utf8)
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: responseHeaders)!
+        return (body, response)
+      }
+
+      // Raw body override (e.g. garbage / non-JSON-RPC) bypasses framing but stays 200.
+      if let body = server.bodies[method] {
+        responseHeaders["Content-Type"] = server.useSSE ? "text/event-stream" : "application/json"
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: responseHeaders)!
+        return (body, response)
       }
 
       // Notifications (no id) get a 202 with no body.

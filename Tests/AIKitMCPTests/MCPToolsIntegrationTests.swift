@@ -72,4 +72,51 @@ final class MCPToolsIntegrationTests: XCTestCase {
     guard case let .object(params)? = call?.params else { return XCTFail("missing params") }
     XCTAssertEqual(params["arguments"], .object(["city": .string("Madrid")]))
   }
+
+  func testToolsBridgeProducesOneSpecPerServerTool() async throws {
+    let weatherSchema: JSONValue = .object([
+      "type": .string("object"),
+      "properties": .object(["city": .object(["type": .string("string")])]),
+      "required": .array([.string("city")]),
+    ])
+    let server = MCPTestServer(results: [
+      "initialize": .object([:]),
+      "tools/list": .object(["tools": .array([
+        .object([
+          "name": .string("get_weather"),
+          "description": .string("Get weather"),
+          "inputSchema": weatherSchema,
+        ]),
+        .object([
+          "name": .string("get_time"),
+          "inputSchema": .object(["type": .string("object")]),
+        ]),
+      ])]),
+      "tools/call": .object(["content": .array([.object(["type": .string("text"), "text": .string("Sunny")])])]),
+    ])
+    let client = MCPClient(url: mcpTestURL, transport: server.transport())
+    try await client.connect()
+    let tools = try await client.tools()
+
+    XCTAssertEqual(Set(tools.keys), ["get_weather", "get_time"])
+
+    let weather = try XCTUnwrap(tools["get_weather"])
+    XCTAssertEqual(weather.description, "Get weather")
+    XCTAssertEqual(JSONValue.object(weather.inputSchema.value), weatherSchema)
+    XCTAssertNotNil(weather.execute)
+
+    let time = try XCTUnwrap(tools["get_time"])
+    XCTAssertNil(time.description)
+    XCTAssertEqual(time.inputSchema.value, ["type": .string("object")])
+
+    // Executing a bridged spec calls back into the MCP server.
+    let context = ToolContext(toolCallID: "call-x", messages: [])
+    let execution = try await XCTUnwrap(weather.execute)(.object(["city": .string("Oslo")]), context)
+    guard case let .final(output) = execution else { return XCTFail("expected final output") }
+    XCTAssertEqual(output, .object(["content": .array([.object(["type": .string("text"), "text": .string("Sunny")])])]))
+    let call = server.call(forMethod: "tools/call")
+    guard case let .object(params)? = call?.params else { return XCTFail("missing params") }
+    XCTAssertEqual(params["name"], .string("get_weather"))
+    XCTAssertEqual(params["arguments"], .object(["city": .string("Oslo")]))
+  }
 }

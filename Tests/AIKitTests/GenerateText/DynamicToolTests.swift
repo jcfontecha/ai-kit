@@ -113,6 +113,132 @@ final class DynamicToolTests: XCTestCase {
     )
   }
 
+  func testDynamicTool_executeErrorTagsToolErrorDynamic() async throws {
+    struct Boom: Error {}
+    let model = MockLanguageModel(responses: [
+      Self.response(finishReason: .toolCalls, content: [
+        .toolCall(.init(toolCallID: "call-1", toolName: "weather", inputJSON: "{ \"city\": \"Madrid\" }")),
+      ]),
+      Self.response(finishReason: .stop, content: [.text("Done.", metadata: nil)]),
+    ])
+
+    let tools = dynamicRegistry(execute: { _, _ in throw Boom() })
+
+    let result = try await generateText(
+      model: model,
+      prompt: "Weather?",
+      tools: tools,
+      stopWhen: [Stop.stepCountIs(2)],
+      output: Output.text()
+    )
+
+    let content = try XCTUnwrap(result.steps.first?.content)
+    let toolError = content.compactMap { part -> ToolError? in
+      if case let .toolError(error) = part { return error }
+      return nil
+    }.first
+    let error = try XCTUnwrap(toolError)
+    XCTAssertEqual(error.toolName, "weather")
+    XCTAssertEqual(error.dynamic, true)
+  }
+
+  func testDynamicTool_titlePropagatesToResult() async throws {
+    let model = MockLanguageModel(responses: [
+      Self.response(finishReason: .toolCalls, content: [
+        .toolCall(.init(toolCallID: "call-1", toolName: "weather", inputJSON: "{ \"city\": \"Madrid\" }")),
+      ]),
+      Self.response(finishReason: .stop, content: [.text("Done.", metadata: nil)]),
+    ])
+
+    var registry = ToolRegistry()
+    registry.register(
+      "weather",
+      dynamicTool(
+        title: "Weather Lookup",
+        description: "Look up weather",
+        inputSchema: .object(properties: ["city": .string()], required: ["city"], additionalProperties: false),
+        execute: { _, _ in .final(.object(["ok": .bool(true)])) }
+      )
+    )
+
+    let result = try await generateText(
+      model: model,
+      prompt: "Weather?",
+      tools: registry,
+      stopWhen: [Stop.stepCountIs(2)],
+      output: Output.text()
+    )
+
+    let toolResult = try XCTUnwrap(result.steps.first?.toolResults.first)
+    XCTAssertEqual(toolResult.dynamic, true)
+    XCTAssertEqual(toolResult.title, "Weather Lookup")
+  }
+
+  func testDynamicTool_needsApprovalSurfacesApprovalRequest() async throws {
+    let model = MockLanguageModel(responses: [
+      Self.response(finishReason: .toolCalls, content: [
+        .toolCall(.init(toolCallID: "call-1", toolName: "weather", inputJSON: "{ \"city\": \"Madrid\" }")),
+      ]),
+    ])
+
+    var registry = ToolRegistry()
+    registry.register(
+      "weather",
+      dynamicTool(
+        description: "Look up weather",
+        inputSchema: .object(properties: ["city": .string()], required: ["city"], additionalProperties: false),
+        needsApproval: { _, _ in true },
+        execute: { _, _ in .final(.object(["ok": .bool(true)])) }
+      )
+    )
+
+    let result = try await generateText(
+      model: model,
+      prompt: "Weather?",
+      tools: registry,
+      stopWhen: [Stop.stepCountIs(2)],
+      output: Output.text()
+    )
+
+    let approval = result.steps.first?.content.compactMap { part -> ToolApprovalRequest? in
+      if case let .toolApprovalRequest(request) = part { return request }
+      return nil
+    }.first
+    let request = try XCTUnwrap(approval)
+    XCTAssertEqual(request.toolCallID, "call-1")
+    // No tool result emitted because execution is gated on approval.
+    XCTAssertEqual(result.steps.first?.toolResults.count, 0)
+  }
+
+  func testDynamicTool_streamingPreliminaryThenFinal() async throws {
+    let model = MockLanguageModel(responses: [
+      Self.response(finishReason: .toolCalls, content: [
+        .toolCall(.init(toolCallID: "call-1", toolName: "weather", inputJSON: "{ \"city\": \"Madrid\" }")),
+      ]),
+      Self.response(finishReason: .stop, content: [.text("Done.", metadata: nil)]),
+    ])
+
+    let tools = dynamicRegistry(execute: { _, _ in
+      .streaming(AsyncThrowingStream { continuation in
+        continuation.yield(.preliminary(.object(["status": .string("loading")])))
+        continuation.yield(.final(.object(["status": .string("done")])))
+        continuation.finish()
+      })
+    })
+
+    let result = try await generateText(
+      model: model,
+      prompt: "Weather?",
+      tools: tools,
+      stopWhen: [Stop.stepCountIs(2)],
+      output: Output.text()
+    )
+
+    let toolResult = try XCTUnwrap(result.steps.first?.toolResults.last)
+    XCTAssertEqual(toolResult.dynamic, true)
+    XCTAssertEqual(toolResult.output, .object(["status": .string("done")]))
+  }
+
   private final class SendableBox<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var value: Value
