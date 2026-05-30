@@ -100,6 +100,10 @@ let package = Package(
       dependencies: ["AIKitProviders", "AIKitTestKit"]
     ),
     .testTarget(
+      name: "AIKitOpenAITests",
+      dependencies: ["AIKitOpenAI", "AIKitProviders", "AIKitTestKit"]
+    ),
+    .testTarget(
       name: "AIKitOpenRouterTests",
       dependencies: ["AIKitOpenRouter", "AIKitProviders", "AIKitTestKit"]
     ),
