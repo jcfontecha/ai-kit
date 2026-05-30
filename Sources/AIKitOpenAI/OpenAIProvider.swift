@@ -70,15 +70,23 @@ public struct OpenAIProviderClient: OpenAIProvider, Sendable {
   }
 
   public func languageModel(_ modelId: OpenAIResponsesModelID) -> any LanguageModel {
-    UnimplementedLanguageModel(modelID: modelId.rawValue)
+    responses(modelId)
   }
 
   public func chat(_ modelId: OpenAIChatModelID) -> any LanguageModel {
-    UnimplementedLanguageModel(modelID: modelId.rawValue)
+    OpenAIChatLanguageModel(
+      modelId: modelId,
+      options: .init(),
+      config: makeChatConfig()
+    )
   }
 
   public func responses(_ modelId: OpenAIResponsesModelID) -> any LanguageModel {
-    UnimplementedLanguageModel(modelID: modelId.rawValue)
+    OpenAIResponsesLanguageModel(
+      modelId: modelId,
+      options: .init(),
+      config: makeResponsesConfig()
+    )
   }
 
   public func completion(_ modelId: OpenAICompletionModelID) -> any LanguageModel {
@@ -86,7 +94,11 @@ public struct OpenAIProviderClient: OpenAIProvider, Sendable {
   }
 
   public func embedding(_ modelId: OpenAIEmbeddingModelID) -> any EmbeddingModel {
-    UnimplementedEmbeddingModel(modelID: modelId.rawValue)
+    OpenAIEmbeddingModel(
+      modelId: modelId,
+      settings: .init(),
+      config: makeEmbeddingConfig()
+    )
   }
 
   public func embeddingModel(_ modelId: OpenAIEmbeddingModelID) -> any EmbeddingModel {
@@ -102,7 +114,10 @@ public struct OpenAIProviderClient: OpenAIProvider, Sendable {
   }
 
   public func image(_ modelId: OpenAIImageModelID) -> any ImageModel {
-    UnimplementedImageModel(modelID: modelId.rawValue)
+    OpenAIImageModel(
+      modelId: modelId,
+      config: makeImageConfig()
+    )
   }
 
   public func imageModel(_ modelId: OpenAIImageModelID) -> any ImageModel {
@@ -110,11 +125,124 @@ public struct OpenAIProviderClient: OpenAIProvider, Sendable {
   }
 
   public func transcription(_ modelId: OpenAITranscriptionModelID) -> any TranscriptionModel {
-    UnimplementedTranscriptionModel(modelID: modelId.rawValue)
+    OpenAITranscriptionModel(
+      modelId: modelId,
+      config: makeTranscriptionConfig()
+    )
   }
 
   public func speech(_ modelId: OpenAISpeechModelID) -> any SpeechModel {
-    UnimplementedSpeechModel(modelID: modelId.rawValue)
+    OpenAISpeechModel(
+      modelId: modelId,
+      config: makeSpeechConfig()
+    )
+  }
+
+  func makeChatConfig() -> OpenAIChatConfig {
+    OpenAIChatConfig(
+      provider: "openai.chat",
+      headers: headersProvider(),
+      url: urlProvider(),
+      transport: transportProvider()
+    )
+  }
+
+  func makeResponsesConfig() -> OpenAIResponsesConfig {
+    OpenAIResponsesConfig(
+      provider: "openai.responses",
+      headers: headersProvider(),
+      url: urlProvider(),
+      transport: transportProvider()
+    )
+  }
+
+  func makeEmbeddingConfig() -> OpenAIEmbeddingConfig {
+    OpenAIEmbeddingConfig(
+      provider: "openai.embedding",
+      headers: headersProvider(),
+      url: urlProvider(),
+      transport: transportProvider()
+    )
+  }
+
+  func makeImageConfig() -> OpenAIImageConfig {
+    OpenAIImageConfig(
+      provider: "openai.image",
+      headers: headersProvider(),
+      url: urlProvider(),
+      transport: transportProvider()
+    )
+  }
+
+  func makeTranscriptionConfig() -> OpenAITranscriptionConfig {
+    OpenAITranscriptionConfig(
+      provider: "openai.transcription",
+      headers: headersProvider(),
+      url: urlProvider(),
+      transport: transportProvider()
+    )
+  }
+
+  func makeSpeechConfig() -> OpenAISpeechConfig {
+    OpenAISpeechConfig(
+      provider: "openai.speech",
+      headers: headersProvider(),
+      url: urlProvider(),
+      transport: transportProvider()
+    )
+  }
+
+  func headersProvider() -> @Sendable () -> [String: String] {
+    let settings = settings
+    return {
+      let apiKey = try? loadOpenAIAPIKey(apiKey: settings.apiKey)
+      var headers: [String: String] = [:]
+      if let apiKey {
+        headers["Authorization"] = "Bearer \(apiKey)"
+      }
+      if let organization = settings.organization {
+        headers["OpenAI-Organization"] = organization
+      }
+      if let project = settings.project {
+        headers["OpenAI-Project"] = project
+      }
+      if let custom = settings.headers {
+        for (key, value) in custom { headers[key] = value }
+      }
+      headers = withUserAgentSuffix(headers, suffixParts: ["ai-sdk/openai/\(OpenAIVersion.current)"])
+      return headers
+    }
+  }
+
+  func urlProvider() -> @Sendable (String) -> String {
+    let base = withoutTrailingSlash(settings.baseURL?.absoluteString ?? "https://api.openai.com/v1")
+    return { path in
+      "\(base)\(path)"
+    }
+  }
+
+  private func transportProvider() -> HTTPTransport {
+    if let transport = settings.transport {
+      return ClosureTransport(transport: transport)
+    }
+    return OpenAIURLSessionTransport()
+  }
+}
+
+private struct ClosureTransport: HTTPTransport, Sendable {
+  let transport: OpenAITransport
+
+  func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    try await transport(request)
+  }
+
+  func bytes(for request: URLRequest) async throws -> (AsyncThrowingStream<UInt8, Error>, HTTPURLResponse) {
+    let (data, response) = try await transport(request)
+    let stream = AsyncThrowingStream<UInt8, Error> { continuation in
+      for byte in data { continuation.yield(byte) }
+      continuation.finish()
+    }
+    return (stream, response)
   }
 }
 
@@ -142,50 +270,3 @@ private struct UnimplementedLanguageModel: LanguageModel, Sendable {
   }
 }
 
-private struct UnimplementedEmbeddingModel: EmbeddingModel, Sendable {
-  let id: String
-
-  init(modelID: String) {
-    self.id = modelID
-  }
-
-  func embed(_ request: EmbeddingRequest) async throws -> EmbeddingResponse {
-    throw AIKitError.notImplemented("OpenAI embedding model implementation is not available yet.")
-  }
-}
-
-private struct UnimplementedImageModel: ImageModel, Sendable {
-  let id: String
-
-  init(modelID: String) {
-    self.id = modelID
-  }
-
-  func generate(_ request: ImageRequest) async throws -> ImageResponse {
-    throw AIKitError.notImplemented("OpenAI image model implementation is not available yet.")
-  }
-}
-
-private struct UnimplementedSpeechModel: SpeechModel, Sendable {
-  let id: String
-
-  init(modelID: String) {
-    self.id = modelID
-  }
-
-  func speak(_ request: SpeechRequest) async throws -> SpeechResponse {
-    throw AIKitError.notImplemented("OpenAI speech model implementation is not available yet.")
-  }
-}
-
-private struct UnimplementedTranscriptionModel: TranscriptionModel, Sendable {
-  let id: String
-
-  init(modelID: String) {
-    self.id = modelID
-  }
-
-  func transcribe(_ request: TranscriptionRequest) async throws -> TranscriptionResponse {
-    throw AIKitError.notImplemented("OpenAI transcription model implementation is not available yet.")
-  }
-}

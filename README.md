@@ -97,12 +97,12 @@ AIKit does not provide strict parity guarantees with any JavaScript SDK.
 
 ### What's not implemented yet
 
-- `AIKitOpenAI` currently exposes provider/model entry points, but concrete language/embedding/image/speech/transcription model implementations still throw `AIKitError.notImplemented(...)`.
+- `AIKitOpenAI`: the legacy `/completions` endpoint and provider-executed built-in tools (web search, file search, code interpreter) on the Responses model.
 
 ## Roadmap (Short-Term)
 
 - Expand server compatibility coverage for remote chat endpoints
-- Complete OpenAI provider implementations
+- Surface provider-executed built-in tools from the OpenAI Responses model
 - Expand docs and migration guides
 - Stabilize `AIKitElements` surface after early adopter feedback
 

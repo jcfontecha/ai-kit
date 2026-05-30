@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once stable.
 
+## [Unreleased]
+
+### Added
+
+- `AIKitOpenAI` model implementations: Responses API and Chat Completions language
+  models, embeddings, image generation (incl. multipart edits), transcription, and speech.
+- `dynamicTool(...)`: runtime-schema tools registered alongside statically-typed `ToolSpec`.
+- `AIKitMCP`: Model Context Protocol client (Streamable HTTP, JSON-RPC) exposing MCP
+  server tools as dynamic tools.
+
+### Changed
+
+- `TranscriptionRequest` gains `mediaType` and `providerOptions`; `SpeechRequest` gains
+  `providerOptions` (additive).
+
 ## [0.1.0] - 2026-02-24
 
 ### Added
@@ -14,13 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `AIKitProviders`
   - `AIKitElements`
   - `AIKitOpenRouter`
-  - `AIKitOpenClaw`
   - `AIKitOpenAI`
   - `AIKitReplicate`
   - `AIKitFal`
+  - `AIKitApple`
   - `AIKitMacro`
 - Core APIs including `generateText`, `streamText`, tool loop support, approvals, and chat/session surfaces.
-- Provider implementations for OpenRouter, OpenClaw, Replicate, and Fal.
+- Provider implementations for OpenRouter, Replicate, and Fal.
 - Parity-oriented tests across core and provider modules.
 - Public documentation and contribution/security/community policy docs.
 

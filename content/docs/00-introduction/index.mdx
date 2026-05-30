@@ -19,7 +19,8 @@ AIKit is **client-only** (iOS/macOS). It intentionally avoids server framework h
 - `AIKit`: app-facing APIs, including orchestration (`generateText`, `streamText`, tool loop), messages, tools, outputs, stop conditions.
 - `AIKitProviders`: provider protocols + shared wire/streaming types.
 - `AIKitOpenRouter`: OpenRouter provider (HTTP client).
-- `AIKitOpenAI`: OpenAI provider surface (currently a stub; see Providers).
+- `AIKitOpenAI`: OpenAI provider (responses, chat, embeddings, image, transcription, speech).
+- `AIKitMCP`: Model Context Protocol client (Streamable HTTP) exposing MCP tools as dynamic tools.
 
 ## Start here
 
