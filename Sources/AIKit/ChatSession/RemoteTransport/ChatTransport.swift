@@ -5,7 +5,7 @@ import AIKitProviders
 ///
 /// This protocol is intentionally narrow: it represents a client that can
 /// talk to a server that runs inference and streams the **UI message stream protocol** (SSE v1).
-protocol ChatTransport: Sendable {
+public protocol ChatTransport: Sendable {
   func sendMessages(
     _ options: ChatTransportSendMessagesOptions
   ) async throws -> AsyncThrowingStream<AIUIMessageStreamPart, Error>
@@ -15,7 +15,7 @@ protocol ChatTransport: Sendable {
   ) async throws -> AsyncThrowingStream<AIUIMessageStreamPart, Error>?
 }
 
-struct ChatTransportSendMessagesOptions: Sendable {
+public struct ChatTransportSendMessagesOptions: Sendable {
   /// `chatId`.
   public var chatID: String
 
@@ -51,7 +51,7 @@ struct ChatTransportSendMessagesOptions: Sendable {
   }
 }
 
-struct ChatTransportReconnectToStreamOptions: Sendable {
+public struct ChatTransportReconnectToStreamOptions: Sendable {
   public var chatID: String
   public var options: ChatRequestOptions?
 

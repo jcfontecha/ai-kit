@@ -191,7 +191,9 @@ final class ChatSessionTests: XCTestCase {
           }
         }
       },
-      generateID: { ids.nextID() }
+      // Assert the raw transport→reducer cadence; the smoothing funnel is covered by StreamSmoothingTests.
+      generateID: { ids.nextID() },
+      smoothing: .disabled
     ))
 
     let updates = await session.updates(bufferingPolicy: .unbounded)
@@ -1983,7 +1985,9 @@ final class ChatSessionTests: XCTestCase {
         }
       },
       onFinish: { event in await finishCapture.set(event) },
-      generateID: { ids.nextID() }
+      // Asserts mid-stream partial-word visibility, which the funnel intentionally defers.
+      generateID: { ids.nextID() },
+      smoothing: .disabled
     ))
 
     let updates = await session.updates(bufferingPolicy: .unbounded)

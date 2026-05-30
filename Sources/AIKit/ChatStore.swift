@@ -63,6 +63,7 @@ public final class ChatStore: ObservableObject {
     remote url: URL,
     configuration: RemoteConfiguration = .init(),
     requestOptions: ChatRequestOptions = .init(),
+    smoothing: StreamSmoothing = .default,
     sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
       ChatAutoSubmitPredicates
         .lastAssistantMessageIsCompleteWithToolCallsOrApprovalResponses(messages: messages)
@@ -89,6 +90,41 @@ public final class ChatStore: ObservableObject {
       sendAutomaticallyWhen: sendAutomaticallyWhen,
       validateMessageMetadata: configuration.validateMessageMetadata,
       validateDataParts: configuration.validateDataParts,
+      smoothing: smoothing,
+      messages: configuration.initialMessages
+    ))
+
+    startUpdatesTask()
+  }
+
+  /// Custom-transport remote chat. Use when the server speaks a wire format
+  /// other than the AI SDK UI Message Stream protocol — implement `ChatTransport`
+  /// and translate the server's events into `AIUIMessageStreamPart` parts.
+  public init(
+    transport: any ChatTransport,
+    configuration: RemoteConfiguration = .init(),
+    requestOptions: ChatRequestOptions = .init(),
+    smoothing: StreamSmoothing = .default,
+    sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
+      ChatAutoSubmitPredicates
+        .lastAssistantMessageIsCompleteWithToolCallsOrApprovalResponses(messages: messages)
+    }
+  ) {
+    self.defaultRequestOptions = requestOptions
+    self.messages = configuration.initialMessages
+    self.input = ""
+    self.status = .ready
+    self.errorDescription = nil
+
+    self.session = ChatSession(.init(
+      id: configuration.id,
+      transport: transport,
+      onToolCall: configuration.onToolCall,
+      onData: configuration.onData,
+      sendAutomaticallyWhen: sendAutomaticallyWhen,
+      validateMessageMetadata: configuration.validateMessageMetadata,
+      validateDataParts: configuration.validateDataParts,
+      smoothing: smoothing,
       messages: configuration.initialMessages
     ))
 
@@ -107,6 +143,7 @@ public final class ChatStore: ObservableObject {
     providerOptions: ProviderOptions? = nil,
     convertDataPart: ChatDataPartConverter? = nil,
     initialMessages: [ChatMessage] = [],
+    smoothing: StreamSmoothing = .default,
     sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
       ChatAutoSubmitPredicates
         .lastAssistantMessageIsCompleteWithToolCallsOrApprovalResponses(messages: messages)
@@ -129,6 +166,7 @@ public final class ChatStore: ObservableObject {
       providerOptions: providerOptions,
       sendAutomaticallyWhen: sendAutomaticallyWhen,
       convertDataPart: convertDataPart,
+      smoothing: smoothing,
       messages: initialMessages
     ))
 
@@ -140,6 +178,7 @@ public final class ChatStore: ObservableObject {
   public init<CALL_OPTIONS: Sendable>(
     agent: Agent<CALL_OPTIONS, Output.Text>,
     convertDataPart: ChatDataPartConverter? = nil,
+    smoothing: StreamSmoothing = .default,
     sendAutomaticallyWhen: (@Sendable ([ChatMessage]) async -> Bool)? = { messages in
       ChatAutoSubmitPredicates
         .lastAssistantMessageIsCompleteWithToolCallsOrApprovalResponses(messages: messages)
@@ -151,7 +190,7 @@ public final class ChatStore: ObservableObject {
     self.status = .ready
     self.errorDescription = nil
 
-    self.session = ChatSession(.init(agent: agent, sendAutomaticallyWhen: sendAutomaticallyWhen, convertDataPart: convertDataPart))
+    self.session = ChatSession(.init(agent: agent, sendAutomaticallyWhen: sendAutomaticallyWhen, convertDataPart: convertDataPart, smoothing: smoothing))
 
     startUpdatesTask()
   }

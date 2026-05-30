@@ -77,6 +77,9 @@ struct ChatSessionInit: Sendable {
 
   var generateID: (@Sendable () -> String)?
 
+  /// Post-processing throttle applied to text/reasoning deltas before the UI sees them.
+  var smoothing: StreamSmoothing
+
   var messages: [ChatMessage]
 
   init(
@@ -100,6 +103,7 @@ struct ChatSessionInit: Sendable {
     onError: (@Sendable (_ error: Error) async -> Void)? = nil,
     onFinish: (@Sendable (_ event: ChatSessionFinishEvent) async -> Void)? = nil,
     generateID: (@Sendable () -> String)? = nil,
+    smoothing: StreamSmoothing = .default,
     messages: [ChatMessage] = []
   ) {
     self.id = id
@@ -122,6 +126,7 @@ struct ChatSessionInit: Sendable {
     self.onError = onError
     self.onFinish = onFinish
     self.generateID = generateID
+    self.smoothing = smoothing
     self.messages = messages
   }
 
@@ -138,6 +143,7 @@ struct ChatSessionInit: Sendable {
     onError: (@Sendable (_ error: Error) async -> Void)? = nil,
     onFinish: (@Sendable (_ event: ChatSessionFinishEvent) async -> Void)? = nil,
     generateID: (@Sendable () -> String)? = nil,
+    smoothing: StreamSmoothing = .default,
     messages: [ChatMessage] = []
   ) {
     let dataPartConverter = convertDataPart
@@ -175,6 +181,7 @@ struct ChatSessionInit: Sendable {
       onError: onError,
       onFinish: onFinish,
       generateID: generateID,
+      smoothing: smoothing,
       messages: messages
     )
   }
@@ -201,6 +208,7 @@ struct ChatSessionInit: Sendable {
     onError: (@Sendable (_ error: Error) async -> Void)? = nil,
     onFinish: (@Sendable (_ event: ChatSessionFinishEvent) async -> Void)? = nil,
     generateID: (@Sendable () -> String)? = nil,
+    smoothing: StreamSmoothing = .default,
     messages: [ChatMessage] = []
   ) {
     self.init(
@@ -223,6 +231,7 @@ struct ChatSessionInit: Sendable {
       onError: onError,
       onFinish: onFinish,
       generateID: generateID,
+      smoothing: smoothing,
       messages: messages
     )
   }
@@ -256,6 +265,7 @@ actor ChatSession {
   private var onError: (@Sendable (_ error: Error) async -> Void)?
   private var onFinish: (@Sendable (_ event: ChatSessionFinishEvent) async -> Void)?
   private var generateID: (@Sendable () -> String)?
+  private var smoothing: StreamSmoothing
 
   private var activeRequestTask: Task<Void, Never>?
   private var activeCancellationToken: CancellationToken?
@@ -316,6 +326,7 @@ actor ChatSession {
     self.onError = `init`.onError
     self.onFinish = `init`.onFinish
     self.generateID = `init`.generateID
+    self.smoothing = `init`.smoothing
   }
 
   private func validateStreamPart(_ part: AIUIMessageStreamPart) async throws {
@@ -664,7 +675,7 @@ actor ChatSession {
           .flatMapToUIMessageStreamParts()
       }
 
-      for try await part in stream {
+      for try await part in stream.smoothed(smoothing) {
         if case .abort = part {
           isAbort = true
           break

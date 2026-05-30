@@ -69,6 +69,17 @@ enum ComponentCatalog {
       ]
     ),
     .init(
+      id: "stream-smoothing",
+      category: .chatbot,
+      name: "Stream Smoothing",
+      summary: "Funnels bursty server deltas into a steady word-by-word cadence",
+      variants: [
+        .init(id: "stream-smoothing/compare", title: "Raw vs Smoothed", description: "Same bursty response, played into both at once") {
+          AnyView(StreamSmoothingDemoView())
+        },
+      ]
+    ),
+    .init(
       id: "message",
       category: .chatbot,
       name: "Message",
