@@ -1,4 +1,5 @@
 import SwiftUI
+import Shimmer
 import AIKit
 
 public struct ToolPartReasoningView: View {
@@ -12,6 +13,7 @@ public struct ToolPartReasoningView: View {
   public var onOpenChange: ((_ open: Bool) -> Void)?
   public var collapsible: Bool
 
+  @Environment(\.colorScheme) private var colorScheme
   @Environment(\.chatTheme) private var chatTheme
 
   @State private var isOpenState: Bool
@@ -125,7 +127,15 @@ public struct ToolPartReasoningView: View {
   @ViewBuilder
   private func statusLabel(_ resolvedStatusStrings: ToolStatusStrings) -> some View {
     if labelIsLoading {
-      ShimmerText(labelText(resolvedStatusStrings))
+      ZStack(alignment: .leading) {
+        Text(labelText(resolvedStatusStrings))
+          .foregroundStyle(.secondary)
+
+        Text(labelText(resolvedStatusStrings))
+          .foregroundStyle(shimmerHighlightColor)
+          .shimmering()
+          .accessibilityHidden(true)
+      }
     } else {
       Text(labelText(resolvedStatusStrings))
         .foregroundStyle(labelIsError ? .red : .secondary)
@@ -162,4 +172,14 @@ public struct ToolPartReasoningView: View {
     }
   }
 
+  private var shimmerHighlightColor: Color {
+    switch colorScheme {
+    case .dark:
+      return Color.white.opacity(1.0)
+    case .light:
+      return Color.black.opacity(0.30)
+    @unknown default:
+      return Color.white.opacity(0.95)
+    }
+  }
 }

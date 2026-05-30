@@ -145,39 +145,6 @@ enum ComponentCatalog {
       ]
     ),
     .init(
-      id: "shimmer-text",
-      category: .chatbot,
-      name: "Shimmer Text",
-      summary: "Single-line shimmering streaming/thinking label",
-      variants: [
-        .init(id: "shimmer-text/basic", title: "Basic", description: "Shimmering status lines") {
-          AnyView(ShimmerTextDemoView())
-        },
-      ]
-    ),
-    .init(
-      id: "suggestions",
-      category: .chatbot,
-      name: "Suggestions",
-      summary: "Horizontal row of tappable starter-prompt pills",
-      variants: [
-        .init(id: "suggestions/basic", title: "Basic", description: "Scrollable suggestion pills") {
-          AnyView(SuggestionsDemoView())
-        },
-      ]
-    ),
-    .init(
-      id: "model-selector",
-      category: .chatbot,
-      name: "Model Selector",
-      summary: "Compact composer model picker (glass pill + menu)",
-      variants: [
-        .init(id: "model-selector/basic", title: "Basic", description: "Menu-backed model picker") {
-          AnyView(ModelSelectorDemoView())
-        },
-      ]
-    ),
-    .init(
       id: "reasoning",
       category: .chatbot,
       name: "Reasoning",
@@ -206,40 +173,7 @@ enum ComponentCatalog {
       summary: "Popover for in-text citations",
       variants: [
         .init(id: "inline-citation/basic", title: "Basic", description: "Citation token → popover") {
-          AnyView(InlineCitationDemoView())
-        },
-      ]
-    ),
-    .init(
-      id: "agent-task",
-      category: .chatbot,
-      name: "Agent Task",
-      summary: "Collapsible task with sub-steps",
-      variants: [
-        .init(id: "agent-task/basic", title: "Basic", description: "Title + step statuses") {
-          AnyView(AgentTaskDemoView())
-        },
-      ]
-    ),
-    .init(
-      id: "chain-of-thought",
-      category: .chatbot,
-      name: "Chain of Thought",
-      summary: "Ordered reasoning steps from a data part",
-      variants: [
-        .init(id: "chain-of-thought/basic", title: "Basic", description: "Rendered via assistantMessageDataRenderer") {
-          AnyView(ChainOfThoughtDemoView())
-        },
-      ]
-    ),
-    .init(
-      id: "plan",
-      category: .chatbot,
-      name: "Plan",
-      summary: "Checklist of plan items from a data part",
-      variants: [
-        .init(id: "plan/basic", title: "Basic", description: "Rendered via assistantMessageDataRenderer") {
-          AnyView(PlanDemoView())
+          AnyView(PlaceholderDemoView(title: "Inline Citation", detail: "TODO: implement Inline Citation demo"))
         },
       ]
     ),
@@ -251,17 +185,6 @@ enum ComponentCatalog {
       variants: [
         .init(id: "loader/basic", title: "Basic", description: nil) {
           AnyView(LoaderDemoView())
-        },
-      ]
-    ),
-    .init(
-      id: "context-usage",
-      category: .utilities,
-      name: "Context Usage",
-      summary: "Compact context-window usage indicator",
-      variants: [
-        .init(id: "context-usage/basic", title: "Basic", description: "Used / max with progress bar") {
-          AnyView(ContextUsageDemoView())
         },
       ]
     ),

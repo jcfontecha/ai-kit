@@ -14,10 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dynamicTool(...)`: runtime-schema tools registered alongside statically-typed `ToolSpec`.
 - `AIKitMCP`: Model Context Protocol client (Streamable HTTP, JSON-RPC) exposing MCP
   server tools as dynamic tools.
-- `AIKitElements` components matching Vercel AI Elements: `ShimmerText`, `Confirmation`,
-  `Suggestions`, `ContextUsage`, `ModelSelector`, `SourcesGroup`, `InlineCitation`,
-  `AgentTaskView`, `ChainOfThought`, `PlanView`, and an `assistantMessageDataRenderer`
-  hook for rendering custom `data-*` parts.
 
 ### Changed
 
