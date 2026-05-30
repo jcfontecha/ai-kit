@@ -70,7 +70,7 @@ public struct OpenAIProviderClient: OpenAIProvider, Sendable {
   }
 
   public func languageModel(_ modelId: OpenAIResponsesModelID) -> any LanguageModel {
-    UnimplementedLanguageModel(modelID: modelId.rawValue)
+    responses(modelId)
   }
 
   public func chat(_ modelId: OpenAIChatModelID) -> any LanguageModel {
@@ -82,7 +82,11 @@ public struct OpenAIProviderClient: OpenAIProvider, Sendable {
   }
 
   public func responses(_ modelId: OpenAIResponsesModelID) -> any LanguageModel {
-    UnimplementedLanguageModel(modelID: modelId.rawValue)
+    OpenAIResponsesLanguageModel(
+      modelId: modelId,
+      options: .init(),
+      config: makeResponsesConfig()
+    )
   }
 
   public func completion(_ modelId: OpenAICompletionModelID) -> any LanguageModel {
@@ -128,6 +132,15 @@ public struct OpenAIProviderClient: OpenAIProvider, Sendable {
   func makeChatConfig() -> OpenAIChatConfig {
     OpenAIChatConfig(
       provider: "openai.chat",
+      headers: headersProvider(),
+      url: urlProvider(),
+      transport: transportProvider()
+    )
+  }
+
+  func makeResponsesConfig() -> OpenAIResponsesConfig {
+    OpenAIResponsesConfig(
+      provider: "openai.responses",
       headers: headersProvider(),
       url: urlProvider(),
       transport: transportProvider()

@@ -153,6 +153,23 @@ func collectStream<T>(_ stream: AsyncThrowingStream<T, Error>) async throws -> [
 extension OpenAITestServer {
   static let chatURL = "https://api.openai.com/v1/chat/completions"
   static let embeddingsURL = "https://api.openai.com/v1/embeddings"
+  static let responsesURL = "https://api.openai.com/v1/responses"
+
+  func responsesModel(
+    _ modelId: OpenAIResponsesModelID,
+    options: OpenAIResponsesProviderOptions = .init()
+  ) -> OpenAIResponsesLanguageModel {
+    OpenAIResponsesLanguageModel(
+      modelId: modelId,
+      options: options,
+      config: OpenAIResponsesConfig(
+        provider: "openai.responses",
+        headers: { ["Authorization": "Bearer test-api-key"] },
+        url: { path in "https://api.openai.com/v1\(path)" },
+        transport: transport()
+      )
+    )
+  }
 
   func chatModel(_ modelId: OpenAIChatModelID, options: OpenAIChatLanguageModelOptions = .init()) -> OpenAIChatLanguageModel {
     OpenAIChatLanguageModel(
