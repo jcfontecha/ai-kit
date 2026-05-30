@@ -28,6 +28,10 @@ public typealias ReasoningTextRenderer = (_ text: String) -> AnyView
 public typealias AssistantTextRenderer = (_ text: String) -> AnyView
 public typealias ToolDefaultRenderer = (_ context: ToolDefaultRenderContext) -> AnyView
 
+/// Renders a structured `ChatDataPart` (e.g. `type == "data-plan"`) into a view.
+/// Return `nil` to fall back to the default behavior (the part renders nothing).
+public typealias AssistantMessageDataRenderer = (_ part: ChatDataPart) -> AnyView?
+
 public struct ToolStatusStrings: Hashable, Sendable {
   public var loading: String
   public var success: String
@@ -86,6 +90,10 @@ private struct ReasoningTextRendererStore: @unchecked Sendable {
   var value: ReasoningTextRenderer?
 }
 
+private struct AssistantMessageDataRendererStore: @unchecked Sendable {
+  var value: AssistantMessageDataRenderer?
+}
+
 private struct AssistantMessageToolRenderersKey: EnvironmentKey {
   static let defaultValue = ToolRendererStore(value: [:])
 }
@@ -112,6 +120,10 @@ private struct AssistantMessageTextRendererKey: EnvironmentKey {
 
 private struct AssistantMessageReasoningTextRendererKey: EnvironmentKey {
   static let defaultValue = ReasoningTextRendererStore(value: nil)
+}
+
+private struct AssistantMessageDataRendererKey: EnvironmentKey {
+  static let defaultValue = AssistantMessageDataRendererStore(value: nil)
 }
 
 private extension EnvironmentValues {
@@ -153,6 +165,11 @@ private extension EnvironmentValues {
   var assistantMessageReasoningTextRenderer: ReasoningTextRenderer? {
     get { self[AssistantMessageReasoningTextRendererKey.self].value }
     set { self[AssistantMessageReasoningTextRendererKey.self] = .init(value: newValue) }
+  }
+
+  var assistantMessageDataRenderer: AssistantMessageDataRenderer? {
+    get { self[AssistantMessageDataRendererKey.self].value }
+    set { self[AssistantMessageDataRendererKey.self] = .init(value: newValue) }
   }
 }
 
@@ -231,6 +248,17 @@ public extension View {
       AnyView(renderer(text))
     }
   }
+
+  func assistantMessageDataRenderer(_ renderer: @escaping AssistantMessageDataRenderer) -> some View {
+    environment(\.assistantMessageDataRenderer, renderer)
+  }
+
+  func assistantMessageDataRenderer<DataView: View>(
+    @ViewBuilder _ renderer: @escaping (_ part: ChatDataPart) -> DataView
+  ) -> some View {
+    let erased: AssistantMessageDataRenderer = { part in AnyView(renderer(part)) }
+    return assistantMessageDataRenderer(erased)
+  }
 }
 
 private struct AssistantMessageToolRendererModifier: ViewModifier {
@@ -276,6 +304,7 @@ public struct AssistantMessage: View {
   @Environment(\.assistantMessageOnToolApprovalResponse) private var environmentOnToolApprovalResponse
   @Environment(\.assistantMessageTextRenderer) private var environmentTextRenderer
   @Environment(\.assistantMessageReasoningTextRenderer) private var environmentReasoningTextRenderer
+  @Environment(\.assistantMessageDataRenderer) private var environmentDataRenderer
   @Environment(\.assistantMessageOnCopy) private var environmentOnCopy
   @Environment(\.assistantMessageOnRegenerate) private var environmentOnRegenerate
   @Environment(\.chatTheme) private var chatTheme
@@ -331,7 +360,13 @@ public struct AssistantMessage: View {
         case .sourceDocument(let title, let filename, let mediaType):
           SourceDocumentRow(title: title, filename: filename, mediaType: mediaType)
 
-        case .stepStart, .data:
+        case .data(let type, let id, let value):
+          if let environmentDataRenderer,
+             let rendered = environmentDataRenderer(ChatDataPart(type: type, id: id, data: value)) {
+            rendered
+          }
+
+        case .stepStart:
           EmptyView()
         }
       }

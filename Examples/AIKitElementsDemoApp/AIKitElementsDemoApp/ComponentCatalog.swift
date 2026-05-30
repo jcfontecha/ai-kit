@@ -206,7 +206,40 @@ enum ComponentCatalog {
       summary: "Popover for in-text citations",
       variants: [
         .init(id: "inline-citation/basic", title: "Basic", description: "Citation token → popover") {
-          AnyView(PlaceholderDemoView(title: "Inline Citation", detail: "TODO: implement Inline Citation demo"))
+          AnyView(InlineCitationDemoView())
+        },
+      ]
+    ),
+    .init(
+      id: "agent-task",
+      category: .chatbot,
+      name: "Agent Task",
+      summary: "Collapsible task with sub-steps",
+      variants: [
+        .init(id: "agent-task/basic", title: "Basic", description: "Title + step statuses") {
+          AnyView(AgentTaskDemoView())
+        },
+      ]
+    ),
+    .init(
+      id: "chain-of-thought",
+      category: .chatbot,
+      name: "Chain of Thought",
+      summary: "Ordered reasoning steps from a data part",
+      variants: [
+        .init(id: "chain-of-thought/basic", title: "Basic", description: "Rendered via assistantMessageDataRenderer") {
+          AnyView(ChainOfThoughtDemoView())
+        },
+      ]
+    ),
+    .init(
+      id: "plan",
+      category: .chatbot,
+      name: "Plan",
+      summary: "Checklist of plan items from a data part",
+      variants: [
+        .init(id: "plan/basic", title: "Basic", description: "Rendered via assistantMessageDataRenderer") {
+          AnyView(PlanDemoView())
         },
       ]
     ),
