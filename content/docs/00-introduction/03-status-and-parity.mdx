@@ -5,9 +5,11 @@ description: What’s implemented today, and how it maps to the upstream AI SDK.
 
 # Status and parity
 
-AIKit is implemented by translating AI SDK semantics into Swift. The source of truth for expected behavior is the upstream AI SDK, pinned here (as of 2026-02-24):
+AIKit is implemented by translating AI SDK semantics into Swift. The source of truth for expected behavior is the upstream AI SDK (the v6 line). The behavior baseline was pinned to this commit (2026-02-24):
 
 <https://github.com/vercel/ai/tree/73d5c5920e0fea7633027fdd87374adc9ba49743>
+
+AIKit already reflects the AI SDK v6 architecture: the `Agent` shape (`instructions` + default `stopWhen: stepCountIs(20)`), the UIMessage/ModelMessage split, structured output via `generateText(output:)` (rather than the deprecated `generateObject`), `providerExecuted`/`dynamic` tools, reasoning parts, and the typed-event UI message stream.
 
 ## What AIKit focuses on
 
@@ -18,10 +20,15 @@ AIKit is implemented by translating AI SDK semantics into Swift. The source of t
 ## Provider status
 
 - `AIKitOpenRouter`: implemented (chat, completion, embeddings; streaming supported).
-- `AIKitOpenAI`: public provider surface exists, but model implementations currently throw `AIKitError.notImplemented(...)`.
+- `AIKitOpenAI`: implemented (responses, chat, embeddings, image, transcription, speech). Legacy `/completions` and provider-executed built-in tools are not yet implemented.
+- `AIKitApple`: implemented (on-device Foundation Models language model).
+- `AIKitReplicate` / `AIKitFal`: implemented (image generation).
+
+## Tools and MCP
+
+- `dynamicTool(...)` registers runtime-schema tools alongside statically-typed `ToolSpec` tools.
+- `AIKitMCP` provides a Model Context Protocol client (Streamable HTTP) whose tools are exposed as dynamic tools and used like any other tools in `generateText` / `streamText`.
 
 ## Tests
 
 AIKit uses a translation-first, test-driven workflow. Tests live under `Tests/` and mirror AI SDK scenario groupings where possible.
-
-For `useChat` / `ChatStore` parity tracking, see `AIKIT_USECHAT_TRACKER.md` at the repo root.

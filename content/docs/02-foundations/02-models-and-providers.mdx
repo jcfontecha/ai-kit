@@ -22,7 +22,9 @@ AIKit uses this protocol to implement tool loops, output parsing, retries, and s
 ## Built-in providers
 
 - OpenRouter (`AIKitOpenRouter`): `createOpenRouter(...)` / `openrouter(...)`.
-- OpenAI (`AIKitOpenAI`): `createOpenAI(...)` / `openai(...)` (surface only; implementations are not yet available).
+- OpenAI (`AIKitOpenAI`): `createOpenAI(...)` / `openai` — responses, chat, embeddings, image, transcription, speech.
+- Apple (`AIKitApple`): on-device Foundation Models language model.
+- Replicate (`AIKitReplicate`) / Fal (`AIKitFal`): image generation.
 
 ## Custom providers
 

@@ -1,14 +1,33 @@
 ---
 title: OpenAI
-description: OpenAI provider surface and current implementation status.
+description: OpenAI provider surface and implementation status.
 ---
 
 # OpenAI provider
 
-The OpenAI provider lives in `AIKitOpenAI` and currently provides:
+The OpenAI provider lives in `AIKitOpenAI` and provides a provider façade
+(`createOpenAI(...)` / `openai`) plus model ID types for chat, responses,
+completion, embeddings, image, transcription, and speech.
 
-- model ID types (chat/completion/responses/embeddings/etc.)
-- a provider façade (`createOpenAI(...)` / `openai`)
+## Implemented
 
-At the moment, the model implementations are placeholders and throw `AIKitError.notImplemented(...)`. See `Sources/AIKitOpenAI/OpenAIProvider.swift`.
+- **Language models** — `openai.responses(_:)` / `openai.languageModel(_:)` (the
+  modern `/responses` endpoint, the default) and `openai.chat(_:)` (Chat
+  Completions). Both support streaming, tool calling, and reasoning models
+  (o1/o3/gpt-5 — system message sent with the `developer` role, sampling params
+  suppressed).
+- **Embeddings** — `openai.embedding(_:)` (`/embeddings`, with
+  `dimensions` / `encoding_format` / `user`).
+- **Images** — `openai.image(_:)` (`/images/generations`, plus multipart
+  `/images/edits` when input images/mask are supplied; gpt-image / dall-e).
+- **Transcription** — `openai.transcription(_:)` (multipart `/audio/transcriptions`).
+- **Speech** — `openai.speech(_:)` (`/audio/speech`, raw audio bytes).
 
+Provider-specific options are passed through `providerOptions["openai"]`. See
+`Sources/AIKitOpenAI/`.
+
+## Not yet implemented
+
+- Legacy `openai.completion(_:)` (`/completions`) — use `chat` or `responses`.
+- Built-in / provider-executed tools (web search, file search, code interpreter)
+  are not yet surfaced from the Responses model.
