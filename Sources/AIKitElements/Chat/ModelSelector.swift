@@ -53,7 +53,11 @@ public struct ModelSelector: View {
     .menuStyle(.automatic)
   }
 
-  private var currentName: String {
+  private var currentName: String { currentNameValue }
+
+  /// The display name for the current selection, falling back to the raw id when
+  /// the selection is not in `options`. Exposed for testing.
+  var currentNameValue: String {
     options.first(where: { $0.id == selection })?.name ?? selection
   }
 }

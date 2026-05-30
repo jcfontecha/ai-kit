@@ -29,12 +29,22 @@ public struct ContextUsage: View {
     }
   }
 
-  private var fraction: CGFloat {
+  private var fraction: CGFloat { fractionValue }
+
+  /// Progress fraction in `0...1`, clamped, with a divide-by-zero guard. Exposed
+  /// for testing.
+  var fractionValue: CGFloat {
     guard max > 0 else { return 0 }
     return min(1, Swift.max(0, CGFloat(used) / CGFloat(max)))
   }
 
   private func format(_ value: Int) -> String {
+    Self.format(value)
+  }
+
+  /// Formats a token count as a compact string (e.g. `12_500` -> `"12.5k"`).
+  /// Exposed for testing.
+  static func format(_ value: Int) -> String {
     if value >= 1000 {
       let thousands = Double(value) / 1000
       let rounded = (thousands * 10).rounded() / 10

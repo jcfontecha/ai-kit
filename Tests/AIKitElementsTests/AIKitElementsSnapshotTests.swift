@@ -288,6 +288,217 @@ final class AIKitElementsSnapshotTests: XCTestCase {
 
     SnapshotTesting.assertSnapshotImage(view, size: size)
   }
+
+  // MARK: - New AIKitElements components
+
+  func testSnapshot_shimmerText() {
+    let size = CGSize(width: 320, height: 60)
+
+    let view = snapshotRoot(
+      ShimmerText("Thinking about your request…"),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_confirmation_requested() {
+    let size = CGSize(width: 420, height: 200)
+
+    let view = snapshotRoot(
+      Confirmation(
+        state: .requested,
+        title: "Run shell command?",
+        message: "rm -rf ./build",
+        onApprove: {},
+        onReject: {}
+      ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_confirmation_approved() {
+    let size = CGSize(width: 420, height: 140)
+
+    let view = snapshotRoot(
+      Confirmation(state: .approved, title: "Run shell command?"),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_suggestions_row() {
+    let size = CGSize(width: 460, height: 80)
+
+    let view = snapshotRoot(
+      Suggestions(
+        ["Summarize this", "Write tests", "Explain the bug"],
+        onSelect: { _ in }
+      ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_contextUsage() {
+    let size = CGSize(width: 240, height: 48)
+
+    let view = snapshotRoot(
+      ContextUsage(used: 12_000, max: 128_000),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  // NOTE: `ModelSelector` is a native `Menu`; its menu content does not render in a
+  // static `ImageRenderer` snapshot. We snapshot only the collapsed label here, and
+  // cover selection/label logic in `AIKitElementsUnitTests`.
+  func testSnapshot_modelSelector_collapsedLabel() {
+    let size = CGSize(width: 220, height: 60)
+
+    let view = snapshotRoot(
+      ModelSelector(
+        options: [
+          ModelOption(id: "gpt", name: "GPT-5"),
+          ModelOption(id: "claude", name: "Claude"),
+        ],
+        selection: .constant("claude")
+      ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_sourcesGroup() {
+    let size = CGSize(width: 460, height: 200)
+
+    let view = snapshotRoot(
+      SourcesGroup(sources: [
+        .link(id: "s-1", url: "https://example.com/a", title: "Example A"),
+        .link(id: "s-2", url: "https://example.com/b", title: nil),
+        .document(id: "d-1", title: "Spec", filename: "spec.pdf", mediaType: "application/pdf"),
+      ]),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_inlineCitation_token() {
+    let size = CGSize(width: 120, height: 60)
+
+    let view = snapshotRoot(
+      InlineCitation(number: 3, url: "https://example.com", title: "Example"),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_agentTaskView_withSteps() {
+    let size = CGSize(width: 460, height: 200)
+
+    let view = snapshotRoot(
+      AgentTaskView(
+        title: "Refactor module",
+        steps: [
+          AgentTaskView.Step(text: "Read files", status: .done),
+          AgentTaskView.Step(text: "Apply edits", status: .inProgress),
+          AgentTaskView.Step(text: "Run tests", status: .pending),
+        ]
+      ),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_chainOfThought_steps() {
+    let size = CGSize(width: 460, height: 200)
+
+    let view = snapshotRoot(
+      ChainOfThought(steps: [
+        ChainOfThought.Step(label: "Identify the relevant files", status: .done),
+        ChainOfThought.Step(label: "Trace the data flow", status: .inProgress),
+        ChainOfThought.Step(label: "Propose a fix", status: .pending),
+      ]),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  func testSnapshot_planView_mixedStatuses() {
+    let size = CGSize(width: 460, height: 220)
+
+    let view = snapshotRoot(
+      PlanView(items: [
+        PlanView.Item(title: "Draft the API", status: .done),
+        PlanView.Item(title: "Review with team", status: .inProgress),
+        PlanView.Item(title: "Ship", status: .pending),
+      ]),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  // Snapshot proof that the data-renderer hook routes a `.data` part to a registered
+  // renderer (vs. rendering nothing when absent). Complements the closure-invocation
+  // unit test in `AIKitElementsUnitTests`.
+  func testSnapshot_assistantMessage_dataRenderer_rendersPlan() {
+    let size = CGSize(width: 460, height: 220)
+
+    let parts: [ChatMessagePart] = [
+      .text(.init(id: "t-1", text: "Here is the plan:", state: .done)),
+      .data(.init(
+        type: "data-plan",
+        id: "d-1",
+        data: .array([
+          .object(["title": .string("Step one"), "status": .string("done")]),
+          .object(["title": .string("Step two"), "status": .string("pending")]),
+        ])
+      )),
+    ]
+
+    let view = snapshotRoot(
+      AssistantMessage(messageID: "m-1", parts: parts)
+        .assistantMessageDataRenderer { part -> AnyView? in
+          PlanView(part: part).map { AnyView($0) }
+        },
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
+
+  // Companion: with NO renderer, the same `.data` part renders nothing (only the text
+  // shows), preserving prior behavior.
+  func testSnapshot_assistantMessage_dataRenderer_absentRendersNothing() {
+    let size = CGSize(width: 460, height: 120)
+
+    let parts: [ChatMessagePart] = [
+      .text(.init(id: "t-1", text: "Here is the plan:", state: .done)),
+      .data(.init(
+        type: "data-plan",
+        id: "d-1",
+        data: .array([.object(["title": .string("Hidden"), "status": .string("done")])])
+      )),
+    ]
+
+    let view = snapshotRoot(
+      AssistantMessage(messageID: "m-1", parts: parts),
+      size: size
+    )
+
+    SnapshotTesting.assertSnapshotImage(view, size: size)
+  }
 }
 
 @MainActor
