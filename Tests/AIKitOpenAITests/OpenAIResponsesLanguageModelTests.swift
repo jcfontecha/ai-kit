@@ -123,6 +123,131 @@ final class OpenAIResponsesLanguageModelTests: XCTestCase {
     XCTAssertEqual(result.usage.outputTokens?.reasoning, 3)
   }
 
+  func testExtractCachedAndReasoningUsage() async throws {
+    let response = JSONValue.object([
+      "id": .string("resp_u"),
+      "object": .string("response"),
+      "model": .string("gpt-5"),
+      "status": .string("completed"),
+      "output": .array([
+        .object([
+          "type": .string("message"),
+          "role": .string("assistant"),
+          "content": .array([
+            .object(["type": .string("output_text"), "text": .string("Hi")])
+          ]),
+        ])
+      ]),
+      "usage": .object([
+        "input_tokens": .number(20),
+        "output_tokens": .number(30),
+        "total_tokens": .number(50),
+        "input_tokens_details": .object(["cached_tokens": .number(8)]),
+        "output_tokens_details": .object(["reasoning_tokens": .number(12)]),
+      ]),
+    ])
+    let server = makeServer(.init(type: .jsonValue(response)))
+    let model = server.responsesModel("gpt-5")
+    let result = try await model.generate(.init(messages: testPrompt))
+
+    XCTAssertEqual(result.usage.inputTokens?.total, 20)
+    XCTAssertEqual(result.usage.inputTokens?.cacheRead, 8)
+    XCTAssertEqual(result.usage.outputTokens?.total, 30)
+    XCTAssertEqual(result.usage.outputTokens?.reasoning, 12)
+    XCTAssertEqual(result.response.id, "resp_u")
+  }
+
+  func testReasoningEmptySummaryProducesNoReasoning() async throws {
+    let response = JSONValue.object([
+      "id": .string("resp_es"),
+      "object": .string("response"),
+      "model": .string("gpt-5"),
+      "status": .string("completed"),
+      "output": .array([
+        .object([
+          "type": .string("reasoning"),
+          "summary": .array([]),
+        ]),
+        .object([
+          "type": .string("message"),
+          "role": .string("assistant"),
+          "content": .array([
+            .object(["type": .string("output_text"), "text": .string("Answer")])
+          ]),
+        ]),
+      ]),
+      "usage": .object(["input_tokens": .number(1), "output_tokens": .number(1)]),
+    ])
+    let server = makeServer(.init(type: .jsonValue(response)))
+    let model = server.responsesModel("gpt-5")
+    let result = try await model.generate(.init(messages: testPrompt))
+
+    XCTAssertEqual(result.content, [.text("Answer")])
+  }
+
+  func testMultipleReasoningBlocks() async throws {
+    let response = JSONValue.object([
+      "id": .string("resp_mr"),
+      "object": .string("response"),
+      "model": .string("gpt-5"),
+      "status": .string("completed"),
+      "output": .array([
+        .object([
+          "type": .string("reasoning"),
+          "summary": .array([
+            .object(["type": .string("summary_text"), "text": .string("First thought.")])
+          ]),
+        ]),
+        .object([
+          "type": .string("reasoning"),
+          "summary": .array([
+            .object(["type": .string("summary_text"), "text": .string("Second thought.")])
+          ]),
+        ]),
+        .object([
+          "type": .string("message"),
+          "role": .string("assistant"),
+          "content": .array([
+            .object(["type": .string("output_text"), "text": .string("Done")])
+          ]),
+        ]),
+      ]),
+      "usage": .object(["input_tokens": .number(1), "output_tokens": .number(1)]),
+    ])
+    let server = makeServer(.init(type: .jsonValue(response)))
+    let model = server.responsesModel("gpt-5")
+    let result = try await model.generate(.init(messages: testPrompt))
+
+    XCTAssertEqual(result.content, [
+      .reasoning("First thought."),
+      .reasoning("Second thought."),
+      .text("Done"),
+    ])
+  }
+
+  func testStopFinishReason() async throws {
+    let server = makeServer(.init(type: .jsonValue(textResponse(text: "Hi", status: "completed"))))
+    let model = server.responsesModel("gpt-4o")
+    let result = try await model.generate(.init(messages: testPrompt))
+    XCTAssertEqual(result.finishReason, .stop)
+  }
+
+  func testContentFilterFinishReason() async throws {
+    let response = JSONValue.object([
+      "id": .string("resp_cf"),
+      "object": .string("response"),
+      "model": .string("gpt-4o"),
+      "status": .string("incomplete"),
+      "incomplete_details": .object(["reason": .string("content_filter")]),
+      "output": .array([]),
+      "usage": .object(["input_tokens": .number(1), "output_tokens": .number(1)]),
+    ])
+    let server = makeServer(.init(type: .jsonValue(response)))
+    let model = server.responsesModel("gpt-4o")
+    let result = try await model.generate(.init(messages: testPrompt))
+    XCTAssertEqual(result.finishReason, .contentFilter)
+  }
+
   func testIncompleteMaxTokensFinishReason() async throws {
     let response = JSONValue.object([
       "id": .string("resp_i"),
@@ -249,6 +374,48 @@ final class OpenAIResponsesLanguageModelTests: XCTestCase {
     XCTAssertNotNil(tool["parameters"])
   }
 
+  func testPassProviderOptions() async throws {
+    let server = makeServer(.init(type: .jsonValue(textResponse(text: "ok"))))
+    let model = server.responsesModel(
+      "gpt-5",
+      options: .init(
+        include: ["reasoning.encrypted_content"],
+        instructions: "Be concise",
+        metadata: ["key": "value"],
+        parallelToolCalls: false,
+        previousResponseID: "resp_prev",
+        promptCacheKey: "pck",
+        reasoningEffort: .high,
+        reasoningSummary: "auto",
+        serviceTier: .flex,
+        store: false,
+        textVerbosity: .low,
+        truncation: .auto,
+        user: "user-id"
+      )
+    )
+    _ = try await model.generate(.init(messages: testPrompt))
+
+    guard case let .object(body)? = server.calls.first?.requestBodyJSON else {
+      return XCTFail("Expected object body")
+    }
+    XCTAssertEqual(body["instructions"], .string("Be concise"))
+    XCTAssertEqual(body["previous_response_id"], .string("resp_prev"))
+    XCTAssertEqual(body["store"], .bool(false))
+    XCTAssertEqual(body["truncation"], .string("auto"))
+    XCTAssertEqual(body["include"], .array([.string("reasoning.encrypted_content")]))
+    XCTAssertEqual(body["metadata"], .object(["key": .string("value")]))
+    XCTAssertEqual(body["service_tier"], .string("flex"))
+    XCTAssertEqual(body["prompt_cache_key"], .string("pck"))
+    XCTAssertEqual(body["parallel_tool_calls"], .bool(false))
+    XCTAssertEqual(body["user"], .string("user-id"))
+    XCTAssertEqual(body["reasoning"], .object([
+      "effort": .string("high"),
+      "summary": .string("auto"),
+    ]))
+    XCTAssertEqual(body["text"], .object(["verbosity": .string("low")]))
+  }
+
   // MARK: - Streaming
 
   func testStreamTextDeltas() async throws {
@@ -345,5 +512,65 @@ final class OpenAIResponsesLanguageModelTests: XCTestCase {
       return XCTFail("Expected finish")
     }
     XCTAssertEqual(finishReason, .toolCalls)
+  }
+
+  func testStreamReasoningUsageOnCompleted() async throws {
+    let chunks: [String] = [
+      "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_uc\",\"model\":\"gpt-5\",\"status\":\"in_progress\"}}\n\n",
+      "data: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"type\":\"message\",\"id\":\"msg_1\",\"role\":\"assistant\"}}\n\n",
+      "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"msg_1\",\"delta\":\"Hi\"}\n\n",
+      "data: {\"type\":\"response.output_text.done\",\"output_index\":0,\"item_id\":\"msg_1\",\"text\":\"Hi\"}\n\n",
+      "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_uc\",\"status\":\"completed\",\"usage\":{\"input_tokens\":20,\"output_tokens\":30,\"total_tokens\":50,\"input_tokens_details\":{\"cached_tokens\":8},\"output_tokens_details\":{\"reasoning_tokens\":12}}}}\n\n",
+    ]
+    let server = makeServer(.init(type: .streamChunks(chunks)))
+    let model = server.responsesModel("gpt-5")
+    let parts = try await collectStream(model.stream(.init(messages: testPrompt)))
+
+    guard let finish = parts.last, case let .finish(finishReason, usage, _) = finish else {
+      return XCTFail("Expected finish")
+    }
+    XCTAssertEqual(finishReason, .stop)
+    XCTAssertEqual(usage.inputTokens?.total, 20)
+    XCTAssertEqual(usage.inputTokens?.cacheRead, 8)
+    XCTAssertEqual(usage.outputTokens?.total, 30)
+    XCTAssertEqual(usage.outputTokens?.reasoning, 12)
+  }
+
+  func testStreamIncompleteFinishReason() async throws {
+    let chunks: [String] = [
+      "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_inc\",\"model\":\"gpt-4o\",\"status\":\"in_progress\"}}\n\n",
+      "data: {\"type\":\"response.output_text.delta\",\"output_index\":0,\"item_id\":\"msg_1\",\"delta\":\"partial\"}\n\n",
+      "data: {\"type\":\"response.incomplete\",\"response\":{\"id\":\"resp_inc\",\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n",
+    ]
+    let server = makeServer(.init(type: .streamChunks(chunks)))
+    let model = server.responsesModel("gpt-4o")
+    let parts = try await collectStream(model.stream(.init(messages: testPrompt)))
+
+    guard let finish = parts.last, case let .finish(finishReason, _, _) = finish else {
+      return XCTFail("Expected finish")
+    }
+    XCTAssertEqual(finishReason, .length)
+  }
+
+  func testStreamErrorEventEmitsErrorPart() async throws {
+    let chunks: [String] = [
+      "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_e\",\"model\":\"gpt-4o\",\"status\":\"in_progress\"}}\n\n",
+      "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_e\",\"status\":\"failed\",\"error\":{\"message\":\"Something went wrong\",\"code\":\"server_error\"}}}\n\n",
+    ]
+    let server = makeServer(.init(type: .streamChunks(chunks)))
+    let model = server.responsesModel("gpt-4o")
+    let parts = try await collectStream(model.stream(.init(messages: testPrompt)))
+
+    let errors = parts.compactMap { part -> ModelStreamError? in
+      guard case let .error(error) = part else { return nil }
+      return error
+    }
+    XCTAssertEqual(errors.count, 1)
+    XCTAssertEqual(errors.first?.message, "Something went wrong")
+
+    guard let finish = parts.last, case let .finish(finishReason, _, _) = finish else {
+      return XCTFail("Expected finish")
+    }
+    XCTAssertEqual(finishReason, .error)
   }
 }

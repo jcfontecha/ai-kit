@@ -300,4 +300,221 @@ final class OpenAIChatLanguageModelTests: XCTestCase {
     XCTAssertEqual(result.content, [.text("Hi")])
     XCTAssertEqual(server.calls.first?.requestHeaders["authorization"], "Bearer test-api-key")
   }
+
+  // MARK: - Usage extraction
+
+  func testExtractCachedAndReasoningTokens() async throws {
+    let server = makeServer()
+    prepareJsonResponse(
+      server,
+      content: "Hi",
+      usage: .object([
+        "prompt_tokens": .number(20),
+        "completion_tokens": .number(30),
+        "total_tokens": .number(50),
+        "prompt_tokens_details": .object(["cached_tokens": .number(8)]),
+        "completion_tokens_details": .object(["reasoning_tokens": .number(12)]),
+      ])
+    )
+
+    let model = server.chatModel("gpt-4o")
+    let response = try await model.generate(.init(messages: testPrompt))
+
+    XCTAssertEqual(response.usage.inputTokens?.total, 20)
+    XCTAssertEqual(response.usage.inputTokens?.cacheRead, 8)
+    XCTAssertEqual(response.usage.outputTokens?.total, 30)
+    XCTAssertEqual(response.usage.outputTokens?.reasoning, 12)
+  }
+
+  func testPartialUsageDoesNotCrash() async throws {
+    let server = makeServer()
+    prepareJsonResponse(
+      server,
+      content: "Hi",
+      usage: .object([
+        "prompt_tokens": .number(20),
+        "total_tokens": .number(20),
+      ])
+    )
+
+    let model = server.chatModel("gpt-4o")
+    let response = try await model.generate(.init(messages: testPrompt))
+
+    XCTAssertEqual(response.usage.inputTokens?.total, 20)
+    XCTAssertNil(response.usage.outputTokens?.total)
+    XCTAssertNil(response.usage.inputTokens?.cacheRead)
+    XCTAssertNil(response.usage.outputTokens?.reasoning)
+  }
+
+  func testMissingUsageDoesNotCrash() async throws {
+    let server = makeServer()
+    prepareJsonResponse(server, content: "Hi", usage: nil)
+
+    let model = server.chatModel("gpt-4o")
+    let response = try await model.generate(.init(messages: testPrompt))
+
+    XCTAssertEqual(response.content, [.text("Hi")])
+    XCTAssertEqual(response.usage.inputTokens?.total, 0)
+    XCTAssertEqual(response.usage.outputTokens?.total, 0)
+  }
+
+  // MARK: - Finish reasons
+
+  func testFinishReasonMapping() async throws {
+    let cases: [(String, FinishReason)] = [
+      ("stop", .stop),
+      ("length", .length),
+      ("tool_calls", .toolCalls),
+      ("content_filter", .contentFilter),
+      ("function_call", .toolCalls),
+      ("eos", .other),
+    ]
+    for (raw, expected) in cases {
+      let server = makeServer()
+      prepareJsonResponse(server, content: "", finishReason: raw)
+      let model = server.chatModel("gpt-4o")
+      let response = try await model.generate(.init(messages: testPrompt))
+      XCTAssertEqual(response.finishReason, expected, "finish_reason=\(raw)")
+      XCTAssertEqual(response.rawFinishReason, raw)
+    }
+  }
+
+  // MARK: - Error handling
+
+  func testErrorResponseThrows() async throws {
+    let server = OpenAITestServer(config: [
+      OpenAITestServer.chatURL: .init(
+        type: .error(.object([
+          "error": .object([
+            "message": .string("Incorrect API key provided"),
+            "type": .string("invalid_request_error"),
+            "param": .null,
+            "code": .string("invalid_api_key"),
+          ])
+        ])),
+        status: 401
+      )
+    ])
+
+    let model = server.chatModel("gpt-4o")
+    do {
+      _ = try await model.generate(.init(messages: testPrompt))
+      XCTFail("Expected error")
+    } catch let error as OpenAIAPIError {
+      XCTAssertEqual(error.statusCode, 401)
+      XCTAssertTrue(error.message.contains("Incorrect API key provided"))
+      XCTAssertEqual(error.type, "invalid_request_error")
+      XCTAssertEqual(error.code, "invalid_api_key")
+    }
+  }
+
+  // MARK: - Response format
+
+  func testResponseFormatTextSendsNoResponseFormat() async throws {
+    let server = makeServer()
+    prepareJsonResponse(server, content: "ok")
+
+    let model = server.chatModel("gpt-4o")
+    _ = try await model.generate(.init(messages: testPrompt, responseFormat: .text))
+
+    guard case let .object(object)? = server.calls.first?.requestBodyJSON else {
+      return XCTFail("Expected object body")
+    }
+    XCTAssertNil(object["response_format"])
+  }
+
+  func testResponseFormatJSONObject() async throws {
+    let server = makeServer()
+    prepareJsonResponse(server, content: "{}")
+
+    let model = server.chatModel("gpt-4o")
+    _ = try await model.generate(.init(messages: testPrompt, responseFormat: .json()))
+
+    guard case let .object(object)? = server.calls.first?.requestBodyJSON else {
+      return XCTFail("Expected object body")
+    }
+    XCTAssertEqual(object["response_format"], .object(["type": .string("json_object")]))
+  }
+
+  // MARK: - Provider options passthrough
+
+  func testPassMetadataAndStoreAndParallelToolCalls() async throws {
+    let server = makeServer()
+    prepareJsonResponse(server)
+
+    let model = server.chatModel(
+      "gpt-4o",
+      options: .init(
+        parallelToolCalls: true,
+        store: true,
+        metadata: ["key": "value"],
+        promptCacheKey: "pck"
+      )
+    )
+    _ = try await model.generate(.init(messages: testPrompt))
+
+    guard case let .object(object)? = server.calls.first?.requestBodyJSON else {
+      return XCTFail("Expected object body")
+    }
+    XCTAssertEqual(object["parallel_tool_calls"], .bool(true))
+    XCTAssertEqual(object["store"], .bool(true))
+    XCTAssertEqual(object["metadata"], .object(["key": .string("value")]))
+    XCTAssertEqual(object["prompt_cache_key"], .string("pck"))
+  }
+
+  // MARK: - Headers
+
+  func testPassesCustomHeaders() async throws {
+    let server = makeServer()
+    prepareJsonResponse(server, content: "ok")
+
+    let model = server.chatModel("gpt-4o")
+    _ = try await model.generate(.init(
+      messages: testPrompt,
+      headers: ["Custom-Request-Header": "request-header-value"]
+    ))
+
+    XCTAssertEqual(
+      server.calls.first?.requestHeaders["custom-request-header"],
+      "request-header-value"
+    )
+    XCTAssertEqual(server.calls.first?.requestHeaders["authorization"], "Bearer test-api-key")
+  }
+
+  // MARK: - Reasoning model gating
+
+  func testReasoningModelConvertsMaxOutputTokensToMaxCompletionTokens() async throws {
+    let server = makeServer()
+    prepareJsonResponse(server, content: "ok")
+
+    let model = server.chatModel(
+      "o3",
+      options: .init(maxCompletionTokens: 1000, forceReasoning: true)
+    )
+    _ = try await model.generate(.init(messages: testPrompt))
+
+    guard case let .object(object)? = server.calls.first?.requestBodyJSON else {
+      return XCTFail("Expected object body")
+    }
+    XCTAssertEqual(object["max_completion_tokens"], .number(1000))
+  }
+
+  func testSystemMessageModeOverrideRemovesSystemMessage() async throws {
+    let server = makeServer()
+    prepareJsonResponse(server, content: "ok")
+
+    let model = server.chatModel("gpt-4o", options: .init(systemMessageMode: .remove))
+    _ = try await model.generate(.init(messages: [.system("You are helpful"), .user("Hello")]))
+
+    guard case let .object(object)? = server.calls.first?.requestBodyJSON,
+          case let .array(messages)? = object["messages"] else {
+      return XCTFail("Expected messages array")
+    }
+    XCTAssertEqual(messages.count, 1)
+    if case let .object(first) = messages.first {
+      XCTAssertEqual(first["role"], .string("user"))
+    } else {
+      XCTFail("Expected user message")
+    }
+  }
 }

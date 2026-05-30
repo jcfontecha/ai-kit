@@ -2,11 +2,11 @@ import Foundation
 import AIKitProviders
 
 struct OpenAIUsage: Decodable {
-  var promptTokens: Int
+  var promptTokens: Int?
   var promptTokensDetails: OpenAIPromptTokensDetails?
-  var completionTokens: Int
+  var completionTokens: Int?
   var completionTokensDetails: OpenAICompletionTokensDetails?
-  var totalTokens: Int
+  var totalTokens: Int?
 
   enum CodingKeys: String, CodingKey {
     case promptTokens = "prompt_tokens"
