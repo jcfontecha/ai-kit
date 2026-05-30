@@ -17,6 +17,7 @@ let package = Package(
     .library(name: "AIKitReplicate", targets: ["AIKitReplicate"]),
     .library(name: "AIKitFal", targets: ["AIKitFal"]),
     .library(name: "AIKitApple", targets: ["AIKitApple"]),
+    .library(name: "AIKitMCP", targets: ["AIKitMCP"]),
     .library(name: "AIKitMacro", targets: ["AIKitMacro"]),
     .executable(name: "aikit-codegen", targets: ["AIKitCodegen"]),
   ],
@@ -60,6 +61,10 @@ let package = Package(
     .target(
       name: "AIKitApple",
       dependencies: ["AIKitProviders"]
+    ),
+    .target(
+      name: "AIKitMCP",
+      dependencies: ["AIKit", "AIKitProviders"]
     ),
     // Internal test utilities (not shipped as a product).
     .target(
@@ -113,6 +118,10 @@ let package = Package(
     .testTarget(
       name: "AIKitAppleTests",
       dependencies: ["AIKitApple", "AIKitProviders"]
+    ),
+    .testTarget(
+      name: "AIKitMCPTests",
+      dependencies: ["AIKitMCP", "AIKit", "AIKitProviders", "AIKitTestKit"]
     ),
     .testTarget(
       name: "AIKitMacroTests",

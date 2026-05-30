@@ -99,6 +99,9 @@ internal struct AnyTool: Sendable {
 internal protocol AnyToolBoxProtocol: Sendable {
   var tool: AnyTool { get }
   var kind: ToolKind { get }
+  /// Whether this tool carries a runtime (vs. compile-time) schema. Used to tag emitted
+  /// tool calls/results as `dynamic`. Statically-typed tools default to `false`.
+  var isDynamic: Bool { get }
   func decodeInput(from value: JSONValue) throws -> AnySendable
   func onInputStart(context: ToolContext) async
   func onInputDelta(_ delta: String, context: ToolContext) async
@@ -106,6 +109,10 @@ internal protocol AnyToolBoxProtocol: Sendable {
   func needsApproval(_ input: AnySendable, context: ToolContext) async -> Bool?
   func execute(_ input: AnySendable, context: ToolContext) async throws -> ToolExecution<AnySendable>?
   func encodeOutput(_ output: AnySendable) throws -> JSONValue
+}
+
+extension AnyToolBoxProtocol {
+  var isDynamic: Bool { false }
 }
 
 internal struct AnyToolBox<Input: Codable & Sendable, Output: Codable & Sendable>: AnyToolBoxProtocol {
@@ -204,6 +211,11 @@ public struct ToolRegistry: Sendable {
     _ tool: ToolSpec<I, O>
   ) {
     toolBoxesByName[id.name] = AnyToolBox(id: id, spec: tool)
+  }
+
+  /// Registers a dynamic (runtime-schema) tool under the given name.
+  public mutating func register(_ name: String, _ tool: DynamicToolSpec) {
+    toolBoxesByName[name] = DynamicToolBox(name: name, spec: tool)
   }
 
   public var definitions: [ToolDefinition] {

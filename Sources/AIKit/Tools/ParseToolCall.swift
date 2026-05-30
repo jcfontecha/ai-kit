@@ -128,6 +128,9 @@ private func parseToolCall(_ options: ParseToolCallOptions, allowRepair: Bool) a
   }
 
   let title = toolCall.title ?? toolBox.tool.title
+  // A locally-registered dynamic tool is called like any other tool, but its results must be
+  // surfaced as `dynamic` so clients can branch on it (e.g. MCP tools).
+  let dynamicFlag: Bool? = toolBox.isDynamic ? true : toolCall.dynamic
 
   let parseResult = parseInputJSONResult(toolCall.inputJSON)
   guard let parsedInput = parseResult.value else {
@@ -149,7 +152,7 @@ private func parseToolCall(_ options: ParseToolCallOptions, allowRepair: Bool) a
       toolName: toolName,
       input: .string(toolCall.inputJSON),
       providerExecuted: toolCall.providerExecuted,
-      dynamic: toolCall.dynamic,
+      dynamic: dynamicFlag,
       title: title,
       providerMetadata: toolCall.providerMetadata,
       invalid: true,
@@ -164,7 +167,7 @@ private func parseToolCall(_ options: ParseToolCallOptions, allowRepair: Bool) a
       toolName: toolName,
       input: parsedInput,
       providerExecuted: toolCall.providerExecuted,
-      dynamic: toolCall.dynamic,
+      dynamic: dynamicFlag,
       title: title,
       providerMetadata: toolCall.providerMetadata
     )
@@ -186,7 +189,7 @@ private func parseToolCall(_ options: ParseToolCallOptions, allowRepair: Bool) a
       toolName: toolName,
       input: parsedInput,
       providerExecuted: toolCall.providerExecuted,
-      dynamic: toolCall.dynamic,
+      dynamic: dynamicFlag,
       title: title,
       providerMetadata: toolCall.providerMetadata,
       invalid: true,
