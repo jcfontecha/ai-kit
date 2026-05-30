@@ -2,9 +2,17 @@ import Foundation
 
 public struct TranscriptionRequest: Sendable, Equatable {
   public var audio: Data
+  public var mediaType: String?
+  public var providerOptions: ProviderOptions?
 
-  public init(audio: Data) {
+  public init(
+    audio: Data,
+    mediaType: String? = nil,
+    providerOptions: ProviderOptions? = nil
+  ) {
     self.audio = audio
+    self.mediaType = mediaType
+    self.providerOptions = providerOptions
   }
 }
 

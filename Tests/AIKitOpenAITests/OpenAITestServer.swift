@@ -8,6 +8,7 @@ final class OpenAITestServer: @unchecked Sendable {
     case jsonValue(JSONValue)
     case streamChunks([String])
     case error(JSONValue)
+    case rawData(Data)
   }
 
   struct ResponseConfig {
@@ -110,6 +111,8 @@ final class OpenAITestServer: @unchecked Sendable {
       case .streamChunks(let chunks):
         let joined = chunks.joined()
         data = joined.data(using: .utf8) ?? Data()
+      case .rawData(let raw):
+        data = raw
       }
 
       let response = HTTPURLResponse(
@@ -154,6 +157,10 @@ extension OpenAITestServer {
   static let chatURL = "https://api.openai.com/v1/chat/completions"
   static let embeddingsURL = "https://api.openai.com/v1/embeddings"
   static let responsesURL = "https://api.openai.com/v1/responses"
+  static let imagesURL = "https://api.openai.com/v1/images/generations"
+  static let imageEditsURL = "https://api.openai.com/v1/images/edits"
+  static let audioTranscriptionsURL = "https://api.openai.com/v1/audio/transcriptions"
+  static let audioSpeechURL = "https://api.openai.com/v1/audio/speech"
 
   func responsesModel(
     _ modelId: OpenAIResponsesModelID,
@@ -190,6 +197,43 @@ extension OpenAITestServer {
       settings: settings,
       config: OpenAIEmbeddingConfig(
         provider: "openai.embedding",
+        headers: { ["Authorization": "Bearer test-api-key"] },
+        url: { path in "https://api.openai.com/v1\(path)" },
+        transport: transport()
+      )
+    )
+  }
+
+  func imageModel(_ modelId: OpenAIImageModelID) -> OpenAIImageModel {
+    OpenAIImageModel(
+      modelId: modelId,
+      config: OpenAIImageConfig(
+        provider: "openai.image",
+        headers: { ["Authorization": "Bearer test-api-key"] },
+        url: { path in "https://api.openai.com/v1\(path)" },
+        transport: transport(),
+        currentDate: { Date(timeIntervalSince1970: 0) }
+      )
+    )
+  }
+
+  func transcriptionModel(_ modelId: OpenAITranscriptionModelID) -> OpenAITranscriptionModel {
+    OpenAITranscriptionModel(
+      modelId: modelId,
+      config: OpenAITranscriptionConfig(
+        provider: "openai.transcription",
+        headers: { ["Authorization": "Bearer test-api-key"] },
+        url: { path in "https://api.openai.com/v1\(path)" },
+        transport: transport()
+      )
+    )
+  }
+
+  func speechModel(_ modelId: OpenAISpeechModelID) -> OpenAISpeechModel {
+    OpenAISpeechModel(
+      modelId: modelId,
+      config: OpenAISpeechConfig(
+        provider: "openai.speech",
         headers: { ["Authorization": "Bearer test-api-key"] },
         url: { path in "https://api.openai.com/v1\(path)" },
         transport: transport()

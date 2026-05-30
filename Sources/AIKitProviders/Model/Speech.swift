@@ -2,9 +2,14 @@ import Foundation
 
 public struct SpeechRequest: Sendable, Equatable {
   public var text: String
+  public var providerOptions: ProviderOptions?
 
-  public init(text: String) {
+  public init(
+    text: String,
+    providerOptions: ProviderOptions? = nil
+  ) {
     self.text = text
+    self.providerOptions = providerOptions
   }
 }
 
