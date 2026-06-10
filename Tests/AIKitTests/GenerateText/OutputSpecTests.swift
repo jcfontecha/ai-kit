@@ -734,4 +734,153 @@ final class OutputSpecTests: XCTestCase {
     let result = await output.parsePartial(text: "null")
     XCTAssertNil(result)
   }
+
+  // MARK: - TypedObject
+
+  func testOutputTypedObject_parseComplete_decodesObject() async throws {
+    let result = try await Output.typedObject(ExercisePayload.self)
+      .parseComplete(text: exercisePayloadFinalJSON, context: context)
+    XCTAssertEqual(result, ExercisePayload.expectedFinal)
+  }
+
+  func testOutputTypedObject_parsePartial_completeJSON() async {
+    let partial = await Output.typedObject(ExercisePayload.self)
+      .parsePartial(text: exercisePayloadFinalJSON)
+    XCTAssertEqual(partial?.name, ExercisePayload.expectedFinal.name)
+    XCTAssertEqual(partial?.about, ExercisePayload.expectedFinal.about)
+    XCTAssertEqual(partial?.steps, ExercisePayload.expectedFinal.steps)
+    XCTAssertEqual(partial?.primaryMuscles, ExercisePayload.expectedFinal.primaryMuscles)
+    XCTAssertEqual(partial?.defaultSets, 3)
+    XCTAssertNil(partial?.defaultWeight)
+  }
+
+  func testOutputTypedObject_parsePartial_emptyStringReturnsNil() async {
+    let result = await Output.typedObject(ExercisePayload.self).parsePartial(text: "")
+    XCTAssertNil(result)
+  }
+
+  func testOutputTypedObject_parsePartial_invalidReturnsNil() async {
+    let result = await Output.typedObject(ExercisePayload.self).parsePartial(text: "undefined")
+    XCTAssertNil(result)
+  }
+
+  /// Streams the payload one character at a time and checks every snapshot:
+  /// each decoded field must be a (string-)prefix of its final value, arrays
+  /// must be element-wise prefixes, and the decode must never trap. This is
+  /// the incremental-streaming behavior the single-delta E2E test never
+  /// exercised.
+  func testOutputTypedObject_parsePartial_prefixSweep() async throws {
+    let output = Output.typedObject(ExercisePayload.self)
+    let final = ExercisePayload.expectedFinal
+
+    var snapshots = 0
+    var sawTruncatedName = false
+    var sawTruncatedStep = false
+
+    for end in exercisePayloadFinalJSON.indices {
+      let prefix = String(exercisePayloadFinalJSON[..<end])
+      guard let partial = await output.parsePartial(text: prefix) else { continue }
+      snapshots += 1
+
+      if let name = partial.name {
+        XCTAssertTrue(
+          final.name.hasPrefix(name),
+          "name \"\(name)\" is not a prefix of \"\(final.name)\" for input prefix: \(prefix)"
+        )
+        if name != final.name { sawTruncatedName = true }
+      }
+      if let about = partial.about {
+        XCTAssertTrue(
+          final.about.hasPrefix(about),
+          "about \"\(about)\" is not a prefix of the final about for input prefix: \(prefix)"
+        )
+      }
+      if let steps = partial.steps {
+        XCTAssertLessThanOrEqual(steps.count, final.steps.count, "for input prefix: \(prefix)")
+        for (index, step) in steps.enumerated() {
+          if index < steps.count - 1 {
+            XCTAssertEqual(step, final.steps[index], "for input prefix: \(prefix)")
+          } else {
+            XCTAssertTrue(
+              final.steps[index].hasPrefix(step),
+              "step \"\(step)\" is not a prefix of \"\(final.steps[index])\" for input prefix: \(prefix)"
+            )
+            if step != final.steps[index] { sawTruncatedStep = true }
+          }
+        }
+      }
+      if let muscles = partial.primaryMuscles {
+        XCTAssertLessThanOrEqual(muscles.count, final.primaryMuscles.count)
+        for (index, muscle) in muscles.enumerated() {
+          XCTAssertTrue(final.primaryMuscles[index].hasPrefix(muscle), "for input prefix: \(prefix)")
+        }
+      }
+      if let sets = partial.defaultSets {
+        XCTAssertTrue("3".hasPrefix(String(sets)), "for input prefix: \(prefix)")
+      }
+    }
+
+    let full = await output.parsePartial(text: exercisePayloadFinalJSON)
+    XCTAssertEqual(full?.name, final.name)
+    XCTAssertEqual(full?.steps, final.steps)
+
+    XCTAssertGreaterThan(snapshots, 50, "expected partial snapshots throughout the stream")
+    XCTAssertTrue(sawTruncatedName, "the sweep never observed a mid-value name — test is not exercising truncation")
+    XCTAssertTrue(sawTruncatedStep, "the sweep never observed a mid-value step — test is not exercising truncation")
+  }
 }
+
+// MARK: - TypedObject fixture (hand-written SchemaProviding, mirrors @AIModel output)
+
+private struct ExercisePayload: SchemaProviding, Equatable {
+  let name: String
+  let about: String
+  let steps: [String]
+  let primaryMuscles: [String]
+  let defaultSets: Int?
+  let defaultWeight: Double?
+
+  struct Partial: Codable, Sendable, Equatable {
+    var name: String?
+    var about: String?
+    var steps: [String]?
+    var primaryMuscles: [String]?
+    var defaultSets: Int?
+    var defaultWeight: Double?
+  }
+
+  static var schema: ObjectSchema<ExercisePayload> {
+    .manual(
+      jsonSchema: .object(
+        properties: [
+          "name": .string(),
+          "about": .string(),
+          "steps": .array(items: .string()),
+          "primaryMuscles": .array(items: .string()),
+          "defaultSets": .integer(),
+          "defaultWeight": .number(),
+        ],
+        required: ["name", "about", "steps", "primaryMuscles"],
+        additionalProperties: false
+      ),
+      name: "ExercisePayload"
+    )
+  }
+
+  static let expectedFinal = ExercisePayload(
+    name: "Bulgarian Split Squat",
+    about: "A unilateral \"knee-dominant\" leg builder — brutal but effective 💪.",
+    steps: [
+      "Stand a stride length in front of a bench",
+      "Place your rear foot on the bench",
+      "Lower until the front thigh is parallel",
+      "Drive through the front heel to stand",
+    ],
+    primaryMuscles: ["quads", "glutes"],
+    defaultSets: 3,
+    defaultWeight: nil
+  )
+}
+
+private let exercisePayloadFinalJSON =
+  #"{"name":"Bulgarian Split Squat","about":"A unilateral \"knee-dominant\" leg builder — brutal but effective 💪.","steps":["Stand a stride length in front of a bench","Place your rear foot on the bench","Lower until the front thigh is parallel","Drive through the front heel to stand"],"primaryMuscles":["quads","glutes"],"defaultSets":3,"defaultWeight":null}"#

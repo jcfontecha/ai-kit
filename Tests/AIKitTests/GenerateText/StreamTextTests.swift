@@ -17,6 +17,30 @@ final class StreamTextTests: XCTestCase {
     let value: String
   }
 
+  private struct MiniExercise: SchemaProviding, Equatable {
+    let name: String
+    let steps: [String]
+
+    struct Partial: Codable, Sendable, Equatable {
+      var name: String?
+      var steps: [String]?
+    }
+
+    static var schema: ObjectSchema<MiniExercise> {
+      .manual(
+        jsonSchema: .object(
+          properties: [
+            "name": .string(),
+            "steps": .array(items: .string()),
+          ],
+          required: ["name", "steps"],
+          additionalProperties: false
+        ),
+        name: "MiniExercise"
+      )
+    }
+  }
+
   private static let usage = Usage(
     inputTokens: .init(total: 3, noCache: 3, cacheRead: nil, cacheWrite: nil),
     outputTokens: .init(total: 10, text: 10, reasoning: nil)
@@ -2334,6 +2358,44 @@ final class StreamTextTests: XCTestCase {
     let partials = try await AsyncTestHelpers.collect(result.partialOutputStream)
     XCTAssertFalse(partials.isEmpty)
     XCTAssertEqual(partials.last, [Item(value: "a"), Item(value: "b")])
+  }
+
+  func testPartialOutputStream_typedObject() async throws {
+    let model = makeModel { _ in
+      Self.makeStream([
+        .textStart(id: "1", providerMetadata: nil),
+        .textDelta(id: "1", text: "{\"na", providerMetadata: nil),
+        .textDelta(id: "1", text: "me\":\"Spl", providerMetadata: nil),
+        .textDelta(id: "1", text: "it Squat\",\"st", providerMetadata: nil),
+        .textDelta(id: "1", text: "eps\":[\"Step one", providerMetadata: nil),
+        .textDelta(id: "1", text: "\",\"Step two\"]", providerMetadata: nil),
+        .textDelta(id: "1", text: "}", providerMetadata: nil),
+        .textEnd(id: "1", providerMetadata: nil),
+        .finish(finishReason: .stop, usage: Self.usage, providerMetadata: nil),
+      ])
+    }
+
+    let result = streamText(
+      model: model,
+      prompt: "test-input",
+      output: Output.typedObject(MiniExercise.self)
+    )
+
+    let partials = try await AsyncTestHelpers.collect(result.partialOutputStream)
+    XCTAssertFalse(partials.isEmpty)
+    XCTAssertTrue(
+      partials.contains { $0.name == "Spl" },
+      "expected a snapshot with the mid-value truncated name"
+    )
+    XCTAssertTrue(
+      partials.contains { $0.steps == ["Step one"] },
+      "expected a snapshot with the truncated steps array"
+    )
+    XCTAssertEqual(partials.last?.name, "Split Squat")
+    XCTAssertEqual(partials.last?.steps, ["Step one", "Step two"])
+
+    let output = try await result.output
+    XCTAssertEqual(output, MiniExercise(name: "Split Squat", steps: ["Step one", "Step two"]))
   }
 
   func testPartialOutputStream_choice() async throws {
