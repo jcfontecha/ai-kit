@@ -534,23 +534,27 @@ public struct PromptInputField: View {
     text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false || attachments.isEmpty == false
   }
 
+  @Environment(\.chatTheme) private var chatTheme
+
   private var enabledControlForeground: Color {
+    if let themed = chatTheme.colors.sendButtonForeground { return themed }
     #if os(iOS) || os(tvOS) || os(watchOS)
-    Color(uiColor: .systemBackground)
+    return Color(uiColor: .systemBackground)
     #elseif os(macOS)
-    Color(nsColor: .windowBackgroundColor)
+    return Color(nsColor: .windowBackgroundColor)
     #else
-    Color.white
+    return Color.white
     #endif
   }
 
   private var enabledControlBackground: Color {
+    if let themed = chatTheme.colors.sendButtonBackground { return themed }
     #if os(iOS) || os(tvOS) || os(watchOS)
-    Color(uiColor: .label)
+    return Color(uiColor: .label)
     #elseif os(macOS)
-    Color(nsColor: .labelColor)
+    return Color(nsColor: .labelColor)
     #else
-    Color.black
+    return Color.black
     #endif
   }
 
@@ -741,7 +745,9 @@ private struct StandardPromptInput: View {
   var body: some View {
     GlassEffectContainer(spacing: plusButtonSpacing) {
       HStack(alignment: .bottom, spacing: plusButtonSpacing) {
-        plusButton
+        if configuration.onAdd != nil {
+          plusButton
+        }
         PromptInputField(
           text: configuration.text,
           status: configuration.status,
@@ -764,17 +770,14 @@ private struct StandardPromptInput: View {
   }
 
   private var plusButton: some View {
-    let enabled = configuration.onAdd != nil
     let action = configuration.onAdd ?? {}
 
     // NOTE: `glassEffect(.clear.interactive(), ...)` can consume touch events when nested in a `Button` label.
     // Use a tap gesture on the glass view itself so it both animates and triggers the action reliably.
     return plusButtonVisual
-      .allowsHitTesting(enabled)
       .onTapGesture(perform: action)
       .accessibilityAddTraits(.isButton)
       .accessibilityLabel("Add")
-      .opacity(enabled ? 1 : 0.45)
   }
 
   private var plusButtonVisual: some View {

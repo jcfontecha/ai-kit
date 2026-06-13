@@ -33,15 +33,34 @@ public struct ChatTheme: Sendable {
     }
   }
 
+  public struct Colors: Sendable {
+    public var sendButtonForeground: Color?
+    public var sendButtonBackground: Color?
+    public var userBubbleBackground: Color?
+
+    public init(
+      sendButtonForeground: Color? = nil,
+      sendButtonBackground: Color? = nil,
+      userBubbleBackground: Color? = nil
+    ) {
+      self.sendButtonForeground = sendButtonForeground
+      self.sendButtonBackground = sendButtonBackground
+      self.userBubbleBackground = userBubbleBackground
+    }
+  }
+
+  public var colors: Colors
   public var spacing: Spacing
   public var tool: Tool
   public var markdown: Markdown
 
   public init(
+    colors: Colors = .init(),
     spacing: Spacing = .init(),
     tool: Tool = .init(),
     markdown: Markdown = .init()
   ) {
+    self.colors = colors
     self.spacing = spacing
     self.tool = tool
     self.markdown = markdown

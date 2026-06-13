@@ -24,7 +24,7 @@ struct ReplicateImageModel: ImageModel, Sendable {
   let id: String
   let config: ReplicateImageModelConfig
   private var isFlux2Model: Bool { id.hasPrefix("black-forest-labs/flux-2-") }
-  private var isNanoBanana: Bool { id == "google/nano-banana" }
+  private var isNanoBananaModel: Bool { id.hasPrefix("google/nano-banana") }
   private var isOpenAIGPTImage15: Bool { id == "openai/gpt-image-1.5" }
 
   init(modelId: String, config: ReplicateImageModelConfig) {
@@ -58,8 +58,8 @@ struct ReplicateImageModel: ImageModel, Sendable {
       if isOpenAIGPTImage15 {
         // openai/gpt-image-1.5 expects: input_images: [uri...]
         imageInputs["input_images"] = .array(try files.map { .string(try convertFileToDataURI($0)) })
-      } else if isNanoBanana {
-        // google/nano-banana expects: image_input: [uri...]
+      } else if isNanoBananaModel {
+        // Nano Banana models expect: image_input: [uri...]
         imageInputs["image_input"] = .array(try files.map { .string(try convertFileToDataURI($0)) })
       } else if isFlux2Model {
         // black-forest-labs/flux-2-* expects: input_image, input_image_2... (max 8)
@@ -115,16 +115,16 @@ struct ReplicateImageModel: ImageModel, Sendable {
     var input: [String: JSONValue] = ["prompt": .string(request.prompt ?? "")]
     if isOpenAIGPTImage15 {
       input["number_of_images"] = .number(Double(request.n))
-    } else {
+    } else if isNanoBananaModel == false {
       input["num_outputs"] = .number(Double(request.n))
     }
     if let aspectRatio = request.aspectRatio {
       input["aspect_ratio"] = .string(aspectRatio)
     }
-    if let size = request.size, isOpenAIGPTImage15 == false {
+    if let size = request.size, isOpenAIGPTImage15 == false, isNanoBananaModel == false {
       input["size"] = .string(size)
     }
-    if let seed = request.seed, isOpenAIGPTImage15 == false {
+    if let seed = request.seed, isOpenAIGPTImage15 == false, isNanoBananaModel == false {
       input["seed"] = .number(Double(seed))
     }
 
