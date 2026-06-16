@@ -12,9 +12,33 @@ private struct MacroPerson: Sendable, Codable {
   let email: String?
 }
 
+@AIModel
+private struct MacroMultilineDescription: Sendable, Codable {
+  @Field(
+    "first part "
+      + "second part "
+      + "third part"
+  )
+  let field: String
+}
+
 final class AIKitMacroTests: XCTestCase {
   func testMacroCompiles() throws {
     _ = MacroPerson.schema
+  }
+
+  /// A multi-line `"a" + "b"` description must be concatenated into its value, not
+  /// leaked as `a" + "b` source text into the generated schema.
+  func testMultilineFieldDescriptionConcatenates() throws {
+    let json = MacroMultilineDescription.schema.jsonSchema.value
+    guard case let .object(properties)? = json["properties"],
+          case let .object(field)? = properties["field"],
+          case let .string(description)? = field["description"]
+    else {
+      return XCTFail("expected a string description on `field`")
+    }
+    XCTAssertEqual(description, "first part second part third part")
+    XCTAssertFalse(description.contains("+ \""), "description leaked concatenation source text")
   }
 }
 

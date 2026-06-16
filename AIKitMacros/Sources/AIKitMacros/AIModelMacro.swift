@@ -117,7 +117,7 @@ public struct AIModelMacro: ExtensionMacro, MemberMacro {
           }
         } else {
           if meta.description == nil {
-            meta.description = arg.expression.trimmedDescription.stringLiteralValue
+            meta.description = evaluateStringLiteral(arg.expression)
           }
         }
       }
@@ -125,6 +125,44 @@ public struct AIModelMacro: ExtensionMacro, MemberMacro {
       return meta
     }
 
+    return nil
+  }
+
+  /// Evaluate a string-literal expression — a single `"…"` literal or a chain of
+  /// `"…" + "…"` concatenations — to its actual String value. Without this, a
+  /// multi-line description written as `"a" + "b"` leaked the literal `" + "`
+  /// source text into the generated schema. Returns nil for anything that isn't a
+  /// plain (non-interpolated) string-literal expression.
+  private static func evaluateStringLiteral(_ expr: ExprSyntax) -> String? {
+    if let literal = expr.as(StringLiteralExprSyntax.self) {
+      var value = ""
+      for segment in literal.segments {
+        guard let plain = segment.as(StringSegmentSyntax.self) else { return nil } // interpolation
+        value += plain.content.text
+      }
+      return value
+    }
+    // In macro context operators aren't folded, so `"a" + "b" + …` arrives as a
+    // SequenceExpr: string operands interleaved with `+` binary operators.
+    if let sequence = expr.as(SequenceExprSyntax.self) {
+      var value = ""
+      for element in sequence.elements {
+        if let op = element.as(BinaryOperatorExprSyntax.self) {
+          guard op.operator.text == "+" else { return nil }
+          continue
+        }
+        guard let part = evaluateStringLiteral(element) else { return nil }
+        value += part
+      }
+      return value
+    }
+    // Defensive: a folded `"a" + "b"` (InfixOperatorExpr).
+    if let infix = expr.as(InfixOperatorExprSyntax.self),
+       infix.operator.trimmedDescription.trimmingCharacters(in: .whitespaces) == "+",
+       let left = evaluateStringLiteral(infix.leftOperand),
+       let right = evaluateStringLiteral(infix.rightOperand) {
+      return left + right
+    }
     return nil
   }
 
