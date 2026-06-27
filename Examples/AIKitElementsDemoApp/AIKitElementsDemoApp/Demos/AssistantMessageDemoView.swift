@@ -30,6 +30,8 @@ struct AssistantMessageDemoView: View {
         error: "Search failed"
       )
       .assistantMessageToolGrouping(groupTools ? .sameTool : nil)
+      .assistantMessageToolTransition(.opacity.combined(with: .move(edge: .top)))
+      .animation(.snappy, value: groupTools)
       .assistantMessageTextRenderer { text in
         Markdown(text)
       }

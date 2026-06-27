@@ -145,6 +145,14 @@ private struct AssistantMessageToolGroupingKey: EnvironmentKey {
   static let defaultValue: ToolGrouping? = nil
 }
 
+private struct ToolTransitionStore: @unchecked Sendable {
+  var value: AnyTransition
+}
+
+private struct AssistantMessageToolTransitionKey: EnvironmentKey {
+  static let defaultValue = ToolTransitionStore(value: .identity)
+}
+
 private struct AssistantMessageDefaultToolRendererKey: EnvironmentKey {
   static let defaultValue = ToolDefaultRendererStore(value: nil)
 }
@@ -193,6 +201,11 @@ private extension EnvironmentValues {
   var assistantMessageToolGrouping: ToolGrouping? {
     get { self[AssistantMessageToolGroupingKey.self] }
     set { self[AssistantMessageToolGroupingKey.self] = newValue }
+  }
+
+  var assistantMessageToolTransition: AnyTransition {
+    get { self[AssistantMessageToolTransitionKey.self].value }
+    set { self[AssistantMessageToolTransitionKey.self] = .init(value: newValue) }
   }
 
   var assistantMessageDefaultToolRenderer: ToolDefaultRenderer? {
@@ -247,6 +260,15 @@ public extension View {
   /// Pass `nil` (the default) to render every tool call on its own row.
   func assistantMessageToolGrouping(_ grouping: ToolGrouping?) -> some View {
     environment(\.assistantMessageToolGrouping, grouping)
+  }
+
+  /// Transition applied to tool-call rows (individual and grouped) as they are
+  /// inserted or removed. Defaults to `.identity` (no transition). The host must
+  /// also drive an animated transaction — e.g. `.animation(_, value:)` on the
+  /// message — for the transition to actually play; streamed part mutations are
+  /// not wrapped in an animation by the framework.
+  func assistantMessageToolTransition(_ transition: AnyTransition) -> some View {
+    environment(\.assistantMessageToolTransition, transition)
   }
 
   /// Replaces the collapsed header of a grouped tool run so it can match the
@@ -385,6 +407,7 @@ public struct AssistantMessage: View {
   @Environment(\.assistantMessageReasoningTextRenderer) private var environmentReasoningTextRenderer
   @Environment(\.assistantMessageReasoningHeaderRenderer) private var environmentReasoningHeaderRenderer
   @Environment(\.assistantMessageToolGroupHeaderRenderer) private var environmentToolGroupHeaderRenderer
+  @Environment(\.assistantMessageToolTransition) private var environmentToolTransition
   @Environment(\.assistantMessageOnCopy) private var environmentOnCopy
   @Environment(\.assistantMessageOnRegenerate) private var environmentOnRegenerate
   @Environment(\.chatTheme) private var chatTheme
@@ -434,6 +457,7 @@ public struct AssistantMessage: View {
             toolDefaultRenderer: resolvedToolDefaultRenderer,
             onToolApprovalResponse: resolvedOnToolApprovalResponse
           )
+          .transition(environmentToolTransition)
 
         case .toolGroup(let tools):
           ToolGroupPartView(
@@ -452,6 +476,7 @@ public struct AssistantMessage: View {
               )
             )
           }
+          .transition(environmentToolTransition)
 
         case .fileGroup(let attachments):
           FileAttachmentsRow(attachments: attachments)
