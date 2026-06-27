@@ -32,6 +32,7 @@ struct ReplicateImageModel: ImageModel, Sendable {
   private var isFlux2Model: Bool { id.hasPrefix("black-forest-labs/flux-2-") }
   private var isNanoBananaModel: Bool { id.hasPrefix("google/nano-banana") }
   private var isOpenAIGPTImageModel: Bool { id == "openai/gpt-image-1.5" || id == "openai/gpt-image-2" }
+  private var isIdeogramModel: Bool { id.hasPrefix("ideogram-ai/") }
 
   init(modelId: String, config: ReplicateImageModelConfig) {
     self.id = modelId
@@ -118,10 +119,16 @@ struct ReplicateImageModel: ImageModel, Sendable {
       }
     }
 
-    var input: [String: JSONValue] = ["prompt": .string(request.prompt ?? "")]
+    // Ideogram models use a structured `json_prompt` (supplied via providerOptions) and
+    // reject requests that include both `prompt` and `json_prompt` ("Supply exactly one").
+    let usesJSONPrompt = isIdeogramModel && inputOptions["json_prompt"] != nil
+    var input: [String: JSONValue] = [:]
+    if usesJSONPrompt == false {
+      input["prompt"] = .string(request.prompt ?? "")
+    }
     if isOpenAIGPTImageModel {
       input["number_of_images"] = .number(Double(request.n))
-    } else if isNanoBananaModel == false {
+    } else if isNanoBananaModel == false, isIdeogramModel == false {
       input["num_outputs"] = .number(Double(request.n))
     }
     if let aspectRatio = request.aspectRatio {
@@ -130,7 +137,7 @@ struct ReplicateImageModel: ImageModel, Sendable {
     if let size = request.size, isOpenAIGPTImageModel == false, isNanoBananaModel == false {
       input["size"] = .string(size)
     }
-    if let seed = request.seed, isOpenAIGPTImageModel == false, isNanoBananaModel == false {
+    if let seed = request.seed, isOpenAIGPTImageModel == false, isNanoBananaModel == false, isIdeogramModel == false {
       input["seed"] = .number(Double(seed))
     }
 
