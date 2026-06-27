@@ -206,6 +206,7 @@ enum OutputParsing {
     case finish
     case insideString
     case insideStringEscape
+    case insideStringUnicode
     case insideLiteral
     case insideNumber
     case insideObjectStart
@@ -224,6 +225,7 @@ enum OutputParsing {
     var stack: [FixState] = [.root]
     var lastValidIndex: Int = -1
     var literalStart: Int? = nil
+    var unicodeHexRemaining = 0
 
     func processValueStart(char: Character, i: Int, swapState: FixState) {
       switch char {
@@ -355,7 +357,6 @@ enum OutputParsing {
           lastValidIndex = i
           _ = stack.popLast()
         default:
-          lastValidIndex = i
           processValueStart(char: char, i: i, swapState: .insideArrayAfterValue)
         }
 
@@ -376,7 +377,23 @@ enum OutputParsing {
 
       case .insideStringEscape:
         _ = stack.popLast()
-        lastValidIndex = i
+        if char == "u" {
+          stack.append(.insideStringUnicode)
+          unicodeHexRemaining = 4
+        } else {
+          lastValidIndex = i
+        }
+
+      case .insideStringUnicode:
+        if char.isHexDigit {
+          unicodeHexRemaining -= 1
+          if unicodeHexRemaining == 0 {
+            _ = stack.popLast()
+            lastValidIndex = i
+          }
+        } else {
+          _ = stack.popLast()
+        }
 
       case .insideNumber:
         switch char {
