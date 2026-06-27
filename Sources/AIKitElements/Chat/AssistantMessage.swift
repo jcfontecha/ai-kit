@@ -27,6 +27,15 @@ public typealias ToolRenderer = (_ context: ToolRenderContext) -> AnyView
 public typealias ReasoningTextRenderer = (_ text: String) -> AnyView
 public typealias AssistantTextRenderer = (_ text: String) -> AnyView
 public typealias ToolDefaultRenderer = (_ context: ToolDefaultRenderContext) -> AnyView
+/// Replaces the reasoning disclosure's collapsed header label (icon + "Thought
+/// for…" text). Lets a host app match reasoning to its tool-call rows instead of
+/// the default brain glyph + secondary text.
+public typealias ReasoningHeaderRenderer = (_ isStreaming: Bool, _ duration: Int?) -> AnyView
+/// Replaces the collapsed header of a grouped tool run (e.g. "Found exercises"
+/// ×12) so a host app can match it to its own tool-call rows instead of the
+/// default wrench glyph + glass surface. Receives the grouped calls and the
+/// resolved status strings.
+public typealias ToolGroupHeaderRenderer = (_ tools: [ChatToolPart], _ statusStrings: ToolStatusStrings) -> AnyView
 
 public struct ToolStatusStrings: Hashable, Sendable {
   public var loading: String
@@ -44,6 +53,32 @@ public struct ToolStatusStrings: Hashable, Sendable {
     self.success = success
     self.error = error
   }
+}
+
+/// Controls whether consecutive tool-call parts collapse into a single
+/// badged, expandable row (e.g. "Found exercises" ×12) instead of stacking.
+///
+/// Grouping is opt-in: absent this configuration each tool call renders as its
+/// own row exactly as before. Apply via `assistantMessageToolGrouping(_:)`.
+public struct ToolGrouping: Sendable {
+  /// Minimum run length before a group collapses. Runs shorter than this render
+  /// as individual rows. Clamped to at least 2.
+  public var minimumCount: Int
+
+  /// Returns `true` when an adjacent pair of tool calls belongs in the same group.
+  /// Only consecutive parts are ever compared.
+  public var canGroup: @Sendable (_ previous: ChatToolPart, _ next: ChatToolPart) -> Bool
+
+  public init(
+    minimumCount: Int = 2,
+    canGroup: @escaping @Sendable (_ previous: ChatToolPart, _ next: ChatToolPart) -> Bool
+  ) {
+    self.minimumCount = max(2, minimumCount)
+    self.canGroup = canGroup
+  }
+
+  /// Collapses runs of consecutive calls to the same tool name.
+  public static let sameTool = ToolGrouping { $0.toolName == $1.toolName }
 }
 
 public struct ToolDefaultRenderContext {
@@ -86,6 +121,14 @@ private struct ReasoningTextRendererStore: @unchecked Sendable {
   var value: ReasoningTextRenderer?
 }
 
+private struct ReasoningHeaderRendererStore: @unchecked Sendable {
+  var value: ReasoningHeaderRenderer?
+}
+
+private struct ToolGroupHeaderRendererStore: @unchecked Sendable {
+  var value: ToolGroupHeaderRenderer?
+}
+
 private struct AssistantMessageToolRenderersKey: EnvironmentKey {
   static let defaultValue = ToolRendererStore(value: [:])
 }
@@ -96,6 +139,10 @@ private struct AssistantMessageToolStatusStringsKey: EnvironmentKey {
 
 private struct AssistantMessageDefaultToolStatusStringsKey: EnvironmentKey {
   static let defaultValue: ToolStatusStrings? = nil
+}
+
+private struct AssistantMessageToolGroupingKey: EnvironmentKey {
+  static let defaultValue: ToolGrouping? = nil
 }
 
 private struct AssistantMessageDefaultToolRendererKey: EnvironmentKey {
@@ -112,6 +159,14 @@ private struct AssistantMessageTextRendererKey: EnvironmentKey {
 
 private struct AssistantMessageReasoningTextRendererKey: EnvironmentKey {
   static let defaultValue = ReasoningTextRendererStore(value: nil)
+}
+
+private struct AssistantMessageReasoningHeaderRendererKey: EnvironmentKey {
+  static let defaultValue = ReasoningHeaderRendererStore(value: nil)
+}
+
+private struct AssistantMessageToolGroupHeaderRendererKey: EnvironmentKey {
+  static let defaultValue = ToolGroupHeaderRendererStore(value: nil)
 }
 
 private extension EnvironmentValues {
@@ -135,6 +190,11 @@ private extension EnvironmentValues {
     set { self[AssistantMessageDefaultToolStatusStringsKey.self] = newValue }
   }
 
+  var assistantMessageToolGrouping: ToolGrouping? {
+    get { self[AssistantMessageToolGroupingKey.self] }
+    set { self[AssistantMessageToolGroupingKey.self] = newValue }
+  }
+
   var assistantMessageDefaultToolRenderer: ToolDefaultRenderer? {
     get { self[AssistantMessageDefaultToolRendererKey.self].value }
     set { self[AssistantMessageDefaultToolRendererKey.self] = .init(value: newValue) }
@@ -154,6 +214,16 @@ private extension EnvironmentValues {
     get { self[AssistantMessageReasoningTextRendererKey.self].value }
     set { self[AssistantMessageReasoningTextRendererKey.self] = .init(value: newValue) }
   }
+
+  var assistantMessageReasoningHeaderRenderer: ReasoningHeaderRenderer? {
+    get { self[AssistantMessageReasoningHeaderRendererKey.self].value }
+    set { self[AssistantMessageReasoningHeaderRendererKey.self] = .init(value: newValue) }
+  }
+
+  var assistantMessageToolGroupHeaderRenderer: ToolGroupHeaderRenderer? {
+    get { self[AssistantMessageToolGroupHeaderRendererKey.self].value }
+    set { self[AssistantMessageToolGroupHeaderRendererKey.self] = .init(value: newValue) }
+  }
 }
 
 public extension View {
@@ -171,6 +241,27 @@ public extension View {
 
   func assistantMessageDefaultToolStatusStrings(_ statusStrings: ToolStatusStrings) -> some View {
     environment(\.assistantMessageDefaultToolStatusStrings, statusStrings)
+  }
+
+  /// Collapses consecutive tool-call rows into a single badged, expandable row.
+  /// Pass `nil` (the default) to render every tool call on its own row.
+  func assistantMessageToolGrouping(_ grouping: ToolGrouping?) -> some View {
+    environment(\.assistantMessageToolGrouping, grouping)
+  }
+
+  /// Replaces the collapsed header of a grouped tool run so it can match the
+  /// host app's tool-call rows. Defaults to the built-in wrench glyph + glass
+  /// surface when unset.
+  func assistantMessageToolGroupHeaderRenderer(_ renderer: @escaping ToolGroupHeaderRenderer) -> some View {
+    environment(\.assistantMessageToolGroupHeaderRenderer, renderer)
+  }
+
+  func assistantMessageToolGroupHeaderRenderer<HeaderView: View>(
+    @ViewBuilder _ renderer: @escaping (_ tools: [ChatToolPart], _ statusStrings: ToolStatusStrings) -> HeaderView
+  ) -> some View {
+    assistantMessageToolGroupHeaderRenderer { tools, statusStrings in
+      AnyView(renderer(tools, statusStrings))
+    }
   }
 
   func assistantMessageToolStatusStrings(
@@ -231,6 +322,21 @@ public extension View {
       AnyView(renderer(text))
     }
   }
+
+  /// Replaces the reasoning disclosure's collapsed header (icon + label) so it
+  /// can match the host app's tool-call rows. Defaults to the built-in brain
+  /// glyph + secondary text when unset.
+  func assistantMessageReasoningHeaderRenderer(_ renderer: @escaping ReasoningHeaderRenderer) -> some View {
+    environment(\.assistantMessageReasoningHeaderRenderer, renderer)
+  }
+
+  func assistantMessageReasoningHeaderRenderer<HeaderView: View>(
+    @ViewBuilder _ renderer: @escaping (_ isStreaming: Bool, _ duration: Int?) -> HeaderView
+  ) -> some View {
+    assistantMessageReasoningHeaderRenderer { isStreaming, duration in
+      AnyView(renderer(isStreaming, duration))
+    }
+  }
 }
 
 private struct AssistantMessageToolRendererModifier: ViewModifier {
@@ -272,10 +378,13 @@ public struct AssistantMessage: View {
   @Environment(\.assistantMessageToolRenderers) private var environmentToolRenderers
   @Environment(\.assistantMessageToolStatusStrings) private var environmentToolStatusStrings
   @Environment(\.assistantMessageDefaultToolStatusStrings) private var environmentDefaultToolStatusStrings
+  @Environment(\.assistantMessageToolGrouping) private var environmentToolGrouping
   @Environment(\.assistantMessageDefaultToolRenderer) private var environmentDefaultToolRenderer
   @Environment(\.assistantMessageOnToolApprovalResponse) private var environmentOnToolApprovalResponse
   @Environment(\.assistantMessageTextRenderer) private var environmentTextRenderer
   @Environment(\.assistantMessageReasoningTextRenderer) private var environmentReasoningTextRenderer
+  @Environment(\.assistantMessageReasoningHeaderRenderer) private var environmentReasoningHeaderRenderer
+  @Environment(\.assistantMessageToolGroupHeaderRenderer) private var environmentToolGroupHeaderRenderer
   @Environment(\.assistantMessageOnCopy) private var environmentOnCopy
   @Environment(\.assistantMessageOnRegenerate) private var environmentOnRegenerate
   @Environment(\.chatTheme) private var chatTheme
@@ -299,7 +408,7 @@ public struct AssistantMessage: View {
     let resolvedOnRegenerate = environmentOnRegenerate
 
     VStack(alignment: .leading, spacing: 14) {
-      ForEach(groupedParts(parts)) { part in
+      ForEach(groupedParts(parts, grouping: environmentToolGrouping)) { part in
         switch part.kind {
         case .text(let text):
           textView(text)
@@ -307,7 +416,11 @@ public struct AssistantMessage: View {
 
         case .reasoning(let text, let isStreaming):
           if resolvedShowsReasoning {
-            ReasoningDisclosure(isStreaming: isStreaming, defaultOpen: false) {
+            ReasoningDisclosure(
+              isStreaming: isStreaming,
+              defaultOpen: false,
+              header: environmentReasoningHeaderRenderer
+            ) {
               reasoningTextView(text)
             }
           }
@@ -321,6 +434,24 @@ public struct AssistantMessage: View {
             toolDefaultRenderer: resolvedToolDefaultRenderer,
             onToolApprovalResponse: resolvedOnToolApprovalResponse
           )
+
+        case .toolGroup(let tools):
+          ToolGroupPartView(
+            tools: tools,
+            statusStrings: resolvedToolStatusStrings[tools.first?.toolName ?? ""] ?? resolvedToolDefaultStatusStrings,
+            header: environmentToolGroupHeaderRenderer
+          ) { tool in
+            AnyView(
+              toolView(
+                tool,
+                toolRenderers: resolvedToolRenderers,
+                toolStatusStrings: resolvedToolStatusStrings,
+                toolDefaultStatusStrings: resolvedToolDefaultStatusStrings,
+                toolDefaultRenderer: resolvedToolDefaultRenderer,
+                onToolApprovalResponse: resolvedOnToolApprovalResponse
+              )
+            )
+          }
 
         case .fileGroup(let attachments):
           FileAttachmentsRow(attachments: attachments)
@@ -469,6 +600,7 @@ private struct GroupedPart: Identifiable {
     case sourceURL(url: String, title: String?)
     case sourceDocument(title: String, filename: String?, mediaType: String)
     case tool(ChatToolPart)
+    case toolGroup([ChatToolPart])
     case data(type: String, id: String?, value: JSONValue)
   }
 
@@ -476,10 +608,11 @@ private struct GroupedPart: Identifiable {
   var kind: Kind
 }
 
-private func groupedParts(_ parts: [ChatMessagePart]) -> [GroupedPart] {
+private func groupedParts(_ parts: [ChatMessagePart], grouping: ToolGrouping?) -> [GroupedPart] {
   var result: [GroupedPart] = []
   var fileBuffer: [FileAttachment] = []
   var fileGroupIndex = 0
+  var toolBuffer: [(idx: Int, tool: ChatToolPart)] = []
 
   func flushFiles() {
     guard fileBuffer.isEmpty == false else { return }
@@ -488,13 +621,40 @@ private func groupedParts(_ parts: [ChatMessagePart]) -> [GroupedPart] {
     fileBuffer.removeAll(keepingCapacity: true)
   }
 
+  func flushTools() {
+    guard let first = toolBuffer.first else { return }
+    if let grouping, toolBuffer.count >= grouping.minimumCount {
+      result.append(.init(id: "tools-\(first.idx)", kind: .toolGroup(toolBuffer.map(\.tool))))
+    } else {
+      for entry in toolBuffer {
+        result.append(.init(id: "part-\(entry.idx)", kind: .tool(entry.tool)))
+      }
+    }
+    toolBuffer.removeAll(keepingCapacity: true)
+  }
+
+  func bufferTool(idx: Int, tool: ChatToolPart) {
+    if let grouping, let last = toolBuffer.last, grouping.canGroup(last.tool, tool) {
+      toolBuffer.append((idx, tool))
+    } else {
+      flushTools()
+      toolBuffer.append((idx, tool))
+    }
+  }
+
     for (idx, part) in parts.enumerated() {
       switch part {
     case .file(let file):
+      flushTools()
       fileBuffer.append(.init(id: "file-\(idx)", filename: file.filename, mediaType: file.mediaType))
+
+    case .tool(let tool):
+      flushFiles()
+      bufferTool(idx: idx, tool: tool)
 
     default:
       flushFiles()
+      flushTools()
       let id = "part-\(idx)"
       switch part {
       case .stepStart:
@@ -516,16 +676,15 @@ private func groupedParts(_ parts: [ChatMessagePart]) -> [GroupedPart] {
         result.append(.init(id: id, kind: .sourceURL(url: source.url, title: source.title)))
       case .sourceDocument(let doc):
         result.append(.init(id: id, kind: .sourceDocument(title: doc.title, filename: doc.filename, mediaType: doc.mediaType)))
-      case .tool(let tool):
-        result.append(.init(id: id, kind: .tool(tool)))
       case .data(let data):
         result.append(.init(id: id, kind: .data(type: data.type, id: data.id, value: data.data)))
-      case .file:
+      case .file, .tool:
         break
       }
     }
   }
   flushFiles()
+  flushTools()
   return result
 }
 

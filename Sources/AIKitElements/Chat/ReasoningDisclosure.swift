@@ -10,6 +10,9 @@ public struct ReasoningDisclosure<Content: View>: View {
   public var onOpenChange: ((_ open: Bool) -> Void)?
   public var duration: Binding<Int?>?
   public var getThinkingMessage: ThinkingMessageProvider?
+  /// Replaces the collapsed header label entirely (icon + text). When nil the
+  /// built-in brain glyph + thinking message is used.
+  public var header: ReasoningHeaderRenderer?
 
   @ViewBuilder public var content: () -> Content
 
@@ -30,6 +33,7 @@ public struct ReasoningDisclosure<Content: View>: View {
     onOpenChange: ((_ open: Bool) -> Void)? = nil,
     duration: Binding<Int?>? = nil,
     getThinkingMessage: ThinkingMessageProvider? = nil,
+    header: ReasoningHeaderRenderer? = nil,
     @ViewBuilder content: @escaping () -> Content
   ) {
     self.isStreaming = isStreaming
@@ -38,6 +42,7 @@ public struct ReasoningDisclosure<Content: View>: View {
     self.onOpenChange = onOpenChange
     self.duration = duration
     self.getThinkingMessage = getThinkingMessage
+    self.header = header
     self.content = content
     self._isOpenState = State(initialValue: open?.wrappedValue ?? defaultOpen)
     self._durationState = State(initialValue: duration?.wrappedValue)
@@ -52,15 +57,20 @@ public struct ReasoningDisclosure<Content: View>: View {
         .foregroundColor(.secondary)
         .opacity(0.90)
     } label: {
-      HStack(spacing: 8) {
-        Image(systemName: "brain")
-        thinkingMessage
-          .lineLimit(1)
-        Spacer(minLength: 0)
+      if let header {
+        header(isStreaming, resolvedDuration)
+          .contentShape(Rectangle())
+      } else {
+        HStack(spacing: 8) {
+          Image(systemName: "brain")
+          thinkingMessage
+            .lineLimit(1)
+          Spacer(minLength: 0)
+        }
+        .font(.body)
+        .foregroundStyle(.secondary)
+        .contentShape(Rectangle())
       }
-      .font(.body)
-      .foregroundStyle(.secondary)
-      .contentShape(Rectangle())
     }
     .tint(.secondary)
     .onAppear {

@@ -6,6 +6,7 @@ import AIKitElements
 
 struct AssistantMessageDemoView: View {
   @State private var showsReasoning: Bool = true
+  @State private var groupTools: Bool = true
   @State private var approvalResponses: [String: (approved: Bool, reason: String?)] = [:]
 
   var body: some View {
@@ -13,8 +14,35 @@ struct AssistantMessageDemoView: View {
       Toggle("Show reasoning", isOn: $showsReasoning)
         .font(.subheadline)
 
+      Text("Grouped tool calls (consecutive same tool)")
+        .font(.headline)
+
+      Toggle("Group consecutive tool calls", isOn: $groupTools)
+        .font(.subheadline)
+
+      AssistantMessage(
+        parts: groupedDemoParts
+      )
+      .assistantMessageToolStatusStrings(
+        "search_exercises",
+        loading: "Searching for exercises…",
+        success: "Found exercises",
+        error: "Search failed"
+      )
+      .assistantMessageToolGrouping(groupTools ? .sameTool : nil)
+      .assistantMessageTextRenderer { text in
+        Markdown(text)
+      }
+      .assistantMessageReasoningTextRenderer { text in
+        Markdown(text)
+          .markdownTextStyle { ForegroundColor(.secondary) }
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .assistantMessageShowsReasoning(showsReasoning)
+
       Text("Default tool renderer + custom tool override")
         .font(.headline)
+        .padding(.top, 8)
 
       AssistantMessage(
         parts: demoParts
@@ -102,6 +130,60 @@ struct AssistantMessageDemoView: View {
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var groupedDemoParts: [ChatMessagePart] {
+    func search(_ index: Int, _ query: String) -> ChatMessagePart {
+      .tool(.init(
+        toolCallID: "exercise-search-\(index)",
+        toolName: "search_exercises",
+        title: "search_exercises",
+        input: .object(["query": .string(query)]),
+        output: .object(["matches": .number(Double(3 + index % 4))]),
+        state: .outputAvailable(preliminary: false)
+      ))
+    }
+
+    var parts: [ChatMessagePart] = [
+      .text(.init(
+        id: "grouped-text-1",
+        text: "Building a **full-body superset routine**. Let me find exercises for each muscle group.",
+        state: .done
+      )),
+    ]
+
+    let firstBatch = ["chest press", "incline press", "chest fly", "push-up", "dip", "cable crossover", "squat", "leg press"]
+    for (offset, query) in firstBatch.enumerated() {
+      parts.append(search(offset, query))
+    }
+
+    parts.append(.reasoning(.init(
+      id: "grouped-reasoning-1",
+      text: "I have the push movements. Now I’ll pull from the back and arm catalog.",
+      state: .done
+    )))
+
+    let secondBatch = ["lat pulldown", "barbell row", "face pull", "bicep curl", "hammer curl"]
+    for (offset, query) in secondBatch.enumerated() {
+      parts.append(search(firstBatch.count + offset, query))
+    }
+
+    parts.append(.tool(.init(
+      toolCallID: "create-routine-1",
+      toolName: "create_routine",
+      title: "create_routine",
+      input: .object(["name": .string("Full Body Superset")]),
+      output: .object(["exercises": .number(7)]),
+      state: .outputAvailable(preliminary: false)
+    )))
+
+    parts.append(.text(.init(
+      id: "grouped-text-2",
+      text: "Done — your **Full Body Superset** routine is ready with 7 exercises.",
+      state: .done
+    )))
+
+    return parts
   }
 
   private var demoParts: [ChatMessagePart] {
