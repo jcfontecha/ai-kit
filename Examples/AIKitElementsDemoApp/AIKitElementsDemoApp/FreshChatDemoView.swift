@@ -16,7 +16,6 @@ struct FreshChatDemoView: View {
   @State private var text: String = ""
   @State private var attachments: [ChatFilePart] = []
   @State private var isShowingAddSheet: Bool = false
-  @State private var sendTrigger: Int = 0
   @State private var editingUserMessageID: String? = nil
 
   var body: some View {
@@ -38,7 +37,7 @@ struct FreshChatDemoView: View {
   @ViewBuilder
   private var content: some View {
     let base = ZStack {
-      Conversation(messages: store.messages, status: store.status, sendTrigger: sendTrigger)
+      Conversation(messages: store.messages, status: store.status)
         .conversationAnchorsNewUserMessagesToTop(true)
         .conversationDebugOverlayEnabled(true)
         .conversationOnEditUserMessage { message in
@@ -78,7 +77,6 @@ struct FreshChatDemoView: View {
           },
           showsScrollToLatestButton: true,
           onSend: { message in
-            sendTrigger += 1
             store.send(text: message, attachments: attachments)
             attachments.removeAll()
           },
@@ -117,7 +115,6 @@ struct FreshChatDemoView: View {
         attachments.removeAll()
       },
       onCommit: { updatedText in
-        sendTrigger += 1
         store.replaceUserMessage(messageID: messageID, text: updatedText, attachments: attachments)
         editingUserMessageID = nil
         attachments.removeAll()

@@ -31,20 +31,18 @@ struct ChatSheetDemoView: View {
 private struct SheetChatConversationView: View {
   @State private var messages: [ChatMessage] = DemoContent.performanceMessages
   @State private var text: String = ""
-  @State private var sendTrigger: Int = 0
 
   @Environment(\.dismiss) private var dismiss
 
   var body: some View {
     NavigationStack {
-      Conversation(messages: messages, status: .ready, sendTrigger: sendTrigger)
+      Conversation(messages: messages, status: .ready)
         .conversationAnchorsNewUserMessagesToTop(true)
         .chatComposer(
           text: $text,
           status: .ready,
           showsScrollToLatestButton: true,
           onSend: { message in
-            sendTrigger += 1
             let messageID = UUID().uuidString
             messages.append(ChatMessage(
               id: messageID,

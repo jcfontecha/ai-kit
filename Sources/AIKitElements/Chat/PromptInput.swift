@@ -1099,9 +1099,7 @@ private struct ChatComposerModifier: ViewModifier {
           }
       }
       .overlay(alignment: .bottom) {
-        // Suppress during `.submitted` to avoid a brief flash while the conversation is pinning + calibrating
-        // reserved tail space immediately after send.
-        if showsScrollToLatestButton, isAtLatestForScrollButton == false, status != .submitted {
+        if showsScrollToLatestButton, isAtLatestForScrollButton == false {
           Button {
             scrollToLatestRequest += 1
           } label: {
@@ -1155,7 +1153,7 @@ private struct ChatComposerModifier: ViewModifier {
           }
       }
       .overlay(alignment: .bottom) {
-        if showsScrollToLatestButton, isAtLatestForScrollButton == false, status != .submitted {
+        if showsScrollToLatestButton, isAtLatestForScrollButton == false {
           Button {
             scrollToLatestRequest += 1
           } label: {
