@@ -123,12 +123,41 @@ private func anchoredCore() -> ConversationScrollerCore {
 @Test func churn_offTheEndRepinsInsteadOfReleasing() {
   // Keyboard churn from the real trace: container shrinks 660 -> 616 while
   // following; the frame is off the end but layout changed, so it re-pins.
+  // Content height is unchanged (pure viewport churn), so the pin animates and
+  // the conversation glides up with the keyboard instead of snapping.
   var core = ConversationScrollerCore()
   core.endMarkerContentMaxY = 927
   core.geometry = geometry(offsetY: 151, contentHeight: 927, containerHeight: 660, topInset: 116, bottomInset: 98)
   core.mode = .followingBottom
   let command = core.handleGeometryChange(
     geometry(offsetY: 151, contentHeight: 927, containerHeight: 616, topInset: 116, bottomInset: 142),
+    totalDisplayCount: 0
+  )
+  #expect(command == .toEnd(animated: true))
+  #expect(core.mode == .followingBottom)
+}
+
+@Test func churn_composerGrowthPinIsAnimated() {
+  // The composer grows several lines: the bottom content inset rises and the
+  // container shrinks with no content growth. The re-pin animates so the
+  // conversation glides up rather than snapping under the growing composer.
+  var core = coreAtEnd()
+  let command = core.handleGeometryChange(
+    geometry(offsetY: 400, contentHeight: 1000, containerHeight: 560, bottomInset: 64),
+    totalDisplayCount: 0
+  )
+  #expect(command == .toEnd(animated: true))
+  #expect(core.mode == .followingBottom)
+}
+
+@Test func churn_contentGrowthPinIsInstant() {
+  // Streaming grew the content (contentHeight estimate rose, marker moved down)
+  // off the end while following: the re-pin is instant so each streamed tick
+  // snaps to the live edge without an animation stutter.
+  var core = coreAtEnd()
+  core.endMarkerContentMaxY = 1200
+  let command = core.handleGeometryChange(
+    geometry(offsetY: 400, contentHeight: 1300, containerHeight: 600),
     totalDisplayCount: 0
   )
   #expect(command == .toEnd(animated: false))
@@ -284,6 +313,25 @@ private func anchoredCore() -> ConversationScrollerCore {
   #expect(core.mode == .followingBottom)
   let next = core.handleContentChange(rows: [row("u1", anchor: true), row("a1")], rowGap: 12, bottomContentPadding: 0)
   #expect(next == nil)
+}
+
+@Test func firstContent_loneUserSendAnchorsToReadingLine() {
+  // The first message sent into an empty conversation arrives as a lone anchor
+  // row (the reply has not streamed yet). It must anchor like any later send —
+  // not stay following, which would let the reply drag the turn offscreen.
+  var core = ConversationScrollerCore()
+  _ = core.handleAppear(rows: [])
+  core.endMarkerContentMaxY = 100
+  core.geometry = geometry(offsetY: 0, contentHeight: 124)
+  let command = core.handleContentChange(rows: [row("u1", anchor: true)], rowGap: 12, bottomContentPadding: 0)
+  #expect(core.mode == .anchoredToMessage)
+  #expect(core.anchoredRowID == "u1")
+  if case .toOffset = command {} else { Issue.record("expected a toOffset anchor placement") }
+  // The anchor is marked handled, so the streamed reply arriving below never
+  // re-anchors and the turn holds still.
+  let next = core.handleContentChange(rows: [row("u1", anchor: true), row("a1")], rowGap: 12, bottomContentPadding: 0)
+  #expect(next == nil)
+  #expect(core.mode == .anchoredToMessage)
 }
 
 // MARK: - Pagination

@@ -142,9 +142,17 @@ struct ConversationScrollerCore {
     let newIDs = rows.map(\.id)
     defer { knownRowIDs = newIDs }
 
-    // First content: the size-change anchor pins the bottom natively.
+    // First content. A lone turn still awaiting its reply (the anchor is the
+    // last row) is a fresh send into an empty conversation and must anchor to
+    // the reading line like any later send — otherwise the reply streams in
+    // below and follows the bottom, dragging the just-sent turn offscreen. A
+    // multi-row first batch (a transcript loading in, whose anchors already
+    // have content below them) shows its end via the native size-change anchor.
     if previousCount == 0 {
       handledAnchorIDs = Set(rows.filter(\.isAnchor).map(\.id))
+      if let last = rows.last, last.isAnchor {
+        return beginAnchor(to: last.id, rowGap: rowGap, bottomContentPadding: bottomContentPadding)
+      }
       mode = .followingBottom
       return nil
     }
@@ -212,16 +220,24 @@ struct ConversationScrollerCore {
     // releases follow; churn off the end re-pins. The pin is layout-resolved
     // (toEnd), so it lands at the true end no matter how the estimates or
     // insets are moving.
-    let layoutChanged = abs(next.contentHeight - previous.contentHeight) > K.positionEpsilon
-      || abs(next.containerHeight - previous.containerHeight) > K.positionEpsilon
+    let contentHeightChanged = abs(next.contentHeight - previous.contentHeight) > K.positionEpsilon
+    let viewportChanged = abs(next.containerHeight - previous.containerHeight) > K.positionEpsilon
       || abs(next.topInset - previous.topInset) > K.positionEpsilon
       || abs(next.bottomInset - previous.bottomInset) > K.positionEpsilon
+    let layoutChanged = contentHeightChanged || viewportChanged
     let offsetChanged = abs(next.offsetY - previous.offsetY) > K.positionEpsilon
 
     if mode == .followingBottom {
       if layoutChanged {
         if isAtEnd == false {
-          return .toEnd(animated: false)
+          // Pure viewport churn — the composer growing/shrinking or the
+          // keyboard toggling changes the insets/container without adding
+          // content — animates so the conversation glides up with the push
+          // instead of snapping (margin insets don't move rendered content at
+          // a fixed offset, so only the pin needs animating). Content growth
+          // (streaming) re-pins instantly, per streamed tick.
+          let animated = viewportChanged && contentHeightChanged == false
+          return .toEnd(animated: animated)
         }
       } else if offsetChanged, isAtEnd == false {
         mode = .freeScrolling
