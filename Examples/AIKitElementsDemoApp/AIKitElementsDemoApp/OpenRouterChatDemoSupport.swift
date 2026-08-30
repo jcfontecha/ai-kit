@@ -1,52 +1,42 @@
 import SwiftUI
-import Combine
 import MarkdownUI
 
 import AIKit
 import AIKitOpenRouter
 import AIKitElements
 
+/// `ChatStore` is `@Observable`, so this reads straight through it: one transcript, no mirror and
+/// no Combine sink. `unconfigured` is the only state of its own — what to show before an API key
+/// and a model have been set.
 @MainActor
-final class OpenRouterChatStore: ObservableObject {
-  struct Snapshot: Sendable, Equatable {
-    var status: ChatStatus
-    var messages: [ChatMessage]
-    var errorDescription: String?
-  }
-
-  @Published var snapshot: Snapshot
-
+@Observable
+final class OpenRouterChatStore {
   private let initialMessages: [ChatMessage]
 
   private var chat: ChatStore?
-  private var chatUpdates: AnyCancellable?
+  private var unconfiguredError: String?
   private var configuredKey: String = ""
   private var configuredModelID: String = ""
 
   init(initialMessages: [ChatMessage] = DemoContent.initialMessages) {
     self.initialMessages = initialMessages
-    self.snapshot = .init(status: .ready, messages: initialMessages, errorDescription: nil)
   }
 
-  var messages: [ChatMessage] { snapshot.messages }
-  var status: ChatStatus { snapshot.status }
-  var errorDescription: String? { snapshot.errorDescription }
+  var messages: [ChatMessage] { chat?.messages ?? initialMessages }
+  var status: ChatStatus { chat?.status ?? .ready }
+  var errorDescription: String? { chat?.errorDescription ?? unconfiguredError }
 
   func configureIfPossible(apiKey: String, modelID: String) {
     let apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
     let modelID = modelID.trimmingCharacters(in: .whitespacesAndNewlines)
 
     if apiKey.isEmpty || modelID.isEmpty {
-      chatUpdates?.cancel()
-      chatUpdates = nil
       chat = nil
       configuredKey = ""
       configuredModelID = ""
-      snapshot = .init(
-        status: .ready,
-        messages: initialMessages,
-        errorDescription: apiKey.isEmpty ? "Set an OpenRouter API key in Settings to use this demo." : "Set a model ID in Settings."
-      )
+      unconfiguredError = apiKey.isEmpty
+        ? "Set an OpenRouter API key in Settings to use this demo."
+        : "Set a model ID in Settings."
       return
     }
 
@@ -56,9 +46,7 @@ final class OpenRouterChatStore: ObservableObject {
 
     configuredKey = apiKey
     configuredModelID = modelID
-
-    chatUpdates?.cancel()
-    chatUpdates = nil
+    unconfiguredError = nil
 
     let provider = createOpenRouter(.init(apiKey: apiKey))
     let model = provider.chat(modelID)
@@ -68,11 +56,6 @@ final class OpenRouterChatStore: ObservableObject {
       initialMessages: initialMessages
     )
     self.chat = chat
-    snapshot = .init(status: chat.status, messages: chat.messages, errorDescription: chat.errorDescription)
-    chatUpdates = chat.objectWillChange.sink { [weak self] _ in
-      guard let self, let chat = self.chat else { return }
-      self.snapshot = .init(status: chat.status, messages: chat.messages, errorDescription: chat.errorDescription)
-    }
   }
 
   func send(text: String, attachments: [ChatFilePart]) {

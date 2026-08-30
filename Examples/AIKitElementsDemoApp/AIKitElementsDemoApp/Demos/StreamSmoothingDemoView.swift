@@ -74,13 +74,13 @@ struct StreamSmoothingDemoView: View {
 }
 
 private struct SmoothingComparison: View {
-  @StateObject private var rawStore: ChatStore
-  @StateObject private var smoothStore: ChatStore
+  @State private var rawStore: ChatStore
+  @State private var smoothStore: ChatStore
 
   init(smoothing: StreamSmoothing) {
     let transport = BurstyChatTransport()
-    _rawStore = StateObject(wrappedValue: ChatStore(transport: transport, smoothing: .disabled))
-    _smoothStore = StateObject(wrappedValue: ChatStore(transport: transport, smoothing: smoothing))
+    _rawStore = State(wrappedValue: ChatStore(transport: transport, smoothing: .disabled))
+    _smoothStore = State(wrappedValue: ChatStore(transport: transport, smoothing: smoothing))
   }
 
   var body: some View {

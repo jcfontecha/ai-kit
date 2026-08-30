@@ -27,6 +27,23 @@ public typealias ToolRenderer = (_ context: ToolRenderContext) -> AnyView
 public typealias ReasoningTextRenderer = (_ text: String) -> AnyView
 public typealias AssistantTextRenderer = (_ text: String) -> AnyView
 public typealias ToolDefaultRenderer = (_ context: ToolDefaultRenderContext) -> AnyView
+
+/// One `data-*` part of an assistant message, as the switch has it by the time it renders.
+///
+/// It carries `id` and `value` and **not** a `ChatDataPart`: the part has already been flattened
+/// into the grouped kind by then, and the type is the dictionary key — so a `ChatDataPart`
+/// parameter would mean either re-materialising one or changing the grouped representation.
+public struct DataRenderContext {
+  public let id: String?
+  public let value: JSONValue
+
+  public init(id: String?, value: JSONValue) {
+    self.id = id
+    self.value = value
+  }
+}
+
+public typealias DataRenderer = (_ context: DataRenderContext) -> AnyView
 /// Replaces the reasoning disclosure's collapsed header label (icon + "Thought
 /// for…" text). Lets a host app match reasoning to its tool-call rows instead of
 /// the default brain glyph + secondary text.
@@ -109,6 +126,10 @@ private struct ToolDefaultRendererStore: @unchecked Sendable {
   var value: ToolDefaultRenderer?
 }
 
+private struct DataRendererStore: @unchecked Sendable {
+  var value: [String: DataRenderer]
+}
+
 private struct ToolApprovalResponseStore: @unchecked Sendable {
   var value: (_ approvalID: String, _ approved: Bool, _ reason: String?) -> Void
 }
@@ -131,6 +152,10 @@ private struct ToolGroupHeaderRendererStore: @unchecked Sendable {
 
 private struct AssistantMessageToolRenderersKey: EnvironmentKey {
   static let defaultValue = ToolRendererStore(value: [:])
+}
+
+private struct AssistantMessageDataRenderersKey: EnvironmentKey {
+  static let defaultValue = DataRendererStore(value: [:])
 }
 
 private struct AssistantMessageToolStatusStringsKey: EnvironmentKey {
@@ -186,6 +211,11 @@ private extension EnvironmentValues {
   var assistantMessageToolRenderers: [String: ToolRenderer] {
     get { self[AssistantMessageToolRenderersKey.self].value }
     set { self[AssistantMessageToolRenderersKey.self] = .init(value: newValue) }
+  }
+
+  var assistantMessageDataRenderers: [String: DataRenderer] {
+    get { self[AssistantMessageDataRenderersKey.self].value }
+    set { self[AssistantMessageDataRenderersKey.self] = .init(value: newValue) }
   }
 
   var assistantMessageToolStatusStrings: [String: ToolStatusStrings] {
@@ -306,6 +336,22 @@ public extension View {
     modifier(AssistantMessageToolRendererModifier(toolName: toolName, renderer: renderer))
   }
 
+  /// Draws a server-emitted `data-*` part. A type with no registered renderer draws nothing —
+  /// which is what an unregistered key means in a dictionary lookup, and the same behaviour the
+  /// tool hook beside it already has.
+  func assistantMessageDataRenderer(_ type: String, renderer: @escaping DataRenderer) -> some View {
+    modifier(AssistantMessageDataRendererModifier(type: type, renderer: renderer))
+  }
+
+  func assistantMessageDataRenderer<DataView: View>(
+    _ type: String,
+    @ViewBuilder renderer: @escaping (_ context: DataRenderContext) -> DataView
+  ) -> some View {
+    assistantMessageDataRenderer(type) { context in
+      AnyView(renderer(context))
+    }
+  }
+
   func assistantMessageToolRenderer<ToolView: View>(
     _ toolName: String,
     @ViewBuilder renderer: @escaping (_ context: ToolRenderContext) -> ToolView
@@ -375,6 +421,20 @@ private struct AssistantMessageToolRendererModifier: ViewModifier {
   }
 }
 
+private struct AssistantMessageDataRendererModifier: ViewModifier {
+  let type: String
+  let renderer: DataRenderer
+
+  @Environment(\.assistantMessageDataRenderers) private var baseDataRenderers
+
+  func body(content: Content) -> some View {
+    content.environment(
+      \.assistantMessageDataRenderers,
+      baseDataRenderers.merging([type: renderer], uniquingKeysWith: { _, new in new })
+    )
+  }
+}
+
 private struct AssistantMessageToolStatusStringsModifier: ViewModifier {
   let toolName: String
   let statusStrings: ToolStatusStrings
@@ -398,6 +458,7 @@ public struct AssistantMessage: View {
 
   @Environment(\.assistantMessageShowsReasoning) private var environmentShowsReasoning
   @Environment(\.assistantMessageToolRenderers) private var environmentToolRenderers
+  @Environment(\.assistantMessageDataRenderers) private var environmentDataRenderers
   @Environment(\.assistantMessageToolStatusStrings) private var environmentToolStatusStrings
   @Environment(\.assistantMessageDefaultToolStatusStrings) private var environmentDefaultToolStatusStrings
   @Environment(\.assistantMessageToolGrouping) private var environmentToolGrouping
@@ -423,6 +484,7 @@ public struct AssistantMessage: View {
   public var body: some View {
     let resolvedShowsReasoning = environmentShowsReasoning
     let resolvedToolRenderers = environmentToolRenderers
+    let resolvedDataRenderers = environmentDataRenderers
     let resolvedToolStatusStrings = environmentToolStatusStrings
     let resolvedToolDefaultStatusStrings = environmentDefaultToolStatusStrings ?? chatTheme.tool.defaultStatusStrings
     let resolvedToolDefaultRenderer = environmentDefaultToolRenderer
@@ -487,7 +549,10 @@ public struct AssistantMessage: View {
         case .sourceDocument(let title, let filename, let mediaType):
           SourceDocumentRow(title: title, filename: filename, mediaType: mediaType)
 
-        case .stepStart, .data:
+        case .data(let type, let id, let value):
+          resolvedDataRenderers[type]?(DataRenderContext(id: id, value: value))
+
+        case .stepStart:
           EmptyView()
         }
       }

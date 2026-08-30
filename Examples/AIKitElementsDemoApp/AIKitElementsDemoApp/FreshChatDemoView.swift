@@ -12,7 +12,7 @@ struct FreshChatDemoView: View {
   @AppStorage(AppSettings.openRouterAPIKeyKey) private var apiKey: String = ""
   @AppStorage(AppSettings.openRouterModelIDKey) private var modelID: String = AppSettings.defaultOpenRouterModelID
 
-  @StateObject private var store = OpenRouterChatStore(initialMessages: [])
+  @State private var store = OpenRouterChatStore(initialMessages: [])
   @State private var text: String = ""
   @State private var attachments: [ChatFilePart] = []
   @State private var isShowingAddSheet: Bool = false

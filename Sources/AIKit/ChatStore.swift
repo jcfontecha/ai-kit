@@ -1,10 +1,14 @@
-#if canImport(Combine)
-import Combine
 import Foundation
 import AIKitProviders
 
+/// Observation, not Combine. A SwiftUI owner that wraps this store and exposes `var messages:
+/// [ChatMessage] { store.messages }` as a computed passthrough — one transcript, no second copy —
+/// only invalidates if the read it forwards is itself tracked, and Observation tracks reads of
+/// `@Observable` properties. A computed property forwarding a `@Published` publishes nothing the
+/// tracking sees.
 @MainActor
-public final class ChatStore: ObservableObject {
+@Observable
+public final class ChatStore {
   public struct RemoteConfiguration {
     public typealias ValidateJSONValue = @Sendable (_ value: JSONValue) async throws -> Void
 
@@ -47,17 +51,19 @@ public final class ChatStore: ObservableObject {
     }
   }
 
-  @Published public var messages: [ChatMessage]
-  @Published public var input: String
-  @Published public var status: ChatStatus
-  @Published public var errorDescription: String?
+  public var messages: [ChatMessage]
+  public var input: String
+  public var status: ChatStatus
+  public var errorDescription: String?
 
   public var isLoading: Bool { status == .submitted || status == .streaming }
 
   public var defaultRequestOptions: ChatRequestOptions
 
   private let session: ChatSession
-  private var updatesTask: Task<Void, Never>?
+  /// Not observed: `deinit` is nonisolated and cancels it, and Observation's accessors are
+  /// main-actor isolated here.
+  @ObservationIgnored private var updatesTask: Task<Void, Never>?
 
   public init(
     remote url: URL,
@@ -287,6 +293,19 @@ public final class ChatStore: ObservableObject {
     }
   }
 
+  /// Answers a client-executed tool with a **failure**. The tool part's state becomes
+  /// `.outputError(errorText:)` rather than `.outputAvailable`, which is the difference between
+  /// telling the model the call failed and recording a success that never happened.
+  public func addToolOutputError(to tool: ChatToolPart, errorText: String) {
+    Task { [session] in
+      await session.addToolOutputError(
+        tool: ToolID<JSONValue, JSONValue>(tool.toolName),
+        toolCallID: tool.toolCallID,
+        errorText: errorText
+      )
+    }
+  }
+
   public func addToolOutput(toolName: String, toolCallID: String, output: JSONValue) {
     Task { [session] in
       await session.addToolOutput(
@@ -339,4 +358,3 @@ public final class ChatStore: ObservableObject {
     return merged == .init() ? nil : merged
   }
 }
-#endif
