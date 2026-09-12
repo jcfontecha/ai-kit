@@ -1064,8 +1064,13 @@ private struct ChatComposerModifier: ViewModifier {
 
     #if os(iOS)
     content
-      // Keep the main content (e.g. `Conversation`) extending behind the composer for depth.
-      .ignoresSafeArea(.container, edges: .bottom)
+      // **No `.ignoresSafeArea(.container, edges: .bottom)` here.** Taking the content under the
+      // bottom container inset also takes it out of the keyboard inset the bar below is placed
+      // against: measured 2026-09-11 on iOS 26.5, the bar landed 25.3pt under the raised
+      // keyboard's own top edge, with the inline-prediction bar drawn over the composer's lower
+      // half. The bar already covers the content it floats over — `conversationBottomOverlayHeight`
+      // is what the scroll view reserves for it — so the depth this bought is the composer's own,
+      // and it cost the composer its place on the keyboard.
       .conversationBottomOverlayHeight(resolvedHeight + overlayPadding)
       .conversationShowsScrollToLatestButton(showsScrollToLatestButton)
       .conversationScrollToLatestRequest($scrollToLatestRequest)
