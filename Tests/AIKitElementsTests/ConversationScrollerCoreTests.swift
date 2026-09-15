@@ -442,3 +442,22 @@ private func anchoredCore() -> ConversationScrollerCore {
   #expect(core.mode == .followingBottom)
   #expect(core.spacerHeight == 0)
 }
+
+// MARK: - At-latest preference
+
+// The arrow's value travels up as a preference past whatever the host layered
+// between the conversation and the composer. Those siblings report the default,
+// so the reduction has to be order-independent.
+
+@Test func atLatestPreference_offTheEndSurvivesASiblingReportingTheDefault() {
+  var value = ConversationIsAtLatestForScrollButtonPreferenceKey.defaultValue
+  ConversationIsAtLatestForScrollButtonPreferenceKey.reduce(value: &value) { false }
+  ConversationIsAtLatestForScrollButtonPreferenceKey.reduce(value: &value) { true }
+  #expect(value == false)
+}
+
+@Test func atLatestPreference_atTheEndStaysAtTheEnd() {
+  var value = ConversationIsAtLatestForScrollButtonPreferenceKey.defaultValue
+  ConversationIsAtLatestForScrollButtonPreferenceKey.reduce(value: &value) { true }
+  #expect(value)
+}

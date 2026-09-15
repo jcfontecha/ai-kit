@@ -4,10 +4,16 @@ import SwiftUI
 // - Preference flows up: whether the conversation is "at latest" (to show/hide the arrow).
 // - Environment flows down: a trigger the parent can bump to request a programmatic scroll-to-latest.
 
+// Only the `Conversation` reports a position; every other subtree between it and
+// the composer — a host's empty-state overlay, an error banner in a
+// `safeAreaInset` — contributes the default. Last-writer-wins let any of those
+// siblings overwrite the conversation's `false` with that default, and the arrow
+// never appeared. `&&` makes the value order-independent: off the end wins, and a
+// subtree with nothing to say leaves it alone.
 struct ConversationIsAtLatestForScrollButtonPreferenceKey: PreferenceKey {
   static let defaultValue: Bool = true
   static func reduce(value: inout Bool, nextValue: () -> Bool) {
-    value = nextValue()
+    value = value && nextValue()
   }
 }
 

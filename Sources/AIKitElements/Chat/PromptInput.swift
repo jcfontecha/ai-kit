@@ -917,7 +917,6 @@ public extension View {
     focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     showsScrollToLatestButton: Bool = true,
-    overlayPadding: CGFloat = 8,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
     onAdd: (() -> Void)? = nil,
@@ -933,7 +932,6 @@ public extension View {
       onPasteImages: onPasteImages,
       height: nil,
       showsScrollToLatestButton: showsScrollToLatestButton,
-      overlayPadding: overlayPadding,
       onSend: onSend,
       onStop: onStop,
       onAdd: onAdd,
@@ -950,7 +948,6 @@ public extension View {
     focusRequestID: Binding<Int>? = nil,
     onPasteImages: (([PlatformImage]) -> Void)? = nil,
     showsScrollToLatestButton: Bool = true,
-    overlayPadding: CGFloat = 8,
     onSend: @escaping (String) -> Void,
     onStop: @escaping () -> Void,
     onAdd: (() -> Void)? = nil,
@@ -965,7 +962,6 @@ public extension View {
       focusRequestID: focusRequestID,
       onPasteImages: onPasteImages,
       showsScrollToLatestButton: showsScrollToLatestButton,
-      overlayPadding: overlayPadding,
       onSend: onSend,
       onStop: onStop,
       onAdd: onAdd,
@@ -997,7 +993,6 @@ public extension View {
         onPasteImages: onPasteImages,
         height: height,
         showsScrollToLatestButton: false,
-        overlayPadding: 0,
         onSend: onSend,
         onStop: onStop,
         onAdd: onAdd,
@@ -1045,7 +1040,6 @@ private struct ChatComposerModifier: ViewModifier {
   let onPasteImages: (([PlatformImage]) -> Void)?
   var height: Binding<CGFloat>?
   let showsScrollToLatestButton: Bool
-  let overlayPadding: CGFloat
   let onSend: (String) -> Void
   let onStop: () -> Void
   let onAdd: (() -> Void)?
@@ -1060,7 +1054,7 @@ private struct ChatComposerModifier: ViewModifier {
     // Keep placement deterministic: a fixed gap above the composer.
     // (Smaller = closer to the prompt input.)
     let scrollButtonGapAboveComposer: CGFloat = 6
-    let scrollButtonBottomPadding = max(0, resolvedHeight + overlayPadding + scrollButtonGapAboveComposer)
+    let scrollButtonBottomPadding = max(0, resolvedHeight + scrollButtonGapAboveComposer)
 
     #if os(iOS)
     content
@@ -1068,10 +1062,14 @@ private struct ChatComposerModifier: ViewModifier {
       // bottom container inset also takes it out of the keyboard inset the bar below is placed
       // against: measured 2026-09-11 on iOS 26.5, the bar landed 25.3pt under the raised
       // keyboard's own top edge, with the inline-prediction bar drawn over the composer's lower
-      // half. The bar already covers the content it floats over — `conversationBottomOverlayHeight`
-      // is what the scroll view reserves for it — so the depth this bought is the composer's own,
-      // and it cost the composer its place on the keyboard.
-      .conversationBottomOverlayHeight(resolvedHeight + overlayPadding)
+      // half.
+      //
+      // **And no `conversationBottomOverlayHeight` with it.** `safeAreaBar` already adds the bar's
+      // height to the scroll view's bottom content inset; publishing it again reserved a second
+      // copy (measured 2026-09-14 on iOS 26.5: a 198pt bottom inset where the bar, the home
+      // indicator and the 24pt of breathing room account for 124 — the last message came to rest
+      // 118pt above the bar where 42 was the breath).
+      // The overlay height is for a host that floats a bar the safe area knows nothing about.
       .conversationShowsScrollToLatestButton(showsScrollToLatestButton)
       .conversationScrollToLatestRequest($scrollToLatestRequest)
       .onPreferenceChange(ConversationIsAtLatestForScrollButtonPreferenceKey.self) { newValue in
@@ -1124,7 +1122,8 @@ private struct ChatComposerModifier: ViewModifier {
       .animation(.easeInOut(duration: 0.2), value: isAtLatestForScrollButton)
     #else
     content
-      .conversationBottomOverlayHeight(resolvedHeight + overlayPadding)
+      // `safeAreaInset` reserves the bar's height in the scroll view's bottom content inset;
+      // `conversationBottomOverlayHeight` on top of it would reserve it twice.
       .conversationShowsScrollToLatestButton(showsScrollToLatestButton)
       .conversationScrollToLatestRequest($scrollToLatestRequest)
       .onPreferenceChange(ConversationIsAtLatestForScrollButtonPreferenceKey.self) { newValue in
